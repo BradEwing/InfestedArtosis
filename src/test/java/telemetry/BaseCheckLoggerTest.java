@@ -53,5 +53,7 @@ class BaseCheckLoggerTest {
                 BaseCheckSkip.SHARED_DEFENCE, new Position(4, 5)));
         assertEquals("1,2,3,DEATH_RECALL,4,5", BaseCheckLogger.skipRow(1, new TilePosition(2, 3),
                 BaseCheckSkip.DEATH_RECALL, new Position(4, 5)));
+        assertEquals("1,2,3,WALLED,4,5", BaseCheckLogger.skipRow(1, new TilePosition(2, 3),
+                BaseCheckSkip.WALLED, new Position(4, 5)));
     }
 }

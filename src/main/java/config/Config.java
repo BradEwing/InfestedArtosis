@@ -14,6 +14,11 @@ public final class Config {
      * or raid an exposed group. Off unless IA_AIR_FLAP_ESCAPE is set to true.
      */
     public static boolean airFlapEscape = false;
+    /**
+     * Whether the periodic base checks and the search for the unseen enemy main run. On unless IA_BASE_CHECKS is set
+     * to false.
+     */
+    public static boolean baseChecks = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -101,6 +106,7 @@ public final class Config {
         this.telemetryCombat = Boolean.parseBoolean(setting(dotenv, "IA_TELEMETRY_COMBAT"));
         String airFlapEscapeSetting = setting(dotenv, "IA_AIR_FLAP_ESCAPE");
         airFlapEscape = Boolean.parseBoolean(airFlapEscapeSetting);
+        baseChecks = !"false".equalsIgnoreCase(setting(dotenv, "IA_BASE_CHECKS"));
     }
 
     /**

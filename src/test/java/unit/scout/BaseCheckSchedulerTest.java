@@ -495,4 +495,23 @@ class BaseCheckSchedulerTest {
         assertTrue(BaseCheckScheduler.isDeathRemembered(0, BaseCheckScheduler.DEATH_MEMORY_FRAMES - 1, false));
         assertFalse(BaseCheckScheduler.isDeathRemembered(0, BaseCheckScheduler.DEATH_MEMORY_FRAMES, false));
     }
+
+    @Test
+    void aSeenMainTakesAsManyZerglingsAsAreAsked() {
+        assertEquals(3, BaseCheckScheduler.searchLingsToSend(false, NOW - 1, NOW, 3));
+    }
+
+    @Test
+    void anUnseenMainTakesOneZerglingAtATime() {
+        assertEquals(1, BaseCheckScheduler.searchLingsToSend(true, -1, NOW, 3));
+        assertEquals(1, BaseCheckScheduler.searchLingsToSend(true, -1, NOW, 1));
+        assertEquals(0, BaseCheckScheduler.searchLingsToSend(true, -1, NOW, 0));
+    }
+
+    @Test
+    void anUnseenMainWaitsTheDispatchGapForTheNextZergling() {
+        int gap = BaseCheckScheduler.SEARCH_DISPATCH_GAP_FRAMES;
+        assertEquals(0, BaseCheckScheduler.searchLingsToSend(true, NOW - gap + 1, NOW, 3));
+        assertEquals(1, BaseCheckScheduler.searchLingsToSend(true, NOW - gap, NOW, 3));
+    }
 }

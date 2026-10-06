@@ -654,14 +654,20 @@ public class InformationManager {
     }
 
     /**
-     * Stamps the current frame on every base whose town hall location is in our vision, so ScoutData
-     * holds when each base was last seen.
+     * Stamps the current frame on every base whose town hall location is in our vision, or where an enemy town
+     * hall is in sight, so ScoutData holds when each base was last seen.
      */
     private void recordBaseVision() {
         ScoutData scoutData = gameState.getScoutData();
         int frame = game.getFrameCount();
+        Set<TilePosition> townHalls = new HashSet<>();
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            if (enemy.getType().isResourceDepot()) {
+                townHalls.add(enemy.getTilePosition());
+            }
+        }
         for (Base base : bwem.getMap().getBases()) {
-            if (game.isVisible(base.getLocation())) {
+            if (game.isVisible(base.getLocation()) || townHalls.contains(base.getLocation())) {
                 scoutData.recordBaseSeen(base.getLocation(), frame);
             }
         }

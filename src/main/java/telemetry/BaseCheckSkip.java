@@ -9,5 +9,7 @@ public enum BaseCheckSkip {
     /** The route runs past a static defence that a check already out also passes. */
     SHARED_DEFENCE,
     /** A check already out was recalled because its route passes a death site recorded just now. */
-    DEATH_RECALL
+    DEATH_RECALL,
+    /** A ground check was not sent, or was recalled, because enemy buildings seal every ground route to the base. */
+    WALLED
 }

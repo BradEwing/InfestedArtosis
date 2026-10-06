@@ -57,6 +57,9 @@ public final class BaseCheckScheduler {
      */
     public static final int PERIODIC_PROBE_START_FRAME = new Time(10, 0).getFrames();
 
+    /** Tuning value: frames between zerglings sent to an enemy main that has never been seen. */
+    public static final int SEARCH_DISPATCH_GAP_FRAMES = 240;
+
     /** Tuning value: a death site is matched to its anchoring defence within this many pixels. */
     public static final int ANCHOR_MATCH_PIXELS = 16;
 
@@ -338,6 +341,26 @@ public final class BaseCheckScheduler {
      */
     public static boolean isSiteAhead(Position scout, Position base, Position site) {
         return scout == null || scout.getDistance(base) > site.getDistance(base);
+    }
+
+    /**
+     * How many zerglings to send to an enemy main now. One at a time while the main has never been seen, the next
+     * only {@link #SEARCH_DISPATCH_GAP_FRAMES} after the last, so a defended main costs one zergling per gap.
+     *
+     * @param neverSeen whether the enemy main has never been seen
+     * @param lastDispatchFrame the frame a zergling was last sent to it, or a negative value if none was
+     * @param now the current frame
+     * @param needed how many zerglings the scouting rules ask for
+     * @return the number to send
+     */
+    public static int searchLingsToSend(boolean neverSeen, int lastDispatchFrame, int now, int needed) {
+        if (!neverSeen) {
+            return needed;
+        }
+        if (lastDispatchFrame >= 0 && now - lastDispatchFrame < SEARCH_DISPATCH_GAP_FRAMES) {
+            return 0;
+        }
+        return Math.min(needed, 1);
     }
 
     /**

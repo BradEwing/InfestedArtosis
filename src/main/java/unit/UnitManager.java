@@ -4,6 +4,7 @@ import bwapi.Game;
 import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
+import config.Config;
 import info.GameState;
 import info.InformationManager;
 import info.ScoutData;
@@ -462,6 +463,9 @@ public class UnitManager {
     }
 
     private void checkAndAssignBaseChecks() {
+        if (!Config.baseChecks) {
+            return;
+        }
         int lingsNeeded = scoutManager.lingsPerCheck();
         boolean mayCheck = scoutManager.mayStartCheck(false) && hasSpareZerglings(lingsNeeded)
                 || scoutManager.mayStartCheck(true);

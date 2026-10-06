@@ -1,6 +1,7 @@
 package unit.scout;
 
 import bwapi.Game;
+import config.Config;
 import bwapi.Position;
 import bwapi.Race;
 import bwapi.TilePosition;
@@ -22,6 +23,8 @@ import telemetry.BaseChecks;
 import telemetry.PerchAssignments;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
+import util.TileFootprint;
+import util.Time;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -36,6 +39,7 @@ public class ScoutManager {
 
     final int FRAME_DRONE_SCOUT = 1440; // 1m
     static final int SKIP_LOG_INTERVAL_FRAMES = 240;
+    static final int WALL_RECOMPUTE_FRAMES = 120;
     private  InformationManager informationManager;
 
     private Game game;
@@ -56,6 +60,9 @@ public class ScoutManager {
     private final Map<Base, Integer> consecutiveFailures = new HashMap<>();
     private final List<DeathSite> deathSites = new ArrayList<>();
     private final Map<String, Integer> skipLoggedFrames = new HashMap<>();
+    private final Map<Base, Integer> lastDispatchFrames = new HashMap<>();
+    private int[][] wallDistances;
+    private int wallComputedFrame = -WALL_RECOMPUTE_FRAMES;
 
     private static final class DeathSite {
         private final Position position;
@@ -139,7 +146,8 @@ public class ScoutManager {
      * {@link BaseCheckScheduler#PERIODIC_PROBE_START_FRAME} only a start location never seen is a candidate, and
      * only while the enemy main is unknown; from then on the stalest available base once it has gone
      * {@link BaseCheckScheduler#CHECK_INTERVAL_FRAMES} unseen, a start location never seen first. Bases already
-     * being checked, held back after a failed check, reached by a route passing a remembered static-defence
+     * being checked, walled off from our side by known enemy buildings, held back after a failed check, reached
+     * by a route passing a remembered static-defence
      * death, or reached by a route past a static defence that a check already out also passes are skipped, and
      * a skip of the base the scheduler would have chosen is logged at most once per
      * {@link #SKIP_LOG_INTERVAL_FRAMES} and only when {@code logSkips} says a dispatch was otherwise possible.
@@ -190,8 +198,12 @@ public class ScoutManager {
                     || !BaseCheckScheduler.isDue(BaseCheckScheduler.age(lastSeenFrames.get(base), now))) {
                 continue;
             }
-            Position site = BaseCheckScheduler.deathSiteOnRoute(routePositions(base), recentDeaths);
-            BaseCheckSkip reason = BaseCheckSkip.DEATH_ROUTE;
+            BaseCheckSkip reason = BaseCheckSkip.WALLED;
+            Position site = isWalledOff(base) ? base.getCenter() : null;
+            if (site == null) {
+                site = BaseCheckScheduler.deathSiteOnRoute(routePositions(base), recentDeaths);
+                reason = BaseCheckSkip.DEATH_ROUTE;
+            }
             if (site == null) {
                 site = defenceSharedWithCheckInFlight(base, defences);
                 reason = BaseCheckSkip.SHARED_DEFENCE;
@@ -231,6 +243,12 @@ public class ScoutManager {
         if (!BaseCheckScheduler.mayDispatchToHeldBase(age, retryAfterFrames.getOrDefault(enemyMain, 0), now)) {
             return false;
         }
+        if (isWalledOff(enemyMain)) {
+            if (logRefusals) {
+                logSkip(enemyMain, BaseCheckSkip.WALLED, enemyMain.getCenter(), now);
+            }
+            return false;
+        }
         boolean searching = mustFindEnemyMain();
         List<BaseCheckScheduler.Sighting> sightings = knownSightings();
         List<Position> sites = searching ? deathSitesWithinMemory(now) : recentDeathSites(now, sightings);
@@ -266,12 +284,34 @@ public class ScoutManager {
     }
 
     /**
+     * Whether known enemy buildings seal every ground route from our main to a base, so a zergling sent there
+     * would meet the wall. Measured on tile steps with the grounded enemy buildings other than town halls
+     * blocked, and refreshed every {@link #WALL_RECOMPUTE_FRAMES} frames. A base reached only by air or with no
+     * wall known is not walled.
+     *
+     * @param base the base a ground check would go to
+     * @return true when no ground route reaches the base
+     */
+    public boolean isWalledOff(Base base) {
+        int now = game.getFrameCount();
+        if (wallDistances == null || now - wallComputedFrame >= WALL_RECOMPUTE_FRAMES) {
+            List<TileFootprint> footprints = gameState.getObservedUnitTracker()
+                    .getGroundedFootprints(type -> type.isBuilding() && !type.isResourceDepot(), new Time(now));
+            wallDistances = gameState.getGameMap().groundStepDistances(gameState.getBaseData().mainBasePosition(),
+                    BaseReachability.blockedTiles(footprints)::contains);
+            wallComputedFrame = now;
+        }
+        return BaseReachability.isWalledOff(wallDistances, gameState.getBaseData().mainBasePosition(),
+                base.getLocation());
+    }
+
+    /**
      * @return true when the enemy main is known but its tile has never been seen and checks are allowed, so
-     *     the search for it does not wait for a lull in enemy sightings
+     *     the search for it does not wait for a lull in enemy sightings; never while base checks are switched off
      */
     public boolean mustFindEnemyMain() {
         Base enemyMain = gameState.getBaseData().getMainEnemyBase();
-        return enemyMain != null && BaseCheckScheduler.mustFindEnemyMain(
+        return Config.baseChecks && enemyMain != null && BaseCheckScheduler.mustFindEnemyMain(
                 gameState.getScoutData().getBaseLastSeenFrame(enemyMain.getLocation()), game.getFrameCount());
     }
 
@@ -445,6 +485,7 @@ public class ScoutManager {
             zerglingScouts.add(managedUnit);
         }
         baseChecks.put(managedUnit, new BaseCheck(base, now, BaseCheckScheduler.age(lastSeen, now), primary));
+        lastDispatchFrames.put(base, now);
     }
 
     /**
@@ -474,6 +515,11 @@ public class ScoutManager {
             if (reason == BaseCheckScheduler.Release.NONE && scout.getUnitType() == UnitType.Zerg_Overlord
                     && !routeClear(scout.getPosition(), check.base.getCenter())) {
                 reason = BaseCheckScheduler.Release.THREAT;
+            }
+            if (reason == BaseCheckScheduler.Release.NONE && scout.getUnitType() != UnitType.Zerg_Overlord
+                    && isWalledOff(check.base)) {
+                reason = BaseCheckScheduler.Release.THREAT;
+                BaseChecks.skipped(now, check.base.getLocation(), BaseCheckSkip.WALLED, check.base.getCenter());
             }
             if (reason != BaseCheckScheduler.Release.NONE) {
                 finishBaseCheck(scout, check, reason);
@@ -764,7 +810,8 @@ public class ScoutManager {
                 currentScouts++;
             }
         }
-        return Math.max(0, maxScouts - currentScouts);
+        return BaseCheckScheduler.searchLingsToSend(mustFindEnemyMain(), lastDispatchFrames.getOrDefault(enemyMain, -1),
+                currentFrame, Math.max(0, maxScouts - currentScouts));
     }
 
     private TilePosition pollDroneScoutTarget() {
