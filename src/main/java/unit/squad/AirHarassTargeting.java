@@ -452,7 +452,8 @@ public final class AirHarassTargeting {
      * The ids of the lone Missile Turrets the flock takes on, see {@link #edgeTurrets(Collection, int)}, that no other
      * known anti-air covers on the approach: the stretch of the straight line from the flock to the Turret that lies
      * within {@link #APPROACH_SPAN} of the Turret. A Turret the harass has already engaged stays taken on while it
-     * stands, whatever the anti-air known now, so it is not priced as a defense again in the middle of the kill.
+     * stands and no other anti-air covers it, whatever the damage budget and the approach read now, so it is not priced
+     * as a defense again in the middle of the kill; other anti-air arriving beside it ends the latch.
      *
      * @param threats every known anti-air threat
      * @param flockSize Mutalisks, injured or not in the squad
@@ -468,9 +469,11 @@ public final class AirHarassTargeting {
             if (turret.getType() != UnitType.Terran_Missile_Turret) {
                 continue;
             }
-            if (engaged.contains(turret.getId())) {
-                ids.add(turret.getId());
-            } else if (isLone(turret, threats) && turretDamageBeforeKill(turret, flockSize) <= budget
+            if (!isLone(turret, threats)) {
+                continue;
+            }
+            if (engaged.contains(turret.getId())
+                    || turretDamageBeforeKill(turret, flockSize) <= budget
                     && approachClear(turret, threats, flockCenter)) {
                 ids.add(turret.getId());
             }

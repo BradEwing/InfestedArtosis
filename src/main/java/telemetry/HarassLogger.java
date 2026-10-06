@@ -47,7 +47,7 @@ import java.util.Map;
  * Turret over anything else: retarget_old_id and retarget_old_type name the
  * target it left, retarget_new_id and retarget_new_type the one it took, retarget_old_distance and
  * retarget_new_distance the pixels from the flock's center to each, and retarget_old_tier and retarget_new_tier the
- * AirHarassTargeting.Tier each was in, the old one NONE when it was no longer a contact the flock could see.
+ * AirHarassTargeting.Tier each was in, NONE for a target with no tier or no longer a visible contact.
  *
  * <p>defense_zones is how many defense groups the flock turned away from are remembered, see AirHarassDefenseZones, and
  * zone_units how many remembered anti-air units not otherwise known are priced from them, on ENTRY_CHECK and TICK

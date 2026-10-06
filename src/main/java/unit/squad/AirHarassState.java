@@ -272,7 +272,7 @@ public class AirHarassState {
 
     /**
      * @return the ids of the lone Missile Turrets the flock has taken on in this harass, which stay taken on while
-     *         they stand, see {@link AirHarassTargeting#edgeTurrets(Collection, int, Position,
+     *         they stand and stay lone, see {@link AirHarassTargeting#edgeTurrets(Collection, int, Position,
      *         Collection)}
      */
     public Set<Integer> getEngagedEdgeTurrets() {

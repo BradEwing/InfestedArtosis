@@ -138,7 +138,8 @@ public class AirHarassController {
      * the default, an exposed group is raided only when no base qualifies. A base the flock left on newly seen
      * anti-air is left out until its refusal runs out, see {@link AirHarassScouting#unrefused}. With the escape on, a
      * base or exposed group at the held target is no candidate, see {@link AirHarassEvaluator#isFailedTarget}; with
-     * it off, no target is held.
+     * it off, no target is held. The anti-air remembered in the defense zones is priced with the known anti-air, see
+     * {@link AirHarassDefenseZones}.
      *
      * @param squad air squad
      * @param now current frame
@@ -314,6 +315,7 @@ public class AirHarassController {
         state.acceptAntiAir(AirHarassScouting.inReach(view.threats, state.targetCenter(), squad.getCenter()), now,
                 flock.hitPoints);
         state.acceptIds(AirHarassScouting.carried(carriedAntiAir, now), now, flock.hitPoints);
+        state.acceptIds(defenseZones.memberIds(), now, flock.hitPoints);
         state.setLastTickFrame(now - AirHarassEvaluator.HARASS_TICK);
         squad.setHarassState(state);
         for (ManagedUnit member : squad.getMembers()) {
@@ -403,7 +405,8 @@ public class AirHarassController {
      * Reads the anti-air that came into reach this frame and, when it is more than the flock can answer at the target
      * or at the flock, see {@link AirHarassScouting#react}, records the AA_REACTION row: the frame the anti-air that
      * made up that defense came into reach, this frame as the frame the flock turns, and the hit points the flock
-     * lost between. Runs every frame, not on the decision tick. The ids of the anti-air making up the defense are carried
+     * lost between. A flock-side reaction records the defense group as a zone, see {@link AirHarassDefenseZones}. Runs
+     * every frame, not on the decision tick. The ids of the anti-air making up the defense are carried
      * into the next harass as accepted, see {@link AirHarassScouting#carried}.
      *
      * @return true when the harass ends on newly seen anti-air
@@ -780,6 +783,7 @@ public class AirHarassController {
         }
         state.acceptAntiAir(AirHarassScouting.inReach(view.threats, state.targetCenter(), squad.getCenter()), now,
                 flock(squad).hitPoints);
+        state.acceptIds(defenseZones.memberIds(), now, flock(squad).hitPoints);
         HarassTelemetry.row(row(squad, state, HarassRow.Event.RETARGET, now)
                 .center(squad.getCenter())
                 .aaSightingAge(sightingAge)

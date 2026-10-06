@@ -183,6 +183,17 @@ public final class AirHarassDefenseZones {
     }
 
     /**
+     * @return the ids of every anti-air unit any zone remembers
+     */
+    public Set<Integer> memberIds() {
+        Set<Integer> ids = new HashSet<>();
+        for (Zone zone : zones) {
+            ids.addAll(zone.members.keySet());
+        }
+        return ids;
+    }
+
+    /**
      * @return how many zones are remembered
      */
     public int size() {

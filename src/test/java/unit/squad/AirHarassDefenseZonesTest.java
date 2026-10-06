@@ -12,6 +12,7 @@ import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AirHarassDefenseZonesTest {
@@ -175,6 +176,25 @@ class AirHarassDefenseZonesTest {
 
         assertEquals(0, zones.refresh(none(), point -> false, NOW + AirHarassDefenseZones.MAX_AGE_FRAMES));
         assertEquals(1, zones.refresh(none(), point -> false, NOW + AirHarassDefenseZones.MAX_AGE_FRAMES + 1));
+    }
+
+    @Test
+    void aZoneMemberTheFlockSightsJustOutsideItsReachIsNoNewAntiAirOnceAcceptedButAStrangerStillIs() {
+        Position flock = new Position(3500, 1000);
+        AirHarassTargeting.AirThreat member = threat(1, UnitType.Terran_Goliath,
+                new Position(flock.getX() + 231 + AirHarassScouting.EXIT_MARGIN - 25, flock.getY()));
+        AirHarassTargeting.AirThreat stranger = threat(2, UnitType.Terran_Goliath,
+                new Position(flock.getX(), flock.getY() + 231 + AirHarassScouting.EXIT_MARGIN - 25));
+        double tolerance = member.getStrength() / 2;
+        AirHarassDefenseZones zones = new AirHarassDefenseZones();
+        zones.record(member, list(member), NOW);
+        AirHarassState state = new AirHarassState(NOW, 600);
+        state.acceptIds(zones.memberIds(), NOW, 600);
+
+        assertEquals(Collections.singleton(1), zones.memberIds());
+        assertNull(AirHarassScouting.react(state, list(member), null, flock, tolerance, NOW + 1, 600));
+        assertEquals(stranger, AirHarassScouting.react(state, list(member, stranger), null, flock, tolerance,
+                NOW + 2, 600).getTrigger());
     }
 
     @Test

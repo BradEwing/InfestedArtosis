@@ -302,19 +302,22 @@ class AirHarassEdgeTargetsTest {
     }
 
     @Test
-    void anEngagedTurretStaysAnEdgeTurretWhileItStandsWhateverElseIsKnown() {
+    void anEngagedLoneTurretStaysAnEdgeTurretWhateverTheBudgetAndApproachReadNow() {
         AirHarassTargeting.AirThreat turret = threat(7, UnitType.Terran_Missile_Turret, east(600));
-        AirHarassTargeting.AirThreat goliath = threat(8, UnitType.Terran_Goliath, east(500));
+        AirHarassTargeting.AirThreat goliath = threat(8, UnitType.Terran_Goliath,
+                new Position(MUTA_AT.getX() + 100, MUTA_AT.getY() + 200));
         List<AirHarassTargeting.AirThreat> threats = threats(turret, goliath);
 
         assertTrue(AirHarassTargeting.edgeTurrets(threats, 12, MUTA_AT, Collections.emptySet()).isEmpty());
         assertEquals(Collections.singleton(7),
                 AirHarassTargeting.edgeTurrets(threats, 12, MUTA_AT, Collections.singleton(7)));
+        assertEquals(Collections.singleton(7),
+                AirHarassTargeting.edgeTurrets(threats(turret), 2, MUTA_AT, Collections.singleton(7)));
         assertTrue(AirHarassTargeting.edgeTurrets(threats(goliath), 12, MUTA_AT, Collections.singleton(7)).isEmpty());
     }
 
     @Test
-    void anEngagedTurretIsLeftOutOfThePricedDefenseWhileTheGoliathBesideItIsKept() {
+    void anEngagedTurretWithAGoliathBesideItIsPricedAsPartOfTheDefense() {
         AirHarassTargeting.AirThreat turret = threat(7, UnitType.Terran_Missile_Turret, east(600));
         AirHarassTargeting.AirThreat goliath = threat(8, UnitType.Terran_Goliath, east(500));
         List<AirHarassTargeting.AirThreat> threats = threats(turret, goliath);
@@ -322,6 +325,6 @@ class AirHarassEdgeTargetsTest {
         List<AirHarassTargeting.AirThreat> priced = AirHarassTargeting.priced(threats,
                 AirHarassTargeting.edgeTurrets(threats, 12, MUTA_AT, Collections.singleton(7)));
 
-        assertEquals(Collections.singletonList(goliath), priced);
+        assertEquals(threats, priced);
     }
 }
