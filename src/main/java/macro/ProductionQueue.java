@@ -5,6 +5,7 @@ import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanComparator;
 import macro.plan.PlanType;
+import macro.plan.UnitPlan;
 import telemetry.PlanEvents;
 
 import java.util.ArrayList;
@@ -120,6 +121,42 @@ public class ProductionQueue implements Iterable<Plan> {
             gas += head.gasPrice();
         }
         return gas;
+    }
+
+    /**
+     * Sums the mineral price of queued unit plans in the advanced unit band. A queued plan has not
+     * reserved yet, so these minerals are invisible to the unreserved bank.
+     *
+     * @return the minerals priced by queued advanced unit plans
+     */
+    public int advancedUnitMineralDemand() {
+        int minerals = 0;
+        for (Plan plan : queue) {
+            if (isAdvancedUnitPlan(plan)) {
+                minerals += plan.mineralPrice();
+            }
+        }
+        return minerals;
+    }
+
+    /**
+     * Sums the gas price of queued unit plans in the advanced unit band.
+     *
+     * @return the gas priced by queued advanced unit plans
+     * @see #advancedUnitMineralDemand()
+     */
+    public int advancedUnitGasDemand() {
+        int gas = 0;
+        for (Plan plan : queue) {
+            if (isAdvancedUnitPlan(plan)) {
+                gas += plan.gasPrice();
+            }
+        }
+        return gas;
+    }
+
+    private static boolean isAdvancedUnitPlan(Plan plan) {
+        return plan.getType() == PlanType.UNIT && plan.getPriority() == UnitPlan.ADVANCED_UNIT_PRIORITY;
     }
 
     /** True when a plan has waited in PLANNED longer than {@link #STALE_PLANNED_FRAMES}. */

@@ -31,6 +31,14 @@ public final class LarvaBoundMacroHatchery {
         LARVA_NOT_SHORT,
         /** One of the unreserved banks is below its float bar. */
         NOT_FLOATING,
+        /**
+         * One of the unreserved banks is below its float bar while the build's first wave holds the bank or
+         * the build asks on a lowered gas bar.
+         *
+         * <p>Returned by {@link #heldReading}, never by {@link #evaluate}, so the withholding the hold causes
+         * is a row rather than silence.
+         */
+        HELD_NOT_FLOATING,
         /** The build's tech is not finished, so the bank may be waiting on its first tech units. */
         TECH_NOT_READY,
         /** Enemy ground combat units are known at our bases. */
@@ -55,12 +63,30 @@ public final class LarvaBoundMacroHatchery {
         TRIGGER;
 
         /**
-         * Whether the build is larva bound and floating both banks, so the request exists and
-         * this gate either answers it or withholds it.
+         * Whether the build is larva bound with its banks not short, or short only by a hold the
+         * build placed, so the request exists and this gate either answers it or withholds it.
          */
         public boolean isRequest() {
             return this != LARVA_NOT_SHORT && this != NOT_FLOATING;
         }
+    }
+
+    /**
+     * The gate a request is reported under, naming a bank shortfall that the first wave's hold or a lowered gas
+     * bar shaped.
+     *
+     * @param gate the gate {@link #evaluate} stopped on
+     * @param techReady whether the build's tech is finished, since an unfinished tech stops the request anyway
+     * @param holdsBank whether the first wave still owns the bank
+     * @param floatGas the gas bar the request asked on
+     * @return {@link Gate#HELD_NOT_FLOATING} for a bank shortfall with the tech finished while the hold or a bar below
+     *     {@link #FLOAT_GAS} applies, else the gate unchanged
+     */
+    public static Gate heldReading(Gate gate, boolean techReady, boolean holdsBank, int floatGas) {
+        if (gate == Gate.NOT_FLOATING && techReady && (holdsBank || floatGas < FLOAT_GAS)) {
+            return Gate.HELD_NOT_FLOATING;
+        }
+        return gate;
     }
 
     private LarvaBoundMacroHatchery() {
@@ -105,6 +131,33 @@ public final class LarvaBoundMacroHatchery {
     }
 
     /**
+     * The unreserved bank left once queued advanced unit plans have claimed their cost.
+     *
+     * <p>A queued plan reserves nothing until it is scheduled, so the unreserved bank still holds
+     * what a Mutalisk waiting for its larva is about to spend. Passing the result to
+     * {@link #evaluate} keeps the first wave from being read as float.
+     *
+     * @param available minerals or gas mined and not reserved by a scheduled plan
+     * @param queuedDemand the same resource priced by queued advanced unit plans
+     * @return the bank after the queued demand, never below zero
+     */
+    public static int afterQueuedDemand(int available, int queuedDemand) {
+        return Math.max(0, available - queuedDemand);
+    }
+
+    /**
+     * The bank the gate reads: net of queued demand while the build's first wave owns it, whole after.
+     *
+     * @param holdsBank whether the first wave still owns the bank
+     * @param available minerals or gas mined and not reserved by a scheduled plan
+     * @param queuedDemand the same resource priced by queued advanced unit plans
+     * @return the bank to hand to {@link #evaluate}
+     */
+    public static int bankAfterHold(boolean holdsBank, int available, int queuedDemand) {
+        return holdsBank ? afterQueuedDemand(available, queuedDemand) : available;
+    }
+
+    /**
      * The gate the macro hatchery request stops on.
      *
      * <p>The signal is the one a larva limit produces: fewer free larva than hatcheries to make
@@ -130,10 +183,22 @@ public final class LarvaBoundMacroHatchery {
      */
     public static Gate evaluate(boolean techReady, int larva, int hatcheries, int availableMinerals,
                                 int availableGas, int enemiesAtBases, int outstandingMacroHatcheries) {
+        return evaluate(techReady, larva, hatcheries, availableMinerals, availableGas, FLOAT_GAS, enemiesAtBases,
+                outstandingMacroHatcheries);
+    }
+
+    /**
+     * The gate the macro hatchery request stops on, with the gas bar the build asks for.
+     *
+     * @param floatGas unreserved gas that counts as floating
+     * @see #evaluate(boolean, int, int, int, int, int, int)
+     */
+    public static Gate evaluate(boolean techReady, int larva, int hatcheries, int availableMinerals,
+                                int availableGas, int floatGas, int enemiesAtBases, int outstandingMacroHatcheries) {
         if (larva >= hatcheries) {
             return Gate.LARVA_NOT_SHORT;
         }
-        if (availableMinerals < FLOAT_MINERALS || availableGas < FLOAT_GAS) {
+        if (availableMinerals < FLOAT_MINERALS || availableGas < floatGas) {
             return Gate.NOT_FLOATING;
         }
         if (!techReady) {

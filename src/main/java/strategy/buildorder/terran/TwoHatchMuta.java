@@ -9,6 +9,7 @@ import info.Readiness;
 import info.TechProgression;
 import info.UnitTypeCount;
 import macro.Reactions;
+import macro.plan.HatcheryRequestReason;
 import macro.plan.Plan;
 import strategy.buildorder.ArmyUpgradeTrigger;
 import strategy.buildorder.BuildOrder;
@@ -31,6 +32,8 @@ import java.util.Set;
 public class TwoHatchMuta extends TerranBase {
 
     static final int MUTALISKS_BEFORE_FLYER_UPGRADE = 7;
+
+    static final int MACRO_HATCHERY_HATCHERY_CAP = 4;
 
     /** Gatherers that must stand before Flyer Attacks level 2 or 3 is queued. Tuning constant. */
     static final int WORKERS_BEFORE_LATER_FLYER_UPGRADES = 22;
@@ -75,7 +78,14 @@ public class TwoHatchMuta extends TerranBase {
         int basesHeldOrReserved = baseData.currentAndReservedCount();
         boolean wantThird    = plannedAndCurrentHatcheries < 3 && spireCount > 0 && mutaCount > 5
                 || LurkerDefilerUltraTransition.wantsThirdBase(gameState.getGameTime(), baseCount, basesHeldOrReserved);
-        boolean wantBaseAdvantage = behindOnBases(gameState) || floatingMinerals;
+        boolean wantBaseAdvantage = wantsBaseAdvantage(behindOnBases(gameState), floatingMinerals,
+                gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0,
+                gameState.getResourceCount().availableMinerals()
+                        - gameState.getProductionQueue().advancedUnitMineralDemand(),
+                gameState.getResourceCount().availableGas()
+                        - gameState.getProductionQueue().advancedUnitGasDemand(),
+                gameState.floatingMineralsBar(), firstWaveMutalisks(gameState),
+                gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk));
 
         // Lair timing
         boolean wantLair = gameState.canPlanLair() && lairCount < 1 && baseCount >= 2;
@@ -109,6 +119,20 @@ public class TwoHatchMuta extends TerranBase {
                     LurkerDefilerUltraTransition.prefersGasBase(basesHeldOrReserved));
             if (expansionPlan != null) {
                 plans.add(expansionPlan);
+            }
+        }
+
+        if (expansionPlanned(plans) == null && wantsReleasedMacroHatchery(
+                gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0,
+                firstWaveMutalisks(gameState) - gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk),
+                gameState.hatcheryCount() + gameState.inFlightHatcheryPlans()
+                        + gameState.hatcheriesUnderConstruction(true) + gameState.hatcheriesUnderConstruction(false),
+                gameState.inFlightHatcheryPlans(true) + gameState.hatcheriesUnderConstruction(true),
+                gameState.knownEnemyMobileGroundCombatUnitsAtOurBases())) {
+            Plan macroHatcheryPlan = this.planMacroHatcheryAt(gameState, baseData.getMainBase());
+            if (macroHatcheryPlan != null) {
+                macroHatcheryPlan.setHatcheryRequestReason(HatcheryRequestReason.RELEASE);
+                plans.add(macroHatcheryPlan);
             }
         }
 
@@ -173,7 +197,9 @@ public class TwoHatchMuta extends TerranBase {
         List<Plan> mutaliskPlans = withheldByDroneRound(gameState.getDroneRound().isActive(), UnitType.Zerg_Mutalisk)
                 ? new ArrayList<>()
                 : planMutalisk(techProgression, desiredMutalisks, gameState.numGatherers(),
-                        gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk), gameState.getUnitTypeCount());
+                        gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk), gameState.getUnitTypeCount(),
+                        gameState.numLarva(), gameState.getResourceCount().availableMinerals(),
+                        gameState.getResourceCount().availableGas());
         if (!mutaliskPlans.isEmpty()) {
             plans.addAll(mutaliskPlans);
             return plans;
@@ -209,6 +235,111 @@ public class TwoHatchMuta extends TerranBase {
     @Override
     protected int droneRoundDroneCap(GameState gameState) {
         return dronesNeeded(gameState);
+    }
+
+    @Override
+    protected boolean holdsFirstWaveBank(GameState gameState) {
+        return ownsFirstWaveBank(gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire) > 0,
+                scheduledWaveMutalisks(firstWaveMutalisks(gameState),
+                        gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk)));
+    }
+
+    @Override
+    protected int macroHatcheryGasBar(GameState gameState) {
+        return macroHatcheryGasBar(gameState.getTechProgression().isSpire(),
+                scheduledWaveMutalisks(firstWaveMutalisks(gameState),
+                        gameState.queuedUnitPlanCount(UnitType.Zerg_Mutalisk)),
+                gameState.hatcheryCount());
+    }
+
+    /**
+     * Mutalisks produced plus Mutalisks queued, scheduled or in an Egg. Losses do not lower it.
+     */
+    private static int firstWaveMutalisks(GameState gameState) {
+        return firstWaveMutalisks(gameState.totalProduced(UnitType.Zerg_Mutalisk),
+                gameState.getUnitTypeCount().plannedCount(UnitType.Zerg_Mutalisk));
+    }
+
+    /**
+     * @param mutalisksProduced Mutalisks hatched so far, living and lost
+     * @param mutalisksPlanned Mutalisks queued, scheduled or in an Egg
+     * @return the Mutalisks the first wave has asked for, whether or not they have hatched
+     */
+    static int firstWaveMutalisks(int mutalisksProduced, int mutalisksPlanned) {
+        return mutalisksProduced + mutalisksPlanned;
+    }
+
+    /**
+     * @param firstWaveMutalisks {@link #firstWaveMutalisks(int, int)}
+     * @param queuedMutaliskPlans Mutalisk plans still waiting in the production queue
+     * @return the Mutalisks past the queue: scheduled, in an Egg or hatched
+     */
+    static int scheduledWaveMutalisks(int firstWaveMutalisks, int queuedMutaliskPlans) {
+        return firstWaveMutalisks - queuedMutaliskPlans;
+    }
+
+    /**
+     * The unreserved gas the macro hatchery gate counts as floating.
+     *
+     * <p>Once the first wave is queued the gas goes to one Mutalisk at a time and the bank rarely
+     * floats gas, so the hatchery the first wave deferred is asked for on minerals alone until the
+     * build holds {@link #MACRO_HATCHERY_HATCHERY_CAP} hatcheries.
+     *
+     * @param spireReady whether a Spire is finished
+     * @param mutaliskCount {@link #scheduledWaveMutalisks(int, int)}
+     * @param hatcheries completed larva-producing hatcheries
+     * @return zero for the released request, else {@link LarvaBoundMacroHatchery#FLOAT_GAS}
+     */
+    static int macroHatcheryGasBar(boolean spireReady, int mutaliskCount, int hatcheries) {
+        if (spireReady && !ownsFirstWaveBank(true, mutaliskCount) && hatcheries < MACRO_HATCHERY_HATCHERY_CAP) {
+            return 0;
+        }
+        return LarvaBoundMacroHatchery.FLOAT_GAS;
+    }
+
+    /**
+     * Whether the build plans the macro hatchery the first wave deferred.
+     *
+     * <p>Asked once the first wave no longer owns the bank, and not conditional on the bank floating:
+     * continuous Mutalisk production spends minerals as they arrive, so the floating-bank request rarely
+     * fires. The first wave's Mutalisks must all be scheduled or produced first, because a hatchery plan
+     * that cannot yet pay for itself holds the build-ahead slot and blocks every Mutalisk behind it.
+     *
+     * @param spireCommitted whether a Spire is finished, morphing or planned
+     * @param scheduledWaveMutalisks Mutalisks produced plus Mutalisk plans past the queue
+     * @param hatcheriesAndOnTheWay completed larva-producing hatcheries plus every hatchery plan in flight
+     *     and hatchery under construction, of both kinds
+     * @param outstandingMacroHatcheries macro hatchery plans in flight plus macro hatcheries under construction
+     * @param enemiesAtBases enemy mobile ground combat units last known at our bases
+     * @return true when fewer than {@link #MACRO_HATCHERY_HATCHERY_CAP} hatcheries stand or are coming, no macro
+     *     hatchery is outstanding and no enemy is at our bases
+     */
+    static boolean wantsReleasedMacroHatchery(boolean spireCommitted, int scheduledWaveMutalisks,
+                                              int hatcheriesAndOnTheWay, int outstandingMacroHatcheries,
+                                              int enemiesAtBases) {
+        return spireCommitted && !ownsFirstWaveBank(spireCommitted, scheduledWaveMutalisks)
+                && hatcheriesAndOnTheWay < MACRO_HATCHERY_HATCHERY_CAP && outstandingMacroHatcheries == 0
+                && enemiesAtBases == 0;
+    }
+
+    private static Plan expansionPlanned(List<Plan> plans) {
+        for (Plan plan : plans) {
+            if (plan.getPlannedUnit() == UnitType.Zerg_Hatchery) {
+                return plan;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Whether the first Mutalisk wave still owns the unreserved bank.
+     *
+     * @param spireCommitted whether a Spire is finished, morphing or planned
+     * @param mutaliskCount Mutalisks hatched, in an Egg or scheduled
+     * @return true while a Spire is committed and fewer than {@link #MUTALISKS_BEFORE_FLYER_UPGRADE} are counted
+     */
+    static boolean ownsFirstWaveBank(boolean spireCommitted, int mutaliskCount) {
+        return spireCommitted && mutaliskCount < MUTALISKS_BEFORE_FLYER_UPGRADE;
     }
 
     @Override
@@ -361,9 +492,10 @@ public class TwoHatchMuta extends TerranBase {
     /**
      * The Mutalisk plan for this frame, ranked ahead of the Drone and Zergling backlog.
      *
-     * <p>The count read against the target includes plans already charged to it, so a wave is
-     * queued one plan at a time until the target is met. While a Mutalisk plan still waits in the
-     * queue no second one is added, and the build goes on to plan the units below it.
+     * <p>The count read against the target includes plans already charged to it. This overload has
+     * no larva or bank to size a wave by, so it queues one plan at a time until the target is met.
+     * While a Mutalisk plan still waits in the queue no second one is added, and the build goes on
+     * to plan the units below it.
      *
      * @param techProgression the bot's tech state
      * @param desiredMutalisks the Mutalisk target
@@ -374,9 +506,106 @@ public class TwoHatchMuta extends TerranBase {
      */
     static List<Plan> planMutalisk(TechProgression techProgression, int desiredMutalisks, int gatherers,
                                    int queuedMutalisks, UnitTypeCount count) {
-        if (!shouldPlanMutalisk(techProgression, count.get(UnitType.Zerg_Mutalisk), desiredMutalisks, gatherers)) {
-            return new ArrayList<>();
+        return planMutalisk(techProgression, desiredMutalisks, gatherers, queuedMutalisks, count, 0, 0, 0);
+    }
+
+    /**
+     * The Mutalisk plans for this frame, sized to the larva and bank while the first wave is
+     * still being issued.
+     *
+     * <p>Below {@link #MUTALISKS_BEFORE_FLYER_UPGRADE} Mutalisks counted, the build queues as many
+     * plans as there are free larva and Mutalisks the unreserved bank pays for, less the plans
+     * already waiting, so the Drone and Zergling backlog cannot take the larva the Spire frees.
+     * It queues at least one when none waits. From the seventh Mutalisk on it is one plan at a
+     * time.
+     *
+     * @param larva free larva not yet handed to a plan
+     * @param availableMinerals minerals mined and not reserved by a scheduled plan
+     * @param availableGas gas mined and not reserved by a scheduled plan
+     * @see #planMutalisk(TechProgression, int, int, int, UnitTypeCount)
+     */
+    static List<Plan> planMutalisk(TechProgression techProgression, int desiredMutalisks, int gatherers,
+                                   int queuedMutalisks, UnitTypeCount count, int larva, int availableMinerals,
+                                   int availableGas) {
+        List<Plan> plans = new ArrayList<>();
+        int wanted = mutalisksToQueue(count.get(UnitType.Zerg_Mutalisk), queuedMutalisks, larva,
+                availableMinerals, availableGas);
+        for (int i = 0; i < wanted; i++) {
+            if (!shouldPlanMutalisk(techProgression, count.get(UnitType.Zerg_Mutalisk), desiredMutalisks, gatherers)) {
+                break;
+            }
+            plans.addAll(planAdvancedUnit(UnitType.Zerg_Mutalisk, techProgression, gatherers, 0, count));
         }
-        return planAdvancedUnit(UnitType.Zerg_Mutalisk, techProgression, gatherers, queuedMutalisks, count);
+        return plans;
+    }
+
+    /**
+     * How many Mutalisk plans to add this frame.
+     *
+     * @param mutaliskCount Mutalisks counted, living and planned
+     * @param queuedMutalisks Mutalisk plans waiting in the queue
+     * @return for the first wave, the larva and bank bound less the queued plans, and at least one
+     *     when none waits; from the seventh Mutalisk on, one when none waits and zero when one does
+     */
+    static int mutalisksToQueue(int mutaliskCount, int queuedMutalisks, int larva, int availableMinerals,
+                                int availableGas) {
+        if (mutaliskCount >= MUTALISKS_BEFORE_FLYER_UPGRADE) {
+            return queuedMutalisks > 0 ? 0 : 1;
+        }
+        int affordable = Math.min(availableMinerals / UnitType.Zerg_Mutalisk.mineralPrice(),
+                availableGas / UnitType.Zerg_Mutalisk.gasPrice());
+        int room = Math.min(larva, affordable) - queuedMutalisks;
+        int wave = Math.min(room, MUTALISKS_BEFORE_FLYER_UPGRADE - mutaliskCount);
+        if (queuedMutalisks == 0) {
+            return Math.max(wave, 1);
+        }
+        return Math.max(wave, 0);
+    }
+
+    /**
+     * Whether the build asks for an expansion beyond its natural and third.
+     *
+     * <p>Falling behind the enemy on bases always asks. Floating minerals ask on the unreserved
+     * bank once a Spire is committed only after the queued advanced unit plans and the Mutalisks
+     * still short of {@value #MUTALISKS_BEFORE_FLYER_UPGRADE} that the unreserved gas pays for are
+     * covered. Minerals the gas cannot turn into Mutalisks are not held, and the hold is gone for
+     * good once seven Mutalisks are scheduled, in an Egg or hatched; a seventh still waiting in the
+     * queue does not end it.
+     *
+     * @param behindOnBases whether the enemy holds more bases
+     * @param floatingMinerals whether unreserved minerals sit above the float bar
+     * @param spireCommitted whether a Spire is finished, morphing or planned
+     * @param mineralsAfterQueuedDemand unreserved minerals less queued advanced unit plans
+     * @param gasAfterQueuedDemand unreserved gas less queued advanced unit plans
+     * @param floatBar the unreserved minerals that count as floating
+     * @param mutaliskCount {@link #firstWaveMutalisks(int, int)}
+     * @return true when the build should plan a new base
+     */
+    static boolean wantsBaseAdvantage(boolean behindOnBases, boolean floatingMinerals, boolean spireCommitted,
+                                      int mineralsAfterQueuedDemand, int gasAfterQueuedDemand, int floatBar,
+                                      int mutaliskCount) {
+        return wantsBaseAdvantage(behindOnBases, floatingMinerals, spireCommitted, mineralsAfterQueuedDemand,
+                gasAfterQueuedDemand, floatBar, mutaliskCount, 0);
+    }
+
+    /**
+     * {@link #wantsBaseAdvantage(boolean, boolean, boolean, int, int, int, int)} with the Mutalisk
+     * plans still waiting in the queue, which are counted in the shortfall but do not end the hold.
+     *
+     * @param queuedMutaliskPlans Mutalisk plans still waiting in the production queue
+     */
+    static boolean wantsBaseAdvantage(boolean behindOnBases, boolean floatingMinerals, boolean spireCommitted,
+                                      int mineralsAfterQueuedDemand, int gasAfterQueuedDemand, int floatBar,
+                                      int mutaliskCount, int queuedMutaliskPlans) {
+        if (behindOnBases) {
+            return true;
+        }
+        if (!ownsFirstWaveBank(spireCommitted, scheduledWaveMutalisks(mutaliskCount, queuedMutaliskPlans))) {
+            return floatingMinerals;
+        }
+        int gasBoundMutalisks = Math.max(0, gasAfterQueuedDemand) / UnitType.Zerg_Mutalisk.gasPrice();
+        int firstWaveShortfall = Math.min(Math.max(0, MUTALISKS_BEFORE_FLYER_UPGRADE - mutaliskCount), gasBoundMutalisks);
+        int firstWaveCost = firstWaveShortfall * UnitType.Zerg_Mutalisk.mineralPrice();
+        return floatingMinerals && mineralsAfterQueuedDemand - firstWaveCost > floatBar;
     }
 }
