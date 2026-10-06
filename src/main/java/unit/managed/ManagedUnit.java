@@ -16,7 +16,6 @@ import macro.plan.Plan;
 import macro.plan.PlanState;
 import telemetry.PlanEvents;
 import util.Filter;
-import util.MapEdge;
 import util.MeleeOverflowGate;
 import util.Vec2;
 
@@ -80,9 +79,6 @@ public class ManagedUnit {
     private Position lastRetreatPosition;
     private int framesStuck = 0;
     private int retreatStartFrame = 0;
-    private static final int RALLY_ARRIVAL_DISTANCE = 16;
-    @Getter
-    private int edgeReleases;
 
     @Setter @Getter
     protected Unit defendTarget;
@@ -330,8 +326,6 @@ public class ManagedUnit {
 
         if (unit.isFlying()) {
             away = applyBorderRepulsion(away, currentX, currentY);
-            return MapEdge.flee(currentPos, away.x, away.y, retreatFleeDistance(), game.mapWidth() * 32,
-                    game.mapHeight() * 32);
         }
 
         Position retreatPos = away.normalizeToLength(retreatFleeDistance()).clampToMap(game, currentPos);
@@ -1139,44 +1133,12 @@ public class ManagedUnit {
         unit.move(retreatTarget);
     }
 
-    /**
-     * Ends a retreat that has no target. A flyer is sent to the rally point at once, since the rally role it is
-     * handed is reset by a retreating squad every frame and never issues its order; with no rally point, a flyer
-     * parked in the map edge band, see {@link MapEdge#inBand}, is sent in from the edge.
-     */
     private void fallbackToRally() {
-        if (unit.isFlying() && flyToRallyOrReleaseFromEdge()) {
-            return;
-        }
         if (rallyPoint != null) {
             role = UnitRole.RALLY;
         } else {
             role = UnitRole.IDLE;
         }
-    }
-
-    private boolean flyToRallyOrReleaseFromEdge() {
-        if (rallyPoint != null) {
-            if (unit.getDistance(rallyPoint) >= RALLY_ARRIVAL_DISTANCE) {
-                setUnready(4);
-                unit.move(rallyPoint);
-            }
-            return false;
-        }
-        return releaseFromEdge();
-    }
-
-    private boolean releaseFromEdge() {
-        int mapWidth = game.mapWidth() * 32;
-        int mapHeight = game.mapHeight() * 32;
-        Position current = unit.getPosition();
-        if (!MapEdge.inBand(current, mapWidth, mapHeight)) {
-            return false;
-        }
-        edgeReleases++;
-        setUnready(4);
-        unit.move(MapEdge.release(current, mapWidth, mapHeight));
-        return true;
     }
 
     /**

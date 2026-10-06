@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 import unit.squad.AirHarassEvaluator;
 import unit.squad.AirHarassState;
+import unit.squad.AirHarassTargeting;
 
 /**
  * One row of telemetry_harass.csv: an air squad's harass entry check, the start, a decision tick, a retarget, a
@@ -103,6 +104,16 @@ public final class HarassRow {
     @Builder.Default
     private final int retargetNewId = -1;
     private final UnitType retargetNewType;
+    @Builder.Default
+    private final double retargetOldDistance = -1;
+    @Builder.Default
+    private final double retargetNewDistance = -1;
+    private final AirHarassTargeting.Tier retargetOldTier;
+    private final AirHarassTargeting.Tier retargetNewTier;
+    @Builder.Default
+    private final int defenseZones = -1;
+    @Builder.Default
+    private final int zoneUnits = -1;
 
     /**
      * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.

@@ -58,8 +58,4 @@ public final class FlockRow {
     @Builder.Default
     private final int retreatFlee = -1;
     private final AirFlock.RetreatBranch retreatBranch;
-    @Builder.Default
-    private final int edgeMembers = -1;
-    @Builder.Default
-    private final int edgeReleases = -1;
 }

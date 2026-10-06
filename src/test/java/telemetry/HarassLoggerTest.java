@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import unit.squad.AirHarassEvaluator;
 import unit.squad.AirHarassState;
+import unit.squad.AirHarassTargeting;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -216,6 +217,40 @@ class HarassLoggerTest {
         assertEquals("NONE", fields[columnIndex("retarget_old_type")]);
         assertEquals("-1", fields[columnIndex("retarget_new_id")]);
         assertEquals("NONE", fields[columnIndex("retarget_new_type")]);
+        assertColumnsInOrder("retarget_new_type", "retarget_old_distance", "retarget_new_distance",
+                "retarget_old_tier", "retarget_new_tier", "defense_zones", "zone_units");
+        assertEquals(Csv.format(-1), fields[columnIndex("retarget_old_distance")]);
+        assertEquals(Csv.format(-1), fields[columnIndex("retarget_new_distance")]);
+        assertEquals("NONE", fields[columnIndex("retarget_old_tier")]);
+        assertEquals("NONE", fields[columnIndex("retarget_new_tier")]);
+        assertEquals("-1", fields[columnIndex("defense_zones")]);
+        assertEquals("-1", fields[columnIndex("zone_units")]);
+    }
+
+    @Test
+    void aUnitRetargetRowCarriesTheDistancesAndTiersOfBothTargets() {
+        HarassRow retarget = HarassRow.builder()
+                .frame(11100)
+                .squadId("squad-1")
+                .event(HarassRow.Event.UNIT_RETARGET)
+                .retargetOldDistance(212.5)
+                .retargetNewDistance(96)
+                .retargetOldTier(AirHarassTargeting.Tier.PRODUCTION)
+                .retargetNewTier(AirHarassTargeting.Tier.WORKER)
+                .build();
+        HarassRow tick = HarassRow.builder().frame(11200).squadId("squad-1").event(HarassRow.Event.TICK)
+                .defenseZones(2).zoneUnits(5).build();
+
+        String[] fields = HarassLogger.row("game-1", retarget).split(",", -1);
+        String[] tickFields = HarassLogger.row("game-1", tick).split(",", -1);
+
+        assertEquals(HarassLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals(Csv.format(212.5), fields[columnIndex("retarget_old_distance")]);
+        assertEquals(Csv.format(96), fields[columnIndex("retarget_new_distance")]);
+        assertEquals("PRODUCTION", fields[columnIndex("retarget_old_tier")]);
+        assertEquals("WORKER", fields[columnIndex("retarget_new_tier")]);
+        assertEquals("2", tickFields[columnIndex("defense_zones")]);
+        assertEquals("5", tickFields[columnIndex("zone_units")]);
     }
 
     @Test

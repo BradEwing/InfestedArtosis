@@ -45,7 +45,14 @@ import java.util.Map;
  * Mutalisk of the harass attacks such a Turret, with its unit id in edge_turret_id. A UNIT_RETARGET row is written
  * when a Mutalisk leaves a target that is still alive for one of higher value, a Worker over a non-Worker or an edge
  * Turret over anything else: retarget_old_id and retarget_old_type name the
- * target it left, retarget_new_id and retarget_new_type the one it took.
+ * target it left, retarget_new_id and retarget_new_type the one it took, retarget_old_distance and
+ * retarget_new_distance the pixels from the flock's center to each, and retarget_old_tier and retarget_new_tier the
+ * AirHarassTargeting.Tier each was in, the old one NONE when it was no longer a contact the flock could see.
+ *
+ * <p>defense_zones is how many defense groups the flock turned away from are remembered, see AirHarassDefenseZones, and
+ * zone_units how many remembered anti-air units not otherwise known are priced from them, on ENTRY_CHECK and TICK
+ * rows. An AA_REACTION row whose anti-air stood only at the flock carries in zone_units the members of the zone it
+ * recorded, and -1 when it stood at the target base.
  *
  * <p>stalled is 1 when the squad's FIGHT and RETREAT crossings read as a stall, see AirStallDetector, and 0 when they
  * do not, on ENTRY_CHECK and ENTER rows; it is -1 while the IA_AIR_FLAP_ESCAPE switch is off, which leaves the stall
@@ -65,7 +72,8 @@ public class HarassLogger implements HarassSink {
             + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,prober_hp,prober_peak_hp,prober_id,"
             + "aa_known_cover,stalled,exposed_score,base_score,aa_seen_frame,aa_turn_frame,aa_hp_lost,"
             + "aa_trigger_type,aa_trigger_id,aa_at_target,edge_turrets,edge_turret_id,retarget_old_id,"
-            + "retarget_old_type,retarget_new_id,retarget_new_type";
+            + "retarget_old_type,retarget_new_id,retarget_new_type,retarget_old_distance,retarget_new_distance,"
+            + "retarget_old_tier,retarget_new_tier,defense_zones,zone_units";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -202,6 +210,12 @@ public class HarassLogger implements HarassSink {
         fields.add(Csv.name(row.getRetargetOldType()));
         fields.add(String.valueOf(row.getRetargetNewId()));
         fields.add(Csv.name(row.getRetargetNewType()));
+        fields.add(Csv.format(row.getRetargetOldDistance()));
+        fields.add(Csv.format(row.getRetargetNewDistance()));
+        fields.add(Csv.name(row.getRetargetOldTier()));
+        fields.add(Csv.name(row.getRetargetNewTier()));
+        fields.add(String.valueOf(row.getDefenseZones()));
+        fields.add(String.valueOf(row.getZoneUnits()));
         return String.join(",", fields);
     }
 

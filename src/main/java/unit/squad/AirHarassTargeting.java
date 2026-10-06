@@ -403,6 +403,9 @@ public final class AirHarassTargeting {
      */
     static final double EDGE_TURRET_DAMAGE_BUDGET = 1.5;
 
+    /** Tuning value: pixels of the flock's approach to a lone Turret that must be free of other anti-air. */
+    static final int APPROACH_SPAN = 512;
+
     /**
      * The hit points a lone Missile Turret's fire costs the flock before it dies: its damage per frame over the
      * frames the flock spends under it, the approach from the turret's air range in to a Mutalisk's weapon range plus
@@ -442,15 +445,66 @@ public final class AirHarassTargeting {
      * @return the ids of the Turrets
      */
     public static Set<Integer> edgeTurrets(Collection<AirThreat> threats, int flockSize) {
+        return edgeTurrets(threats, flockSize, null, Collections.emptySet());
+    }
+
+    /**
+     * The ids of the lone Missile Turrets the flock takes on, see {@link #edgeTurrets(Collection, int)}, that no other
+     * known anti-air covers on the approach: the stretch of the straight line from the flock to the Turret that lies
+     * within {@link #APPROACH_SPAN} of the Turret. A Turret the harass has already engaged stays taken on while it
+     * stands, whatever the anti-air known now, so it is not priced as a defense again in the middle of the kill.
+     *
+     * @param threats every known anti-air threat
+     * @param flockSize Mutalisks, injured or not in the squad
+     * @param flockCenter the flock's center, or null to leave the approach unchecked
+     * @param engaged ids of the Turrets this harass has engaged
+     * @return the ids of the Turrets
+     */
+    public static Set<Integer> edgeTurrets(Collection<AirThreat> threats, int flockSize, Position flockCenter,
+                                           Collection<Integer> engaged) {
         Set<Integer> ids = new HashSet<>();
         double budget = EDGE_TURRET_DAMAGE_BUDGET * UnitType.Zerg_Mutalisk.maxHitPoints();
         for (AirThreat turret : threats) {
-            if (turret.getType() == UnitType.Terran_Missile_Turret && isLone(turret, threats)
-                    && turretDamageBeforeKill(turret, flockSize) <= budget) {
+            if (turret.getType() != UnitType.Terran_Missile_Turret) {
+                continue;
+            }
+            if (engaged.contains(turret.getId())) {
+                ids.add(turret.getId());
+            } else if (isLone(turret, threats) && turretDamageBeforeKill(turret, flockSize) <= budget
+                    && approachClear(turret, threats, flockCenter)) {
                 ids.add(turret.getId());
             }
         }
         return ids;
+    }
+
+    /**
+     * Whether no anti-air but the Turret itself covers the stretch of the line from the flock to the Turret that lies
+     * within {@link #APPROACH_SPAN} of it.
+     *
+     * @param turret the Turret
+     * @param threats every known anti-air threat
+     * @param from the flock's center, or null for an unchecked approach
+     * @return true when the approach is clear
+     */
+    static boolean approachClear(AirThreat turret, Collection<AirThreat> threats, Position from) {
+        if (from == null) {
+            return true;
+        }
+        Position to = turret.getPosition();
+        double length = from.getDistance(to);
+        double start = Math.max(0, length - APPROACH_SPAN);
+        for (double along = start; along <= length; along += SEGMENT_STEP) {
+            double fraction = length == 0 ? 0 : along / length;
+            Position point = new Position((int) Math.round(from.getX() + (to.getX() - from.getX()) * fraction),
+                    (int) Math.round(from.getY() + (to.getY() - from.getY()) * fraction));
+            for (AirThreat other : threats) {
+                if (other.getId() != turret.getId() && other.covers(point, 0)) {
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static boolean isLone(AirThreat turret, Collection<AirThreat> threats) {

@@ -7,6 +7,7 @@ import lombok.Setter;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -267,6 +268,15 @@ public class AirHarassState {
      */
     public boolean engageEdgeTurret(int turretId) {
         return engagedEdgeTurrets.add(turretId);
+    }
+
+    /**
+     * @return the ids of the lone Missile Turrets the flock has taken on in this harass, which stay taken on while
+     *         they stand, see {@link AirHarassTargeting#edgeTurrets(Collection, int, Position,
+     *         Collection)}
+     */
+    public Set<Integer> getEngagedEdgeTurrets() {
+        return Collections.unmodifiableSet(engagedEdgeTurrets);
     }
 
     /**

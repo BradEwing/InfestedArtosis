@@ -18,12 +18,6 @@ import java.util.List;
  * retreat_flee count the Mutalisks whose retreat target is the flock's shared point, its anchor or a flee point of
  * their own, and are -1 otherwise.
  *
- * <p>On SAMPLE rows, edge_members counts the Mutalisks within MapEdge.BAND of a map edge, and edge_releases the
- * times the squad's Mutalisks have been sent in from the edge band by a retreat that had no target and no rally
- * point, summed over its
- * current Mutalisks; both are -1 on other rows. A flock that stays at an edge shows edge_members above zero over
- * consecutive samples, and a centroid that does not move across samples of a RETREAT squad shows a frozen flock.
- *
  * <p>MUTA_LOST rows are written for every Mutalisk of ours that dies: its squad, if any, the squad's status and
  * Mutalisk count including the dead one, the death position in centroid_x and centroid_y, nearest_mate_distance, the
  * pixels to the nearest other Mutalisk of its squad, or -1 with none, the squad's regrouping_ids, and last_muta, 1
@@ -45,7 +39,7 @@ public class FlockLogger implements FlockSink {
 
     static final String HEADER = "game_id,frame,squad_id,event,status,mutas,centroid_x,centroid_y,median_distance,"
             + "max_distance,regrouping,unit_id,nearest_mate_distance,regrouping_ids,regrouping_armed,last_muta,"
-            + "retreat_shared,retreat_anchor,retreat_flee,retreat_branch,edge_members,edge_releases";
+            + "retreat_shared,retreat_anchor,retreat_flee,retreat_branch";
 
     /** Frames between two SAMPLE rows of one squad. */
     public static final int SAMPLE_INTERVAL_FRAMES = 24;
@@ -142,8 +136,6 @@ public class FlockLogger implements FlockSink {
         fields.add(String.valueOf(row.getRetreatAnchor()));
         fields.add(String.valueOf(row.getRetreatFlee()));
         fields.add(row.getRetreatBranch() == null ? String.valueOf(NOT_EVALUATED) : Csv.name(row.getRetreatBranch()));
-        fields.add(String.valueOf(row.getEdgeMembers()));
-        fields.add(String.valueOf(row.getEdgeReleases()));
         return String.join(",", fields);
     }
 

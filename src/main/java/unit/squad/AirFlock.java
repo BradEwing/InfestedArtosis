@@ -1,7 +1,6 @@
 package unit.squad;
 
 import bwapi.Position;
-import util.MapEdge;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -315,7 +314,7 @@ public final class AirFlock {
     /**
      * A member's own flee point: directly away from the summed offsets of every enemy within
      * {@link #RETREAT_SCAN_RADIUS} of it or across its path to the shared point, {@link #RETREAT_FLEE_DISTANCE} from
-     * it, held {@link MapEdge#INSET} inside the map and slid along an edge it would otherwise pin the member against.
+     * it, kept inside the map.
      *
      * @param member the member's position
      * @param shared the flock's shared retreat point
@@ -339,8 +338,7 @@ public final class AirFlock {
     /**
      * The one point every member of a retreating flock flees to: directly away from the summed offsets from the
      * anchor of every enemy within {@link #RETREAT_SCAN_RADIUS} of any member, {@link #RETREAT_FLEE_DISTANCE} past the
-     * member farthest along that direction, or past the anchor when no member is ahead of it, held
-     * {@link MapEdge#INSET} inside the map and slid along an edge it would otherwise pin the flock against.
+     * member farthest along that direction, or past the anchor when no member is ahead of it, kept inside the map.
      * Measuring from the leading member keeps every member at least the flee distance short of the point, so none
      * arrives at it and swaps it for a flee point of its own.
      *
@@ -387,7 +385,10 @@ public final class AirFlock {
         for (Position member : members) {
             lead = Math.max(lead, (member.getX() - anchor.getX()) * dirX + (member.getY() - anchor.getY()) * dirY);
         }
-        return MapEdge.flee(anchor, dirX, dirY, lead + RETREAT_FLEE_DISTANCE, mapWidth, mapHeight);
+        double flee = lead + RETREAT_FLEE_DISTANCE;
+        int x = anchor.getX() + (int) Math.round(dirX * flee);
+        int y = anchor.getY() + (int) Math.round(dirY * flee);
+        return new Position(Math.max(0, Math.min(x, mapWidth - 1)), Math.max(0, Math.min(y, mapHeight - 1)));
     }
 
     /**

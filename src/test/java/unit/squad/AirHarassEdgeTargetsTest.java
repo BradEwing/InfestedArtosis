@@ -9,6 +9,7 @@ import java.util.Collections;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -256,5 +257,71 @@ class AirHarassEdgeTargetsTest {
         assertEquals(AirHarassTargeting.LOCAL_TARGET_RADIUS, AirHarassTargeting.reachRadius(Tier.PRODUCTION, true));
         assertTrue(AirHarassTargeting.OPPORTUNITY_LEAVE_RADIUS > AirHarassTargeting.OPPORTUNITY_RADIUS);
         assertTrue(AirHarassTargeting.OPPORTUNITY_RADIUS > AirHarassTargeting.LOCAL_TARGET_RADIUS);
+    }
+
+    @Test
+    void aLoneTurretWithOtherAntiAirOnTheApproachIsNoEdgeTurret() {
+        AirHarassTargeting.AirThreat turret = threat(7, UnitType.Terran_Missile_Turret, east(600));
+        AirHarassTargeting.AirThreat goliath = threat(8, UnitType.Terran_Goliath,
+                new Position(MUTA_AT.getX() + 100, MUTA_AT.getY() + 200));
+        List<AirHarassTargeting.AirThreat> threats = threats(turret, goliath);
+
+        assertFalse(goliath.covers(turret.getPosition(), AirHarassEvaluator.STRIKE_RADIUS));
+        assertTrue(goliath.covers(new Position(MUTA_AT.getX() + 100, MUTA_AT.getY()), 0));
+        assertTrue(AirHarassTargeting.edgeTurrets(threats, 12).contains(7));
+        assertFalse(AirHarassTargeting.approachClear(turret, threats, MUTA_AT));
+        assertTrue(AirHarassTargeting.edgeTurrets(threats, 12, MUTA_AT, Collections.emptySet()).isEmpty());
+    }
+
+    @Test
+    void aLoneTurretWithAClearApproachIsAnEdgeTurretFromTheFlocksSide() {
+        AirHarassTargeting.AirThreat turret = threat(7, UnitType.Terran_Missile_Turret, east(600));
+        AirHarassTargeting.AirThreat goliath = threat(8, UnitType.Terran_Goliath,
+                new Position(MUTA_AT.getX() - 900, MUTA_AT.getY() + 250));
+        List<AirHarassTargeting.AirThreat> threats = threats(turret, goliath);
+
+        assertTrue(AirHarassTargeting.approachClear(turret, threats, MUTA_AT));
+        assertEquals(Collections.singleton(7),
+                AirHarassTargeting.edgeTurrets(threats, 12, MUTA_AT, Collections.emptySet()));
+    }
+
+    @Test
+    void anApproachAnotherAntiAirCoversOnlyFarFromTheTurretIsNotCheckedBeyondTheApproachSpan() {
+        AirHarassTargeting.AirThreat turret = threat(7, UnitType.Terran_Missile_Turret, east(2000));
+        AirHarassTargeting.AirThreat goliath = threat(8, UnitType.Terran_Goliath,
+                new Position(MUTA_AT.getX() + 100, MUTA_AT.getY() + 250));
+
+        assertTrue(AirHarassTargeting.approachClear(turret, threats(turret, goliath), MUTA_AT));
+    }
+
+    @Test
+    void anUnknownFlockPositionLeavesTheApproachUnchecked() {
+        AirHarassTargeting.AirThreat turret = threat(7, UnitType.Terran_Missile_Turret, east(600));
+
+        assertTrue(AirHarassTargeting.approachClear(turret, threats(turret), null));
+    }
+
+    @Test
+    void anEngagedTurretStaysAnEdgeTurretWhileItStandsWhateverElseIsKnown() {
+        AirHarassTargeting.AirThreat turret = threat(7, UnitType.Terran_Missile_Turret, east(600));
+        AirHarassTargeting.AirThreat goliath = threat(8, UnitType.Terran_Goliath, east(500));
+        List<AirHarassTargeting.AirThreat> threats = threats(turret, goliath);
+
+        assertTrue(AirHarassTargeting.edgeTurrets(threats, 12, MUTA_AT, Collections.emptySet()).isEmpty());
+        assertEquals(Collections.singleton(7),
+                AirHarassTargeting.edgeTurrets(threats, 12, MUTA_AT, Collections.singleton(7)));
+        assertTrue(AirHarassTargeting.edgeTurrets(threats(goliath), 12, MUTA_AT, Collections.singleton(7)).isEmpty());
+    }
+
+    @Test
+    void anEngagedTurretIsLeftOutOfThePricedDefenseWhileTheGoliathBesideItIsKept() {
+        AirHarassTargeting.AirThreat turret = threat(7, UnitType.Terran_Missile_Turret, east(600));
+        AirHarassTargeting.AirThreat goliath = threat(8, UnitType.Terran_Goliath, east(500));
+        List<AirHarassTargeting.AirThreat> threats = threats(turret, goliath);
+
+        List<AirHarassTargeting.AirThreat> priced = AirHarassTargeting.priced(threats,
+                AirHarassTargeting.edgeTurrets(threats, 12, MUTA_AT, Collections.singleton(7)));
+
+        assertEquals(Collections.singletonList(goliath), priced);
     }
 }
