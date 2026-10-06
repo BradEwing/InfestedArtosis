@@ -518,8 +518,7 @@ public class LearningManager {
                 .sorted()
                 .collect(Collectors.toList());
         
-        String bestBuildOrder = selectBuildOrderName(candidateNames, opponentRecord, currentMapName,
-                currentOpener != null ? currentOpener.getOpener() : "");
+        String bestBuildOrder = selectBuildOrderName(candidateNames, opponentRecord, currentMapName, openerName());
         
         return buildOrderFactory.getByName(bestBuildOrder);
     }

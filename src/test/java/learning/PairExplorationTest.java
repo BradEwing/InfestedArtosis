@@ -34,6 +34,8 @@ public class PairExplorationTest {
     private static final List<String> CANDIDATES = Arrays.asList(HYDRA, MUTA, SPEEDLING);
     private static final int REPEAT_OPENER_DEADLINE = 8;
     private static final int SPEEDLING_PAIR_DEADLINE = 21;
+    private static final int SPEEDLING_PAIR_GAME = 11;
+    private static final int PAIRS_BY_DEADLINE = 18;
 
     @Test
     void anAllLossHistoryOffersTheOpenerABuildItHasNotMet() {
@@ -148,8 +150,9 @@ public class PairExplorationTest {
 
         assertTrue(repeatOpenerNewPairGame > 0 && repeatOpenerNewPairGame <= REPEAT_OPENER_DEADLINE,
                 "first repeat-opener game with a new pair: " + repeatOpenerNewPairGame);
-        assertTrue(speedlingPairGame > 0, "12Hatch/" + SPEEDLING + " was not played in " + SPEEDLING_PAIR_DEADLINE
-                + " games, pairs: " + seenPairs);
+        assertTrue(speedlingPairGame > 0 && speedlingPairGame <= SPEEDLING_PAIR_GAME, "12Hatch/" + SPEEDLING
+                + " first played at game " + speedlingPairGame + ", pairs: " + seenPairs);
+        assertEquals(PAIRS_BY_DEADLINE, seenPairs.size());
     }
 
     private static String plainUcb(OpponentRecord record) {
