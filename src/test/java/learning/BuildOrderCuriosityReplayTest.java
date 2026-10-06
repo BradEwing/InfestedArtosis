@@ -46,7 +46,7 @@ public class BuildOrderCuriosityReplayTest {
         for (int game = 0; game < RETRY_WINDOW; game++) {
             GameRecord template = recorded.get(game % recorded.size());
             String buildOrder = LearningManager.selectBuildOrderName(
-                    CANDIDATES, opponentRecord, template.getMapName());
+                    CANDIDATES, opponentRecord, template.getMapName(), OPENER);
             selected.add(buildOrder);
             boolean won = false;
             if (INCUMBENT.equals(buildOrder)) {
