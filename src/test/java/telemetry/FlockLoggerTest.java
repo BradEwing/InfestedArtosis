@@ -67,11 +67,34 @@ class FlockLoggerTest {
     }
 
     @Test
+    void aSampleRowCarriesTheEdgeMembersAndReleasesAndOtherRowsLeaveThemAtMinusOne() {
+        FlockRow sample = FlockRow.builder()
+                .frame(11664)
+                .squadId("squad-1")
+                .event(FlockRow.Event.SAMPLE)
+                .status(SquadStatus.RETREAT)
+                .mutas(2)
+                .edgeMembers(2)
+                .edgeReleases(5)
+                .build();
+        FlockRow lost = FlockRow.builder().frame(11700).squadId("squad-1").event(FlockRow.Event.MUTA_LOST).build();
+
+        String[] sampleFields = FlockLogger.row("game-1", sample).split(",", -1);
+        String[] lostFields = FlockLogger.row("game-1", lost).split(",", -1);
+
+        assertEquals(FlockLogger.HEADER.split(",", -1).length, sampleFields.length);
+        assertEquals("2", sampleFields[columnIndex("edge_members")]);
+        assertEquals("5", sampleFields[columnIndex("edge_releases")]);
+        assertEquals("-1", lostFields[columnIndex("edge_members")]);
+        assertEquals("-1", lostFields[columnIndex("edge_releases")]);
+    }
+
+    @Test
     void theNewColumnsAreAppendedAfterTheOriginalHeader() {
         assertTrue(FlockLogger.HEADER.startsWith("game_id,frame,squad_id,event,status,mutas,centroid_x,centroid_y,"
                 + "median_distance,max_distance,regrouping,unit_id,nearest_mate_distance,"));
         assertTrue(FlockLogger.HEADER.endsWith(",regrouping_ids,regrouping_armed,last_muta,"
-                + "retreat_shared,retreat_anchor,retreat_flee,retreat_branch"));
+                + "retreat_shared,retreat_anchor,retreat_flee,retreat_branch,edge_members,edge_releases"));
     }
 
     @Test
