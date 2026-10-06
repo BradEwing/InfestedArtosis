@@ -67,6 +67,13 @@ public class StrategyTracker {
     @Setter
     private boolean terranWallPersists;
 
+    /**
+     * Whether the learning file shows Terran mech persisting across recent games against this opponent, as
+     * {@link TerranMech#isPersistent} reads it.
+     */
+    @Setter
+    private boolean terranMechPersists;
+
     public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap,
                            BWMap bwMap, ScoutData scoutData) {
         this.game = game;
@@ -230,6 +237,31 @@ public class StrategyTracker {
      */
     public boolean isTerranWallDetected() {
         return isAnyDetectedStrategy(TerranWallNatural.NAME, TerranWallMain.NAME) || terranWallPersists;
+    }
+
+    /**
+     * Whether Terran mech was detected this game or persists across recent games against this opponent.
+     */
+    public boolean isTerranMechKnown() {
+        return isDetectedStrategy(TerranMech.NAME) || terranMechPersists;
+    }
+
+    /**
+     * Whether the learning file shows Terran mech persisting across recent games against this opponent,
+     * whatever this game has detected.
+     */
+    public boolean isTerranMechPersistent() {
+        return terranMechPersists;
+    }
+
+    /**
+     * Writes one STRATEGY_DETECTED row labelled {@link TerranMech#PRIOR_LABEL} when the game started on the
+     * persisted mech prior, so the prior that gated the build offer is on the record.
+     */
+    public void reportTerranMechPrior() {
+        if (terranMechPersists) {
+            PlanEvents.strategyDetected(TerranMech.PRIOR_LABEL);
+        }
     }
 
     public String getDetectedStrategiesAsString() {

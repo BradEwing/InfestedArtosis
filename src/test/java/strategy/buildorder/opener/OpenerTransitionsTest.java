@@ -1,6 +1,10 @@
 package strategy.buildorder.opener;
 
 import bwapi.Race;
+import config.Config;
+import info.tracking.ObservedUnitTracker;
+import info.tracking.StrategyTracker;
+import info.tracking.terran.TerranMech;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
@@ -58,6 +62,72 @@ class OpenerTransitionsTest {
         Set<String> names = transitionNames(Race.Terran, true);
         assertFalse(names.contains("SpeedlingAllIn"), "a Terran wall must bar SpeedlingAllIn: " + names);
         assertEquals(new HashSet<>(Arrays.asList("CrazyZerg", "3HatchLurker", "2HatchMuta")), names);
+    }
+
+    @Test
+    void aColdOrBioTerranIsNotOfferedTheHydraBuild() {
+        assertFalse(transitionNames(Race.Terran).contains("2HatchHydraZvT"));
+        assertFalse(transitionNames(Race.Terran, false).contains("2HatchHydraZvT"));
+        assertFalse(transitionNames(Race.Terran, true).contains("2HatchHydraZvT"));
+    }
+
+    @Test
+    void aTerranWithAPersistedMechPriorIsOfferedTheHydraBuild() {
+        assertTrue(names(OpenerTransitions.forRace(Race.Terran, false, true)).contains("2HatchHydraZvT"));
+        assertTrue(names(OpenerTransitions.forRace(Race.Terran, true, true)).contains("2HatchHydraZvT"));
+    }
+
+    @Test
+    void theHydraBuildIsNeverOfferedAgainstOtherRaces() {
+        assertFalse(names(OpenerTransitions.forRace(Race.Protoss, false, true)).contains("2HatchHydraZvT"));
+        assertFalse(names(OpenerTransitions.forRace(Race.Zerg, false, true)).contains("2HatchHydraZvT"));
+    }
+
+    @Test
+    void theOfferGateReadsThePersistedPriorOrTheOverrideOnly() {
+        StrategyTracker prior = terranTracker();
+        prior.setTerranMechPersists(true);
+        StrategyTracker cold = terranTracker();
+        StrategyTracker detected = terranTracker();
+        detected.getDetectedStrategies().add(new TerranMech());
+        Config forced = new Config();
+        forced.strategyOverride = "2HatchHydraZvT";
+        Config none = new Config();
+        none.strategyOverride = null;
+
+        assertTrue(OpenerTransitions.offersHydraBuild(prior, none));
+        assertFalse(OpenerTransitions.offersHydraBuild(cold, none));
+        assertFalse(OpenerTransitions.offersHydraBuild(detected, none));
+        assertTrue(OpenerTransitions.offersHydraBuild(cold, forced));
+        assertTrue(OpenerTransitions.offersHydraBuild(null, forced));
+        assertFalse(OpenerTransitions.offersHydraBuild(null, null));
+        assertFalse(OpenerTransitions.offersHydraBuild(null, none));
+    }
+
+    private static StrategyTracker terranTracker() {
+        return new StrategyTracker(null, Race.Terran, new ObservedUnitTracker(), null, null, null, null);
+    }
+
+    @Test
+    void theStrategyOverrideForcesTheHydraBuildWhateverThePrior() {
+        Config forced = new Config();
+        forced.strategyOverride = "2HatchHydraZvT";
+        Config other = new Config();
+        other.strategyOverride = "2HatchMuta";
+        Config none = new Config();
+        none.strategyOverride = null;
+
+        assertTrue(OpenerTransitions.isHydraBuildForced(forced));
+        assertFalse(OpenerTransitions.isHydraBuildForced(other));
+        assertFalse(OpenerTransitions.isHydraBuildForced(none));
+        assertFalse(OpenerTransitions.isHydraBuildForced(null));
+    }
+
+    @Test
+    void theHydraBuildIsSeededAgainstTerranOnly() {
+        assertTrue(new BuildOrderFactory(4, Race.Terran).getPlayableNonOpenerNames().contains("2HatchHydraZvT"));
+        assertFalse(new BuildOrderFactory(4, Race.Protoss).getPlayableNonOpenerNames().contains("2HatchHydraZvT"));
+        assertFalse(new BuildOrderFactory(4, Race.Zerg).getPlayableNonOpenerNames().contains("2HatchHydraZvT"));
     }
 
     @Test
