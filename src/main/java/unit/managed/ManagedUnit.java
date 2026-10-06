@@ -81,8 +81,8 @@ public class ManagedUnit {
     private int framesStuck = 0;
     private int retreatStartFrame = 0;
     private static final int RALLY_ARRIVAL_DISTANCE = 16;
-    /** Tuning value: pixels within which an enemy flyer keeps a retreating flyer from flying to the rally point at once. */
-    static final int RALLY_ENEMY_AIR_RADIUS = 320;
+    /** Tuning value: pixels within which an enemy flyer that can attack air keeps a retreating flyer from flying to the rally point at once. */
+    static final int RALLY_ENEMY_AIR_RADIUS = 512;
     @Getter
     private int edgeReleases;
 
@@ -1142,10 +1142,10 @@ public class ManagedUnit {
     }
 
     /**
-     * Ends a retreat that has no target. A flyer with no enemy flyer within {@link #RALLY_ENEMY_AIR_RADIUS} is sent to
+     * Ends a retreat that has no target. A flyer with no air-attacking enemy flyer within {@link #RALLY_ENEMY_AIR_RADIUS} is sent to
      * the rally point at once, since the rally role it is handed is reset by a retreating squad every frame and never
      * issues its order; with no rally point, a flyer parked in the map edge band, see {@link MapEdge#inBand}, is sent
-     * in from the edge. A flyer with an enemy flyer near is only handed the rally role.
+     * in from the edge. A flyer with an air-attacking enemy flyer near is only handed the rally role.
      */
     private void fallbackToRally() {
         if (unit.isFlying() && !enemyAirNear() && flyToRallyOrReleaseFromEdge()) {
@@ -1159,29 +1159,20 @@ public class ManagedUnit {
     }
 
     private boolean enemyAirNear() {
-        List<Position> positions = game.getUnitsInRadius(unit.getPosition(), RALLY_ENEMY_AIR_RADIUS)
+        return game.getUnitsInRadius(unit.getPosition(), RALLY_ENEMY_AIR_RADIUS)
                 .stream()
-                .filter(u -> u.getPlayer().isEnemy(game.self()) && u.isFlying())
-                .map(Unit::getPosition)
-                .collect(Collectors.toList());
-        return anyWithin(unit.getPosition(), positions, RALLY_ENEMY_AIR_RADIUS);
+                .anyMatch(u -> u.getPlayer().isEnemy(game.self()) && u.isFlying()
+                        && attacksAir(u.getType()));
     }
 
     /**
-     * Whether any position lies within a radius of a point.
+     * Whether a unit type can shoot at air units: it has an air weapon, or it is a Carrier, whose Interceptors do.
      *
-     * @param from the point
-     * @param positions positions to test
-     * @param radius pixels, inclusive
-     * @return true when one does
+     * @param type unit type
+     * @return true when it can
      */
-    static boolean anyWithin(Position from, List<Position> positions, int radius) {
-        for (Position position : positions) {
-            if (from.getDistance(position) <= radius) {
-                return true;
-            }
-        }
-        return false;
+    static boolean attacksAir(UnitType type) {
+        return type == UnitType.Protoss_Carrier || type.airWeapon() != WeaponType.None;
     }
 
     private boolean flyToRallyOrReleaseFromEdge() {
