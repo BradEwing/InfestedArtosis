@@ -53,6 +53,7 @@ public class Lurker extends ManagedUnit {
     private Position safeFromHere;
     private Position safeFromHold;
     private int refusalLoggedFrame = -REFUSAL_LOG_FRAMES;
+    private int allowedLoggedFrame = -REFUSAL_LOG_FRAMES;
     private Boolean commandedBurrow;
 
     /**
@@ -148,7 +149,7 @@ public class Lurker extends ManagedUnit {
             resetCounters();
         }
         if (burrowsInFight(unit.isBurrowed(), unit.canBurrow(), assignedInRange || inRange != null)) {
-            burrow(BurrowReason.FIGHT_ENEMY_IN_RANGE);
+            burrow(BurrowReason.FIGHT_ENEMY_IN_RANGE, true);
             resetCounters();
             return;
         }
@@ -637,22 +638,31 @@ public class Lurker extends ManagedUnit {
     }
 
     private void burrow(BurrowReason reason) {
+        burrow(reason, findClosestGroundEnemyInRange() != null);
+    }
+
+    private void burrow(BurrowReason reason, boolean enemyInRange) {
         if (unit.getOrder() == Order.Burrowing) {
             return;
         }
         int now = game.getFrameCount();
         BurrowCall call = burrowCall(Config.lurkerFireAware, standsInFire(), standsInFixedFireView(),
-                safeFromHere != null, findClosestGroundEnemyInRange() != null, wasHitSince(now - HURT_FRAMES),
+                safeFromHere != null, enemyInRange, wasHitSince(now - HURT_FRAMES),
                 safeFromHere == null ? 0 : unit.getDistance(safeFromHere));
         if (call == BurrowCall.REFUSE) {
             unit.move(safeFromHere);
-            logUnderFire(BurrowReason.BURROW_REFUSED_UNDER_FIRE, now);
+            if (logsRefusal(refusalLoggedFrame, now)) {
+                refusalLoggedFrame = now;
+                logUnderFire(BurrowReason.BURROW_REFUSED_UNDER_FIRE, now);
+            }
             return;
         }
-        if (call == BurrowCall.BURROW_ENEMY_IN_RANGE) {
-            logUnderFire(BurrowReason.BURROW_UNDER_FIRE_ALLOWED_ENEMY_IN_RANGE, now);
-        } else if (call == BurrowCall.BURROW_LOSING_HP) {
-            logUnderFire(BurrowReason.BURROW_UNDER_FIRE_ALLOWED_LOSING_HP, now);
+        if ((call == BurrowCall.BURROW_ENEMY_IN_RANGE || call == BurrowCall.BURROW_LOSING_HP)
+                && logsRefusal(allowedLoggedFrame, now)) {
+            allowedLoggedFrame = now;
+            logUnderFire(call == BurrowCall.BURROW_ENEMY_IN_RANGE
+                    ? BurrowReason.BURROW_UNDER_FIRE_ALLOWED_ENEMY_IN_RANGE
+                    : BurrowReason.BURROW_UNDER_FIRE_ALLOWED_LOSING_HP, now);
         }
         unit.burrow();
         log(true, reason);
@@ -668,10 +678,6 @@ public class Lurker extends ManagedUnit {
     }
 
     private void logUnderFire(BurrowReason reason, int now) {
-        if (!logsRefusal(refusalLoggedFrame, now)) {
-            return;
-        }
-        refusalLoggedFrame = now;
         BurrowTelemetry.burrowCommand(BurrowCommand.builder()
                 .frame(now)
                 .unitId(unitID)
