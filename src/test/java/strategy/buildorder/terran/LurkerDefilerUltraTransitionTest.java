@@ -72,6 +72,26 @@ class LurkerDefilerUltraTransitionTest {
     }
 
     @Test
+    void twoHatchHydraWaitsForItsMechTargetAndBothDenUpgrades() {
+        int target = TwoHatchHydraTerran.MECH_HYDRALISKS;
+
+        assertEquals(target, LurkerDefilerUltraTransition.HYDRALISK_TRIGGER);
+        assertNull(LurkerDefilerUltraTransition.twoHatchHydraTrigger(target - 1, true, true));
+        assertNull(LurkerDefilerUltraTransition.twoHatchHydraTrigger(target, false, true));
+        assertNull(LurkerDefilerUltraTransition.twoHatchHydraTrigger(target, true, false));
+        assertEquals(LurkerDefilerUltraTransition.Trigger.HYDRALISKS,
+                LurkerDefilerUltraTransition.twoHatchHydraTrigger(target, true, true));
+    }
+
+    @Test
+    void twoHatchHydraOffersOnlyLurkerDefilerUltraAndLabelsItsTrigger() {
+        assertOffersOnlyLurkerDefilerUltra(new TwoHatchHydraTerran().transition(null));
+        assertEquals("2HatchHydraZvT>LurkerDefilerUltra:HYDRALISKS",
+                LurkerDefilerUltraTransition.label("2HatchHydraZvT",
+                        LurkerDefilerUltraTransition.Trigger.HYDRALISKS));
+    }
+
+    @Test
     void theEconomyGateNeedsTwentyOneDronesAndThreeBases() {
         assertFalse(LurkerDefilerUltraTransition.economyReady(20, 3));
         assertFalse(LurkerDefilerUltraTransition.economyReady(21, 2));

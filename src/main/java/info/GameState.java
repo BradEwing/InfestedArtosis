@@ -182,6 +182,7 @@ public class GameState {
         this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData,
                 this.gameMap, bwem.getMap(), this.scoutData);
         this.strategyTracker.setTerranWallPersists(decisions.isTerranWallPersists());
+        this.strategyTracker.setTerranMechPersists(decisions.isTerranMechPersists());
     }
 
     public void onFrame() {
@@ -518,6 +519,14 @@ public class GameState {
             PlanEvents.baseClaimed(base.getLocation(), resourceLedger.mineralPatchesAt(base.getLocation()),
                     base.getMinerals().size(), remainingMineralPatches());
         }
+    }
+
+    /**
+     * Writes the persisted TerranMech prior row. Called once the plan event sink is registered, so the row
+     * lands at frame 0.
+     */
+    public void reportTerranMechPrior() {
+        strategyTracker.reportTerranMechPrior();
     }
 
     public void addMainBase(Unit hatchery, Base base) {
