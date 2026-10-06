@@ -2493,6 +2493,16 @@ class ProductionManagerTest {
     }
 
     @Test
+    void theExcessSweepLeavesAReleasedMacroHatcheryStanding() {
+        Plan release = BuildOrder.macroHatcheryPlan(FRAME, MAIN_TILE);
+        release.setHatcheryRequestReason(HatcheryRequestReason.RELEASE);
+        boolean excess = HatcheryCapacity.isExcess(3, HatcheryCapacity.EXCESS_LARVA);
+        boolean excessForExpansion = HatcheryCapacity.isExcessForExpansion(3, 0, HatcheryCapacity.EXCESS_LARVA);
+
+        assertFalse(ProductionManager.isExcessHatcheryPlan(release, excess, excessForExpansion));
+    }
+
+    @Test
     void theExcessSweepLeavesNonHatcheryPlansAlone() {
         assertFalse(ProductionManager.isExcessHatcheryPlan(extractor(), true, true));
     }

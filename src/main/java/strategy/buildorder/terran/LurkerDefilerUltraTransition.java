@@ -11,14 +11,14 @@ import java.util.HashSet;
 import java.util.Set;
 
 /**
- * When a ZvT build hands over to {@link LurkerDefilerUltra}.
+ * When a ZvT build hands over to the terminal Lurker and Defiler build {@link #candidates} offers.
  *
  * <p>Each transitioning build names its own trigger, and every trigger waits on the same economy
  * gate as well: {@value #ECONOMY_DRONES} living Drones and {@value #ECONOMY_BASES} bases. The
  * terminal build asks for Hive tech, four gases and Defilers; entered on a smaller economy it
  * would spend the bank the economy still needs.
  *
- * <p>Only 2HatchMuta and 3HatchLurker transition. CrazyZerg is terminal and reaches Hive on its
+ * <p>Only 2HatchMuta, 3HatchLurker and 2HatchHydraZvT transition. CrazyZerg is terminal and reaches Hive on its
  * own.
  */
 public final class LurkerDefilerUltraTransition {
@@ -45,6 +45,12 @@ public final class LurkerDefilerUltraTransition {
     /** Lurkers 3HatchLurker has morphed before it hands over. Owner decision. */
     static final int LURKER_TRIGGER = 4;
 
+    /**
+     * Hydralisks {@link TwoHatchHydraTerran} has produced before it hands over, the build's own
+     * mech target. Handing over earlier would morph the hydralisk army into Lurkers in the mid game.
+     */
+    static final int HYDRALISK_TRIGGER = TwoHatchHydraTerran.MECH_HYDRALISKS;
+
     /** Bases held before the third base is asked for: the main and the natural. */
     static final int THIRD_BASE_AFTER_BASES = ECONOMY_BASES - 1;
 
@@ -61,7 +67,9 @@ public final class LurkerDefilerUltraTransition {
         /** 2HatchMuta reached {@link #CLOCK_TRIGGER}. */
         CLOCK,
         /** 3HatchLurker morphed {@value #LURKER_TRIGGER} Lurkers. */
-        LURKERS
+        LURKERS,
+        /** 2HatchHydraZvT produced {@value #HYDRALISK_TRIGGER} Hydralisks. */
+        HYDRALISKS
     }
 
     private LurkerDefilerUltraTransition() {
@@ -93,6 +101,21 @@ public final class LurkerDefilerUltraTransition {
      */
     static Trigger threeHatchLurkerTrigger(int lurkersMorphed) {
         return lurkersMorphed >= LURKER_TRIGGER ? Trigger.LURKERS : null;
+    }
+
+    /**
+     * The 2HatchHydraZvT trigger. Hydralisks produced rather than living, so a build that keeps
+     * losing its Hydralisks still hands over once it has made them, and only after Muscular
+     * Augments and Grooved Spines are researched.
+     *
+     * @param hydralisksProduced Hydralisks this game has produced
+     * @param muscularAugments whether Muscular Augments is researched
+     * @param groovedSpines whether Grooved Spines is researched
+     * @return {@link Trigger#HYDRALISKS} once enough have been produced and both are researched, else null
+     */
+    static Trigger twoHatchHydraTrigger(int hydralisksProduced, boolean muscularAugments, boolean groovedSpines) {
+        return hydralisksProduced >= HYDRALISK_TRIGGER && muscularAugments && groovedSpines
+                ? Trigger.HYDRALISKS : null;
     }
 
     /**

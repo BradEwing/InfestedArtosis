@@ -14,7 +14,9 @@ public enum HatcheryRequestReason {
     /** Neither rule was true: the build's own schedule or base target asked for the expansion. */
     BUILD_ORDER,
     /** A macro hatchery, planned for larva rather than to claim a base. */
-    MACRO;
+    MACRO,
+    /** A macro hatchery a build released once its first army wave was scheduled; the excess sweep leaves it standing. */
+    RELEASE;
 
     /**
      * The reason an expansion request is recorded under.

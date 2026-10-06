@@ -204,6 +204,7 @@ public class Bot extends DefaultBWListener {
                 bwem.getMap().getStartingLocations().size());
         PlanEvents.register(planEventLogger);
         gameState.reportClaimedBases();
+        gameState.reportTerranMechPrior();
     }
 
 

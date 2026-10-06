@@ -180,7 +180,8 @@ public class PlanEventLogger implements PlanEventSink {
      * STRATEGY_DETECTED rows carry the detected strategy's detection label in item and leave every
      * plan column empty, so the frame a strategy was detected is the row's frame. The label is the
      * strategy's name, followed for ProxyGate by the evidence arms that fired: ProxyGate:GATEWAY_AWAY,
-     * ProxyGate:MAIN_EMPTY or ProxyGate:GATEWAY_AWAY+MAIN_EMPTY.
+     * ProxyGate:MAIN_EMPTY or ProxyGate:GATEWAY_AWAY+MAIN_EMPTY. The one row that is not a detection is
+     * TerranMech:PRIOR, written at frame 0 when the game starts on the persisted TerranMech prior.
      * <p>
      * BUILD_ORDER_TRANSITION rows are written on the frame a build order decides to hand over, and
      * leave every plan column empty. item is the build handing over, the build taking over and the

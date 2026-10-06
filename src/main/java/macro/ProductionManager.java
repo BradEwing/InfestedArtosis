@@ -276,7 +276,8 @@ public class ProductionManager {
 
     /**
      * Whether the excess sweep cancels this plan: a hatchery plan the excess rule for its kind
-     * reports as excess.
+     * reports as excess. A {@link HatcheryRequestReason#RELEASE} plan is never swept: the build
+     * that asked for it asks only while it holds fewer hatcheries than its own cap.
      *
      * @param plan a plan in the queue or the scheduled set
      * @param excess the excess rule with every hatchery counted
@@ -285,6 +286,7 @@ public class ProductionManager {
     static boolean isExcessHatcheryPlan(Plan plan, boolean excess, boolean excessForExpansion) {
         return plan.getType() == PlanType.BUILDING
                 && plan.getPlannedUnit() == UnitType.Zerg_Hatchery
+                && plan.getHatcheryRequestReason() != HatcheryRequestReason.RELEASE
                 && HatcheryCapacity.isExcessPlan(plan.isMacroHatchery(), excess, excessForExpansion);
     }
 

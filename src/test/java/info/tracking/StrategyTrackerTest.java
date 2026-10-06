@@ -288,6 +288,21 @@ class StrategyTrackerTest {
     }
 
     @Test
+    void terranMechIsKnownFromThisGameOrFromPersistentHistory() {
+        StrategyTracker none = trackerAgainst(Race.Terran);
+        assertFalse(none.isTerranMechKnown());
+
+        StrategyTracker persisted = trackerAgainst(Race.Terran);
+        persisted.setTerranMechPersists(true);
+        assertTrue(persisted.isTerranMechKnown());
+        assertFalse(persisted.isDetectedStrategy(TerranMech.NAME));
+
+        StrategyTracker detected = trackerAgainst(Race.Terran);
+        detected.recordDetections(Collections.singleton(new TerranMech()));
+        assertTrue(detected.isTerranMechKnown());
+    }
+
+    @Test
     void eachWallIsReportedOncePerGame() {
         List<String> reported = new ArrayList<>();
         PlanEvents.register(strategyRecorder(reported));
@@ -347,6 +362,35 @@ class StrategyTrackerTest {
         strategyTracker.setTerranWallPersists(false);
 
         assertFalse(strategyTracker.isTerranWallDetected());
+    }
+
+    @Test
+    void aGameStartedOnThePersistedMechPriorReportsItOnce() {
+        List<String> reported = new ArrayList<>();
+        PlanEvents.register(strategyRecorder(reported));
+        try {
+            StrategyTracker persisted = trackerAgainst(Race.Terran);
+            persisted.setTerranMechPersists(true);
+            persisted.reportTerranMechPrior();
+
+            assertEquals(Collections.singletonList("TerranMech:PRIOR"), reported);
+        } finally {
+            PlanEvents.clear();
+        }
+    }
+
+    @Test
+    void aGameWithoutThePersistedMechPriorReportsNothing() {
+        List<String> reported = new ArrayList<>();
+        PlanEvents.register(strategyRecorder(reported));
+        try {
+            StrategyTracker cold = trackerAgainst(Race.Terran);
+            cold.reportTerranMechPrior();
+
+            assertTrue(reported.isEmpty());
+        } finally {
+            PlanEvents.clear();
+        }
     }
 
     private static PlanEventSink strategyRecorder(List<String> reported) {
