@@ -24,6 +24,12 @@ import glob
 import json
 import os
 import statistics
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import batchlib as bl
 
 APPDATA = os.environ.get("APPDATA", "")
 BATCH_DIR = os.path.join(APPDATA, "scbw", "batches")
@@ -98,7 +104,7 @@ def collect(manifest):
     openers = collections.defaultdict(lambda: [0, 0])
     lengths = collections.defaultdict(list)
 
-    for game in manifest.get("games", []):
+    for game in bl.final_attempts(manifest.get("games", [])):
         outcome = game.get("outcome")
         if not outcome:
             continue
@@ -137,7 +143,7 @@ def main():
 
     outcomes, failed, by_race, openers, lengths = collect(manifest)
 
-    launched = len([g for g in manifest.get("games", []) if g.get("launched_at")])
+    launched = len([g for g in bl.final_attempts(manifest.get("games", [])) if g.get("launched_at")])
     planned = manifest.get("games_per_opponent", 0) * len(manifest.get("opponents", []))
     mode = "frozen" if manifest.get("frozen") else "accumulate"
 
