@@ -47,6 +47,7 @@ import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
 import util.Arc;
 import util.Filter;
+import util.MapEdge;
 import util.StaticDefenseZone;
 import util.MeleeOverflowGate;
 import util.TargetLedger;
@@ -320,8 +321,30 @@ public class SquadManager {
                     .retreatShared(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.SHARED, now))
                     .retreatAnchor(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.ANCHOR, now))
                     .retreatFlee(retreatCount(squad, mutaPositions.keySet(), AirFlock.RetreatBranch.FLEE, now))
+                    .edgeMembers(edgeMembers(mutas))
+                    .edgeReleases(edgeReleases(squad))
                     .build());
         }
+    }
+
+    private int edgeMembers(Collection<Position> mutas) {
+        int count = 0;
+        for (Position position : mutas) {
+            if (MapEdge.inBand(position, game.mapWidth() * 32, game.mapHeight() * 32)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private static int edgeReleases(Squad squad) {
+        int releases = 0;
+        for (ManagedUnit member : squad.getMembers()) {
+            if (member.getUnitType() == UnitType.Zerg_Mutalisk) {
+                releases += member.getEdgeReleases();
+            }
+        }
+        return releases;
     }
 
     /**
