@@ -14,7 +14,9 @@ import info.ScoutData;
 import info.map.GameMap;
 import info.map.MapTile;
 import info.map.ScoutPath;
+import info.tracking.StrategyTracker;
 import telemetry.PerchAssignments;
+import telemetry.PlanEvents;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
@@ -39,6 +41,8 @@ public class ScoutManager {
     private HashSet<ManagedUnit> zerglingScouts = new HashSet<>();
 
     private ScoutPath enemyMainScoutPath;
+
+    private boolean bunkerSkipRecorded;
 
     private List<ManagedUnit> recalledOverlords = new ArrayList<>();
 
@@ -264,7 +268,29 @@ public class ScoutManager {
             return true;
         }
 
+        if (!zerglingScouts.isEmpty() && gameState.getBaseData().knowEnemyMainBase() && !mayScoutEnemyMain()) {
+            return true;
+        }
+
         return false;
+    }
+
+    /**
+     * Whether a ground scout may route to the enemy main: not while a detected Bunker holds the natural or the main,
+     * see {@link BunkerScoutGate}. Writes one SCOUT_SKIPPED row each time the route becomes held.
+     */
+    boolean mayScoutEnemyMain() {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        if (strategyTracker == null) {
+            return true;
+        }
+        boolean may = BunkerScoutGate.mayRoute(strategyTracker.isBunkerNaturalHeld(),
+                strategyTracker.isBunkerMainHeld(), BunkerScoutGate.Destination.ENEMY_MAIN);
+        if (!may && !bunkerSkipRecorded) {
+            PlanEvents.scoutSkipped(BunkerScoutGate.skipLabel(BunkerScoutGate.Destination.ENEMY_MAIN));
+        }
+        bunkerSkipRecorded = !may;
+        return may;
     }
 
     private boolean isEnemyBaseLocated() {
@@ -285,6 +311,10 @@ public class ScoutManager {
             return 0;
         }
 
+        if (!mayScoutEnemyMain()) {
+            return 0;
+        }
+
         int framesSinceLastEnemy = currentFrame - lastEnemySeenFrame;
         if (framesSinceLastEnemy < 720) {
             return 0;
@@ -298,7 +328,7 @@ public class ScoutManager {
     private TilePosition pollDroneScoutTarget() {
         BaseData baseData = gameState.getBaseData();
         if (baseData.knowEnemyMainBase()) {
-            return scoutEnemyMain();
+            return mayScoutEnemyMain() ? scoutEnemyMain() : null;
         }
         if (baseData.isEnemyMainBaseFound()) {
             return gameState.pollScoutTarget();

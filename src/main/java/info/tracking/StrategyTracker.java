@@ -13,6 +13,8 @@ import info.tracking.protoss.FFE;
 import info.tracking.protoss.OneGateCore;
 import info.tracking.protoss.ProxyGate;
 import info.tracking.protoss.TwoGate;
+import info.tracking.terran.BunkerMain;
+import info.tracking.terran.BunkerNatural;
 import info.tracking.terran.SCVRush;
 import info.tracking.terran.TerranMech;
 import info.tracking.terran.TerranWall;
@@ -74,6 +76,23 @@ public class StrategyTracker {
     @Setter
     private boolean terranMechPersists;
 
+    private final BunkerNatural bunkerNatural = new BunkerNatural();
+    private final BunkerMain bunkerMain = new BunkerMain();
+
+    /**
+     * Whether a Bunker is alive or last seen alive at the enemy natural, re-read every frame once BunkerNatural has
+     * been detected.
+     */
+    @Getter
+    private boolean bunkerNaturalHeld;
+
+    /**
+     * Whether a Bunker is alive or last seen alive at the enemy main, re-read every frame once BunkerMain has been
+     * detected.
+     */
+    @Getter
+    private boolean bunkerMainHeld;
+
     public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap,
                            BWMap bwMap, ScoutData scoutData) {
         this.game = game;
@@ -101,6 +120,8 @@ public class StrategyTracker {
             possibleStrategies.add(new SCVRush());
             possibleStrategies.add(new TerranWallNatural());
             possibleStrategies.add(new TerranWallMain());
+            possibleStrategies.add(bunkerNatural);
+            possibleStrategies.add(bunkerMain);
         }
         if (race == Race.Zerg || race == Race.Unknown) {
             possibleStrategies.add(new Hydralisk());
@@ -132,6 +153,15 @@ public class StrategyTracker {
         }
 
         recordDetections(newlyDetected);
+        bunkerNaturalHeld = isDetectedStrategy(BunkerNatural.NAME) && bunkerNatural.isDetected(context);
+        bunkerMainHeld = isDetectedStrategy(BunkerMain.NAME) && bunkerMain.isDetected(context);
+    }
+
+    /**
+     * Whether a Bunker holds the enemy natural or the enemy main, so a melee squad cannot answer it from range.
+     */
+    public boolean isBunkerHeld() {
+        return bunkerNaturalHeld || bunkerMainHeld;
     }
 
     /**

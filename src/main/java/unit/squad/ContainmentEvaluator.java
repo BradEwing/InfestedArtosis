@@ -144,8 +144,8 @@ public class ContainmentEvaluator {
      * @return true when the squad may contain
      */
     public boolean compositionAllows(Squad squad) {
-        return ContainmentGate.compositionAllows(versusTerran(), mechDetected(), squad.getComposition(),
-                enemyGroundArmyCounts());
+        return ContainmentGate.compositionAllows(versusTerran(), mechDetected(), bunkerHeld(),
+                squad.getComposition(), enemyGroundArmyCounts());
     }
 
     /**
@@ -156,7 +156,7 @@ public class ContainmentEvaluator {
      * @return true when holding the arc is safe
      */
     public boolean safeToHold(Squad squad) {
-        return ContainmentGate.safeToHold(versusTerran(), mechDetected(), squad.getComposition(),
+        return ContainmentGate.safeToHold(versusTerran(), mechDetected(), bunkerHeld(), squad.getComposition(),
                 enemyGroundArmyCounts());
     }
 
@@ -177,6 +177,10 @@ public class ContainmentEvaluator {
     private boolean mechDetected() {
         return gameState.getStrategyTracker() != null
                 && gameState.getStrategyTracker().isDetectedStrategy(TerranMech.NAME);
+    }
+
+    private boolean bunkerHeld() {
+        return gameState.getStrategyTracker() != null && gameState.getStrategyTracker().isBunkerHeld();
     }
 
     private Map<UnitType, Integer> enemyGroundArmyCounts() {

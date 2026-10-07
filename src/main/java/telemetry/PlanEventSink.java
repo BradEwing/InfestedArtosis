@@ -169,6 +169,14 @@ public interface PlanEventSink {
     }
 
     /**
+     * A ground scout was kept off a route a detected Bunker holds.
+     *
+     * @param skipLabel the reason and the destination, e.g. BUNKER:ENEMY_MAIN
+     */
+    default void onScoutSkipped(String skipLabel) {
+    }
+
+    /**
      * The main had no room on creep for a tech building a build order was about to plan.
      *
      * @param building the tech building
