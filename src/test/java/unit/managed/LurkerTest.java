@@ -324,6 +324,8 @@ class LurkerTest {
 
         assertEquals(Lurker.RefusalStep.REANCHOR,
                 Lurker.refusalStep(anchor, 1000, anchor, 1000 + Lurker.REFUSAL_LOOP_STALE_FRAMES + 1));
+        assertEquals(Lurker.RefusalStep.BREAK,
+                Lurker.refusalStep(anchor, 1000, anchor, 1000 + Lurker.REFUSAL_LOOP_STALE_FRAMES));
         assertEquals(Lurker.RefusalStep.REANCHOR, Lurker.refusalStep(null, 0, anchor, 500));
         assertEquals(Lurker.RefusalStep.KEEP,
                 Lurker.refusalStep(anchor, 1000, anchor, 1000 + Lurker.REFUSAL_LOOP_MIN_FRAMES - 1));

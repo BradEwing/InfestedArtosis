@@ -723,9 +723,9 @@ public class Lurker extends ManagedUnit {
             if (step == RefusalStep.BREAK) {
                 refusalAnchor = null;
                 burrowedFrame = now;
-                logUnderFire(BurrowReason.BURROW_LOOP_BREAK, now);
                 unit.burrow();
                 log(true, reason);
+                logUnderFire(BurrowReason.BURROW_LOOP_BREAK, now);
                 return;
             }
             if (step == RefusalStep.REANCHOR) {
