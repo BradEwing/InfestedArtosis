@@ -44,7 +44,8 @@ final class LearningRecordAccumulator {
     /**
      * Credits the game result to every distinct build order in the row's semicolon separated
      * chain, skipping blank segments and values equal to the opener, so one game contributes at
-     * most one observation per build order.
+     * most one observation per build order. The first credited build of the game is also counted
+     * against the game's opener in {@link OpponentRecord#getOpenerBuildPairs()}.
      */
     private void creditBuildOrders(OpponentRecord opponent, GameRecord game) {
         if (game.getBuildOrder() == null) {
@@ -56,9 +57,16 @@ final class LearningRecordAccumulator {
             if (name.isEmpty() || name.equals(game.getOpener()) || !credited.add(name)) {
                 continue;
             }
+            if (credited.size() == 1) {
+                opponent.getOpenerBuildPairs().merge(openerBuildPairKey(game.getOpener(), name), 1, Integer::sum);
+            }
             incrementRecord(opponent.getBuildOrderRecord(), name, game);
             incrementMapRecord(opponent.getMapSpecificBuildOrderRecord(), name, game);
         }
+    }
+
+    static String openerBuildPairKey(String opener, String build) {
+        return opener + "|" + build;
     }
 
     private void incrementOpponent(OpponentRecord opponent, boolean winner) {

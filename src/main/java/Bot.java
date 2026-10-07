@@ -29,6 +29,8 @@ import telemetry.AirReinforcementTelemetry;
 import telemetry.HarassLogger;
 import telemetry.HarassTelemetry;
 import telemetry.RunbyLogger;
+import telemetry.BurrowLogger;
+import telemetry.BurrowTelemetry;
 import telemetry.ReachLogger;
 import telemetry.ReachTelemetry;
 import telemetry.RunbyTelemetry;
@@ -74,6 +76,7 @@ public class Bot extends DefaultBWListener {
     private AirReinforcementLogger airReinforcementLogger;
     private FlockLogger flockLogger;
     private ReachLogger reachLogger;
+    private BurrowLogger burrowLogger;
     private FixedFireLogger fixedFireLogger;
 
     @Override
@@ -112,6 +115,7 @@ public class Bot extends DefaultBWListener {
         startAirReinforcementLogging();
         startFlockLogging();
         startReachLogging();
+        startBurrowLogging();
         startFixedFireLogging();
         startPlanEventLogging(decisions.getOpener());
     }
@@ -199,6 +203,15 @@ public class Bot extends DefaultBWListener {
         ReachTelemetry.register(reachLogger);
     }
 
+    private void startBurrowLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        burrowLogger = new BurrowLogger(game, combatTelemetry.getGameId());
+        BurrowTelemetry.register(burrowLogger);
+    }
+
     private void startFixedFireLogging() {
         if (!gameState.getConfig().telemetryCombat) {
             return;
@@ -257,6 +270,9 @@ public class Bot extends DefaultBWListener {
         }
         if (reachLogger != null) {
             reachLogger.onFrame();
+        }
+        if (burrowLogger != null) {
+            burrowLogger.onFrame();
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onFrame();
@@ -353,6 +369,9 @@ public class Bot extends DefaultBWListener {
         }
         if (reachLogger != null) {
             reachLogger.onEnd();
+        }
+        if (burrowLogger != null) {
+            burrowLogger.onEnd();
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onEnd();

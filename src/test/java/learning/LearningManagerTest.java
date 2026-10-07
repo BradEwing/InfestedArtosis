@@ -218,15 +218,15 @@ public class LearningManagerTest {
         appendGames(opponentRecord, buildOrders, "SpeedlingAllIn", false, 0);
         List<String> candidates = Arrays.asList("3HatchLurker", "CrazyZerg", "SpeedlingAllIn");
 
-        String first = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
+        String first = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME, "12Pool");
         appendGames(opponentRecord, buildOrders, first, false, 1);
-        String second = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME);
+        String second = LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME, "12Pool");
         appendGames(opponentRecord, buildOrders, second, false, 1);
 
         assertNotEquals("3HatchLurker", first);
         assertNotEquals("3HatchLurker", second);
         assertNotEquals(first, second);
-        assertEquals("3HatchLurker", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
+        assertEquals("3HatchLurker", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME, "12Pool"));
     }
 
     @Test
@@ -238,7 +238,7 @@ public class LearningManagerTest {
         appendGames(opponentRecord, buildOrders, "2HatchHydraZvT", false, 0);
         List<String> candidates = Arrays.asList("3HatchLurker", "2HatchMuta", "2HatchHydraZvT");
 
-        assertEquals("2HatchHydraZvT", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME));
+        assertEquals("2HatchHydraZvT", LearningManager.selectBuildOrderName(candidates, opponentRecord, MAP_NAME, "12Pool"));
     }
 
     private static OpponentRecord emptyOpponentRecord() {

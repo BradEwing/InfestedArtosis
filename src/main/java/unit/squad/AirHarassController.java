@@ -15,6 +15,7 @@ import telemetry.HarassTelemetry;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Filter;
+import util.MapEdge;
 import util.Vec2;
 
 import java.util.ArrayList;
@@ -350,7 +351,7 @@ public class AirHarassController {
         if (exit == null) {
             return;
         }
-        Position clamped = Vec2.between(squad.getCenter(), exit).clampToMap(game, squad.getCenter());
+        Position clamped = MapEdge.toward(squad.getCenter(), exit, game.mapWidth() * 32, game.mapHeight() * 32);
         for (ManagedUnit member : squad.getMembers()) {
             member.setRetreatTarget(clamped);
         }

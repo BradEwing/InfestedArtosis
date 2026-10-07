@@ -439,19 +439,46 @@ public class LearningManager {
 
     /**
      * Selects the transition build order by weighted D-UCB over the opponent's build-order
-     * history; a candidate the opponent record has never played is chosen first.
+     * history; a candidate the opponent record has never played is chosen first. When every
+     * candidate has at least one game and none has a win, every score is curiosity alone and the
+     * builds would rotate in lockstep with the openers, so the choice is restricted to the
+     * candidates with the fewest games paired with the current opener before the D-UCB pick.
      */
     static String selectBuildOrderName(List<String> candidateNames,
                                        OpponentRecord opponentRecord,
-                                       String mapName) {
+                                       String mapName,
+                                       String openerName) {
         return WeightedUCBCalculator.findBestStrategy(
-            candidateNames,
+            leastPairedCandidates(candidateNames, opponentRecord, openerName),
             mapName,
             opponentRecord.getMapSpecificBuildOrderRecord(),
             opponentRecord.getBuildOrderRecord(),
             opponentRecord.totalGames(),
             opponentRecord.getGameTimestamps()
         );
+    }
+
+    private static List<String> leastPairedCandidates(List<String> candidateNames,
+                                                      OpponentRecord opponentRecord,
+                                                      String openerName) {
+        for (String name : candidateNames) {
+            Record record = opponentRecord.getBuildOrderRecord().get(name);
+            if (record == null || record.games() == 0 || record.wins() > 0) {
+                return candidateNames;
+            }
+        }
+        Map<String, Integer> pairs = opponentRecord.getOpenerBuildPairs();
+        int fewest = Integer.MAX_VALUE;
+        for (String name : candidateNames) {
+            fewest = Math.min(fewest, pairs.getOrDefault(LearningRecordAccumulator.openerBuildPairKey(openerName, name), 0));
+        }
+        List<String> leastPaired = new ArrayList<>();
+        for (String name : candidateNames) {
+            if (pairs.getOrDefault(LearningRecordAccumulator.openerBuildPairKey(openerName, name), 0) == fewest) {
+                leastPaired.add(name);
+            }
+        }
+        return leastPaired;
     }
 
     /**
@@ -491,7 +518,7 @@ public class LearningManager {
                 .sorted()
                 .collect(Collectors.toList());
         
-        String bestBuildOrder = selectBuildOrderName(candidateNames, opponentRecord, currentMapName);
+        String bestBuildOrder = selectBuildOrderName(candidateNames, opponentRecord, currentMapName, openerName());
         
         return buildOrderFactory.getByName(bestBuildOrder);
     }

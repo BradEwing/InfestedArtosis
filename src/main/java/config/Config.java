@@ -19,6 +19,11 @@ public final class Config {
      * to false.
      */
     public static boolean baseChecks = true;
+    /**
+     * Whether a Lurker refuses to burrow inside known enemy fire it cannot answer, and a containing squad keeps its
+     * points out of live hit marks. Off unless IA_LURKER_FIRE_AWARE is set to true.
+     */
+    public static boolean lurkerFireAware = false;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -107,6 +112,8 @@ public final class Config {
         String airFlapEscapeSetting = setting(dotenv, "IA_AIR_FLAP_ESCAPE");
         airFlapEscape = Boolean.parseBoolean(airFlapEscapeSetting);
         baseChecks = !"false".equalsIgnoreCase(setting(dotenv, "IA_BASE_CHECKS"));
+        String lurkerFireAwareSetting = setting(dotenv, "IA_LURKER_FIRE_AWARE");
+        lurkerFireAware = Boolean.parseBoolean(lurkerFireAwareSetting);
     }
 
     /**
