@@ -37,6 +37,15 @@ def collect(manifest):
     return results
 
 
+def first_non_result_index(results, opponent):
+    """Index of the opponent's first game whose final attempt still has no learning row, or None."""
+    finals = bl.final_attempts([r for r in results if r["opponent"] == opponent])
+    for r in finals:
+        if r["row"] is None and r["outcome"] != "RUNNING":
+            return r["index"]
+    return None
+
+
 def tally(results, key):
     groups = defaultdict(Counter)
     for r in results:
@@ -101,12 +110,20 @@ def print_bot_errors(results):
         print(f"  {r['game_name']:<18} vs {r['opponent']:<20} JVM died mid-game (scored {r['outcome']})")
 
 
+def print_retry_line(results, opponent):
+    first = first_non_result_index(results, opponent)
+    retries = bl.retry_count([r for r in results if r["opponent"] == opponent])
+    print(f"    first non-result index: {'-' if first is None else first} | retries: {retries}")
+
+
 def print_learning(manifest, results, tail):
     print("\nLearning slice (per-game write_0 rows, race-immune)")
     for opp in manifest["opponents"]:
         rows = [r["row"] for r in results if r["opponent"] == opp and r["row"]]
-        played = sum(1 for r in results if r["opponent"] == opp and r["outcome"] in bl.CONCLUSIVE)
+        finals = bl.final_attempts([r for r in results if r["opponent"] == opp])
+        played = sum(1 for r in finals if r["outcome"] in bl.CONCLUSIVE)
         print(f"\n  vs {opp} ({bl.opponent_race(opp)}): {len(rows)} learning rows from {played} conclusive games")
+        print_retry_line(results, opp)
         if not rows:
             continue
         print_field_table("Opener", rows, "opener")
@@ -191,8 +208,10 @@ def report(run_id, tail=10, archive_mode="none"):
         print("  No games launched yet.")
         return
     print_bot_errors(results)
-    print_table("By opponent", tally(results, "opponent"))
-    print_table("By map", tally(results, "map"))
+    finals = bl.final_attempts(results)
+    print(f"  retries {bl.retry_count(results)} (tables count final attempts only)")
+    print_table("By opponent", tally(finals, "opponent"))
+    print_table("By map", tally(finals, "map"))
     print_learning(manifest, results, tail)
     archive(manifest, results, archive_mode)
 

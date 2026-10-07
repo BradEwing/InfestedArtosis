@@ -82,6 +82,59 @@ def game_name(tag, index):
     return f"{tag}{base36(index).rjust(3, '0')}"
 
 
+def needs_retry(classified):
+    """A game needs a retry when it produced no learning row, whatever its outcome.
+    Takes the (outcome, game_time, learning_row) tuple from classify."""
+    return classified[2] is None
+
+
+def retry_entry(game, attempt):
+    """A fresh manifest entry replaying game's index and map under a new unique game name."""
+    original = game.get("retry_of") or game["game_name"]
+    return {
+        "index": game["index"],
+        "game_name": f"{original}R{attempt}",
+        "opponent": game["opponent"],
+        "map": game["map"],
+        "retry_of": original,
+        "retry": attempt,
+    }
+
+
+def play_index(game, play_fn, max_retries, stopped=lambda: False):
+    """Play game, then replay the same index while it leaves no learning row, up to max_retries times.
+
+    play_fn(entry) plays one attempt and returns its classify tuple. Returns every attempt in play order;
+    each attempt that was followed by a retry is marked retried."""
+    attempts = []
+    attempt = game
+    while True:
+        attempts.append(attempt)
+        classified = play_fn(attempt)
+        if not needs_retry(classified) or len(attempts) > max_retries or stopped():
+            return attempts
+        attempt["retried"] = True
+        attempt = retry_entry(game, len(attempts))
+
+
+def next_failure_count(current, attempts):
+    """Consecutive game indexes whose final attempt launched no game. A retried index counts once,
+    so retries alone cannot reach the abort threshold, while indexes that keep failing still do."""
+    return current + 1 if attempts[-1].get("outcome") == "NO_RESULT" else 0
+
+
+def final_attempts(games):
+    """One entry per game index: its last attempt, ordered by index."""
+    last = {}
+    for g in games:
+        last[g["index"]] = g
+    return [last[i] for i in sorted(last)]
+
+
+def retry_count(games):
+    return sum(1 for g in games if g.get("retry"))
+
+
 def manifest_path(run_id):
     return BATCHES_DIR / f"{run_id}.json"
 
