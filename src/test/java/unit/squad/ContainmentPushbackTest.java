@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ContainmentPushbackTest {
@@ -182,6 +183,48 @@ class ContainmentPushbackTest {
                 Arrays.asList(sunken, marine, zealot, hurtMark), ling);
 
         assertEquals(Arrays.asList(sunken, marine, hurtMark), kept);
+    }
+
+    @Test
+    void aLiveHitMarkKeepsAContainPointOutOnlyWhileTheRuleIsOn() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+        memory.recordHurt(CHOKE, 100);
+        int lurker = baseRange(UnitType.Zerg_Lurker);
+
+        List<StaticDefenseZone> on = ContainmentPushback.withHurtMarks(Collections.emptyList(), lurker,
+                memory.liveHurtMarks(200), true);
+        List<StaticDefenseZone> off = ContainmentPushback.withHurtMarks(Collections.emptyList(), lurker,
+                memory.liveHurtMarks(200), false);
+
+        assertEquals(1, on.size());
+        assertTrue(on.get(0).covers(CHOKE, 0));
+        assertEquals(Collections.emptyList(), off);
+    }
+
+    @Test
+    void anExpiredHitMarkNoLongerKeepsAContainPointOut() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+        memory.recordHurt(CHOKE, 100);
+
+        List<StaticDefenseZone> zones = ContainmentPushback.withHurtMarks(Collections.emptyList(), 192,
+                memory.liveHurtMarks(100 + EnemyReachMemory.HURT_MARK_WINDOW), true);
+
+        assertEquals(Collections.emptyList(), zones);
+    }
+
+    @Test
+    void fixedFireThatOutrangesTheLurkerIsKeptBesideTheHitMarks() {
+        int lurker = baseRange(UnitType.Zerg_Lurker);
+        StaticDefenseZone tank = firing(UnitType.Terran_Siege_Tank_Siege_Mode, CHOKE);
+        StaticDefenseZone marine = firing(UnitType.Terran_Marine, CHOKE);
+        EnemyReachMemory memory = new EnemyReachMemory();
+        memory.recordHurt(new Position(1000, 1000), 100);
+
+        List<StaticDefenseZone> zones = ContainmentPushback.withHurtMarks(Arrays.asList(tank, marine), lurker,
+                memory.liveHurtMarks(150), true);
+
+        assertEquals(2, zones.size());
+        assertSame(tank, zones.get(0));
     }
 
     @Test

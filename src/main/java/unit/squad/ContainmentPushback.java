@@ -3,6 +3,7 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.UnitType;
 import bwapi.WalkPosition;
+import info.tracking.EnemyReachMemory;
 import util.Arc;
 import util.StaticDefenseZone;
 
@@ -54,6 +55,28 @@ final class ContainmentPushback {
         for (StaticDefenseZone zone : zones) {
             if (zone.getStructure().isBuilding() || outranges(zone.getReach(), memberRange)) {
                 kept.add(zone);
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * The ground a Lurker must not burrow on and a containing squad keeps its points out of: the zones that outrange
+     * the member, and with the rule on every live hit mark, which the outranging cut would drop for its short reach.
+     *
+     * @param zones the zones to cut by the member's range
+     * @param memberRange the member's ground weapon range in pixels
+     * @param hurtMarks live hit marks
+     * @param fireAware true when hit marks count
+     * @return the zones, then the hit marks as zones
+     */
+    static List<StaticDefenseZone> withHurtMarks(Collection<StaticDefenseZone> zones, int memberRange,
+                                                 Collection<EnemyReachMemory.HurtMark> hurtMarks,
+                                                 boolean fireAware) {
+        List<StaticDefenseZone> kept = outrangingZones(zones, memberRange);
+        if (fireAware) {
+            for (EnemyReachMemory.HurtMark mark : hurtMarks) {
+                kept.add(mark.toZone());
             }
         }
         return kept;

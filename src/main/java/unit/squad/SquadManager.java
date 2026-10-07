@@ -158,6 +158,9 @@ public class SquadManager {
     private static final int MIN_ARC_POINTS = 4;
     private static final int MAX_SPACED_RADIUS = ContainmentPushback.MAX_RADIUS - ContainmentPushback.RADIUS_STEP;
     private static final int CONTAIN_DEFENSE_MARGIN = 32;
+    /** Pixels past a shooter's learned reach plus the Lurker's padding that a withdrawing Lurker stops at. */
+    static final int WITHDRAW_CLEARANCE = 32;
+    static final int LURKER_SAFE_CLEARANCE = 32;
     private static final double REINFORCEMENT_RADIUS = 384.0;
     private static final int TARGETING_RADIUS = 256;
     private static final int WIDENED_TARGETING_RADIUS = 2 * TARGETING_RADIUS;
@@ -276,6 +279,8 @@ public class SquadManager {
 
         fightSquads.removeAll(removed);
         evadeOutrangedHits(now);
+        updateLurkerFixedFire();
+        updateLurkerFire(now);
         holdLurkersOutOfFire(now);
         recordFlockSamples(now);
         gameState.getContainHeldTimer().update(now, anyGroundSquadContaining(fightSquads));
@@ -793,20 +798,209 @@ public class SquadManager {
         Predicate<Position> allowed = walkablePoints();
         Set<ManagedUnit> collapsing = collapsingMembers(now);
         for (ManagedUnit member : outrangedHits) {
-            if (collapsing.contains(member) || !member.canStepOutNow()
-                    || !ManagedUnit.evadesOutrangedHit(member.getRole(), member.isClosingOnTarget())) {
+            if (!evadeGateOpen(collapsing.contains(member), member.canStepOutNow(), member.canWithdrawNow(),
+                    member.getRole(), member.isClosingOnTarget())) {
                 continue;
             }
             UnitType type = member.getUnitType();
             List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(threats,
                     EnemyReachMemory.baseGroundRange(type));
             Position seek = member.getRole() == UnitRole.CONTAIN ? member.getContainPosition() : null;
-            Position point = RunbyTargeting.findEvadePoint(member.getPosition(), zones,
-                    containmentDefensePadding(Collections.singletonList(type)), allowed, seek);
+            int padding = containmentDefensePadding(Collections.singletonList(type));
+            Position point = evadePoint(member, zones, padding, allowed, seek);
             if (point != null) {
+                if (member instanceof Lurker && member.canWithdrawNow()) {
+                    ((Lurker) member).setWithdrawZoneCount(
+                            coveringZones(zones, member.getPosition(), padding));
+                }
                 member.evade(point, now);
             }
         }
+    }
+
+    private Position evadePoint(ManagedUnit member, List<StaticDefenseZone> zones, int padding,
+                               Predicate<Position> allowed, Position seek) {
+        if (!member.canWithdrawNow()) {
+            return RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
+        }
+        Position clear = withdrawDestination(member.getPosition(), zones, padding,
+                gameState.getReachMemory().longestGroundReach(), gameState.getSquadRallyPoint(), allowed, seek);
+        return clear != null ? clear
+                : RunbyTargeting.findEvadePoint(member.getPosition(), zones, padding, allowed, seek);
+    }
+
+    /**
+     * Where a withdrawing Lurker walks. With a rally point and no zone covering the Lurker, the hit was not
+     * attributed, so the nearest clear point at least {@link #withdrawMinStep} away on the rally side is taken, ties
+     * toward the rally point. Otherwise, and when none is found, the nearest clear point, ties toward the seek point.
+     *
+     * @param from the Lurker's position
+     * @param zones the zones of the shooters that outrange it
+     * @param padding pixels added to every zone's reach
+     * @param longestReach longest learned enemy ground reach, 0 when none
+     * @param rally the squad's rally point, or null
+     * @param allowed points the Lurker may walk to
+     * @param seek point ties are broken toward, or null
+     * @return the destination, or null when no allowed point is clear
+     */
+    static Position withdrawDestination(Position from, List<StaticDefenseZone> zones, int padding, int longestReach,
+                                        Position rally, Predicate<Position> allowed, Position seek) {
+        if (rally != null && coveringZones(zones, from, padding) == 0) {
+            int minStep = withdrawMinStep(longestReach, padding);
+            Position away = RunbyTargeting.findClearPoint(from, zones, padding, WITHDRAW_CLEARANCE, minStep, rally,
+                    allowed, rally);
+            if (away != null) {
+                return away;
+            }
+        }
+        return RunbyTargeting.findClearPoint(from, zones, padding, WITHDRAW_CLEARANCE, allowed, seek);
+    }
+
+    /**
+     * How many zones cover a position.
+     *
+     * @param zones the zones
+     * @param position the position
+     * @param padding pixels added to every zone's reach
+     * @return the number of zones whose reach plus the padding reaches the position
+     */
+    static int coveringZones(Collection<StaticDefenseZone> zones, Position position, int padding) {
+        int count = 0;
+        for (StaticDefenseZone zone : zones) {
+            if (zone.covers(position, padding)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * The least a withdrawing Lurker walks: the longest ground reach learned this game, plus the padding and the
+     * clearance, so a hit nothing accounts for still leaves it out of the reach of the longest shooter seen.
+     *
+     * @param longestReach longest learned enemy ground reach, 0 when none
+     * @param padding pixels added to a reach for the unit's extent and a margin
+     * @return the minimum step in pixels, 0 when no reach has been learned
+     */
+    static int withdrawMinStep(int longestReach, int padding) {
+        return longestReach <= 0 ? 0 : longestReach + padding + WITHDRAW_CLEARANCE;
+    }
+
+    /**
+     * Whether a member hit by something it cannot answer is moved out of fire this frame: it is not part of a
+     * collapse, it can step out or unburrow to withdraw, and its role evades an outranged hit.
+     *
+     * @param collapsing true when the member takes part in a collapse
+     * @param canStepOut true when the member can carry out an evade move
+     * @param canWithdraw true when the member is burrowed and unburrows to leave fire
+     * @param role the member's role
+     * @param closingOnTarget true when the member has a live fight target
+     * @return true when the member evades
+     */
+    static boolean evadeGateOpen(boolean collapsing, boolean canStepOut, boolean canWithdraw, UnitRole role,
+                                 boolean closingOnTarget) {
+        return !collapsing && (canStepOut || canWithdraw) && ManagedUnit.evadesOutrangedHit(role, closingOnTarget);
+    }
+
+    /**
+     * Gives every containing Lurker the ground the enemy fires on from where it stands, so a burrowed one stays put
+     * when its contain point moves a short way, see {@link Lurker#staysBurrowed}.
+     */
+    private void updateLurkerFixedFire() {
+        int padding = containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
+        for (Squad squad : fightSquads) {
+            for (ManagedUnit member : squad.getMembers()) {
+                if (!(member instanceof Lurker) || member.getRole() != UnitRole.CONTAIN) {
+                    continue;
+                }
+                ((Lurker) member).setFixedFireZones(fixedFireZones, padding);
+            }
+        }
+    }
+
+    /**
+     * Gives every Lurker in a fight squad the ground it must not burrow on, see {@link Lurker#setFireView}: the fixed
+     * fire that outranges it and the live hit marks, and the nearest points outside it to where it stands and to its
+     * contain point. Gives it none with {@link Config#lurkerFireAware} off.
+     *
+     * @param now current frame
+     */
+    private void updateLurkerFire(int now) {
+        boolean fireAware = Config.lurkerFireAware;
+        int padding = containmentDefensePadding(Collections.singletonList(UnitType.Zerg_Lurker));
+        int range = EnemyReachMemory.baseGroundRange(UnitType.Zerg_Lurker);
+        List<StaticDefenseZone> marks = ContainmentPushback.withHurtMarks(Collections.emptyList(), range,
+                gameState.getReachMemory().liveHurtMarks(now), fireAware);
+        Predicate<Position> allowed = walkablePoints();
+        Position rally = gameState.getSquadRallyPoint();
+        for (Squad squad : fightSquads) {
+            List<StaticDefenseZone> squadZones = fireAware
+                    ? lurkerKeptOutZones(squad, ContainmentPushback.outrangingZones(fixedFireZones, range), now)
+                    : Collections.emptyList();
+            for (ManagedUnit member : squad.getMembers()) {
+                if (!(member instanceof Lurker)) {
+                    continue;
+                }
+                Lurker lurker = (Lurker) member;
+                List<StaticDefenseZone> fixed = unanswered(squadZones, lurker.getPosition(), range);
+                List<StaticDefenseZone> zones = new ArrayList<>(fixed);
+                zones.addAll(marks);
+                if (zones.isEmpty()) {
+                    lurker.setFireView(zones, fixed, padding, null, null);
+                    continue;
+                }
+                lurker.setFireView(zones, fixed, padding, null, null);
+                Position here = lurker.getPosition();
+                Position safeHere = lurker.standsInFire()
+                        ? retreatSidePoint(RunbyTargeting.findClearPoint(here, zones, padding,
+                                LURKER_SAFE_CLEARANCE, 0, rally, allowed, rally), here, rally)
+                        : null;
+                Position hold = lurker.activeHoldPoint();
+                Position safeHold = lurker.activeHoldInFire()
+                        ? retreatSidePoint(RunbyTargeting.findClearPoint(hold, zones, padding,
+                                LURKER_SAFE_CLEARANCE, 0, rally, allowed, rally), hold, rally)
+                        : null;
+                lurker.setFireView(zones, fixed, padding, safeHere, safeHold);
+            }
+        }
+    }
+
+    /**
+     * The point a Lurker walks to out of fire: the clear point on the retreat side when one was found, else the rally
+     * point while the Lurker stands more than {@link Lurker#SAFE_POINT_NEAR_DISTANCE} from it, else none.
+     *
+     * @param clear the nearest clear point nearer to the rally point than the Lurker is, or null
+     * @param from where the Lurker stands or holds
+     * @param rally the squad's rally point, or null
+     * @return the point to walk to, or null when there is none
+     */
+    static Position retreatSidePoint(Position clear, Position from, Position rally) {
+        if (clear != null) {
+            return clear;
+        }
+        if (rally != null && from.getDistance(rally) > Lurker.SAFE_POINT_NEAR_DISTANCE) {
+            return rally;
+        }
+        return null;
+    }
+
+    /**
+     * The zones among {@code zones} whose shooter a unit cannot hit from where it stands: a zone around a structure
+     * or sieged tank the unit has within its own range is one it answers, so it is dropped.
+     *
+     * @param zones fixed fire zones
+     * @param position where the unit stands
+     * @param range the unit's ground weapon range in pixels
+     * @return a new list of the zones the unit cannot answer
+     */
+    static List<StaticDefenseZone> unanswered(Collection<StaticDefenseZone> zones, Position position, int range) {
+        List<StaticDefenseZone> kept = new ArrayList<>();
+        for (StaticDefenseZone zone : zones) {
+            if (zone.edgeDistance(position.getX(), position.getY()) > range) {
+                kept.add(zone);
+            }
+        }
+        return kept;
     }
 
     private static boolean isWalkable(Position point, Set<WalkPosition> accessible, int mapPixelWidth,
@@ -4661,11 +4855,18 @@ public class SquadManager {
      * @param squad containing squad
      * @param now current frame
      * @return every static defence zone, and every other zone that may move the arc, see
-     *     {@link ContainmentPushback#arcZones}, and outranges the squad's shortest ranged member
+     *     {@link ContainmentPushback#arcZones}, and outranges the squad's shortest ranged member, and with
+     *     {@link Config#lurkerFireAware} on and a Lurker in the squad, every live hit mark
      */
     private List<StaticDefenseZone> containmentZones(Squad squad, int now) {
-        return ContainmentPushback.outrangingZones(ContainmentPushback.arcZones(gameState.getGroundThreatZones(now)),
+        List<StaticDefenseZone> zones = ContainmentPushback.outrangingZones(
+                ContainmentPushback.arcZones(gameState.getGroundThreatZones(now)),
                 shortestGroundRange(squad.getComposition().keySet()));
+        if (Config.lurkerFireAware && squad.getComposition().containsKey(UnitType.Zerg_Lurker)) {
+            zones.addAll(ContainmentPushback.withHurtMarks(Collections.emptyList(), 0,
+                    gameState.getReachMemory().liveHurtMarks(now), true));
+        }
+        return zones;
     }
 
     /**

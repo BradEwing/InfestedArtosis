@@ -10,9 +10,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.ToIntFunction;
 
 /**
@@ -65,6 +67,7 @@ public class EnemyReachMemory {
     }
 
     private final Map<UnitType, Integer> learned = new HashMap<>();
+    private final Set<UnitType> seen = new HashSet<>();
     private final Map<WeaponType, Integer> weaponRanges = new HashMap<>();
     private final List<HurtMark> hurtMarks = new ArrayList<>();
 
@@ -131,6 +134,19 @@ public class EnemyReachMemory {
     }
 
     /**
+     * The longest ground reach known for any enemy type seen this game, a type counting once it has been seeded.
+     *
+     * @return reach in pixels, 0 when no type has been seen
+     */
+    public int longestGroundReach() {
+        int longest = 0;
+        for (UnitType type : seen) {
+            longest = Math.max(longest, groundReach(type));
+        }
+        return longest;
+    }
+
+    /**
      * The largest reach known for a type, given a reach from another source.
      *
      * @param type enemy unit type
@@ -156,6 +172,7 @@ public class EnemyReachMemory {
             return;
         }
         weaponRanges.merge(weapon, apiRange, Math::max);
+        seen.add(type);
         raise(type, apiRange, Source.API, null, frame);
     }
 
@@ -177,6 +194,7 @@ public class EnemyReachMemory {
             return false;
         }
         learned.put(type, capped);
+        seen.add(type);
         ReachTelemetry.reachRaised(frame, type, old, capped, source, victim, reach > cap);
         return true;
     }
