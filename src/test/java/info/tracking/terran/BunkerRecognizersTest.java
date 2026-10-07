@@ -64,18 +64,12 @@ class BunkerRecognizersTest {
     }
 
     @Test
-    void aBunkerSeenDeadLeavesNothingHeld() {
-        assertTrue(natural().isEmpty());
-        assertTrue(main().isEmpty());
-        assertTrue(natural(new TilePosition(40, 40)).size() > natural().size());
-    }
-
-    @Test
     void theHoldKeepsWhileAnyBunkerIsLeft() {
         List<TilePosition> living = Arrays.asList(new TilePosition(40, 40), new TilePosition(45, 44));
         assertEquals(2, BunkerNatural.heldBunkers(living, IN_NATURAL, AT_MAIN).size());
         assertEquals(1, BunkerNatural.heldBunkers(living.subList(1, 2), IN_NATURAL, AT_MAIN).size());
         assertTrue(BunkerNatural.heldBunkers(Collections.emptyList(), IN_NATURAL, AT_MAIN).isEmpty());
+        assertEquals(1, BunkerNatural.heldBunkers(living.subList(0, 1), IN_NATURAL, AT_MAIN).size());
     }
 
     @Test

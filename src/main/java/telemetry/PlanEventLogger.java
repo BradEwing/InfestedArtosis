@@ -189,9 +189,9 @@ public class PlanEventLogger implements PlanEventSink {
      * trigger, as 2HatchMuta>LurkerDefilerUltra:GOLIATHS; build_order is still the chain before the
      * handover.
      * <p>
-     * SCOUT_SKIPPED rows are written when a ground scout is kept off a route a detected Bunker holds, and leave
-     * every plan column empty. item is the reason and the destination, as BUNKER:ENEMY_MAIN. One row is written
-     * each time the route becomes held, not every frame it stays held.
+     * SCOUT_SKIPPED rows are written when a ground scout is withheld from, or recalled off, a route a detected
+     * Bunker holds, and leave every plan column empty. item is the reason and the destination, as
+     * BUNKER:ENEMY_MAIN. One row is written per hold, not every frame it stays held.
      * <p>
      * TECH_SITE_MISS rows are written when a build order about to plan a tech building finds no room on creep
      * for it at the main while we hold the main, and leave the plan id empty. item is the building. build_tile_x

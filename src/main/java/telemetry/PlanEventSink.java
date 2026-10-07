@@ -169,7 +169,7 @@ public interface PlanEventSink {
     }
 
     /**
-     * A ground scout was kept off a route a detected Bunker holds.
+     * A ground scout was withheld from, or recalled off, a route a detected Bunker holds.
      *
      * @param skipLabel the reason and the destination, e.g. BUNKER:ENEMY_MAIN
      */

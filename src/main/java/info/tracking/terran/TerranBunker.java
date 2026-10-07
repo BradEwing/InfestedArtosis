@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
 
 /**
  * What the Bunker detectors share. They read the Bunkers the tracker still holds as living, a Bunker last seen alive
- * where it was seen counting until it is seen destroyed or its tile is seen empty, and place each one by the tile
+ * where it was seen counting until it is seen destroyed, and place each one by the tile
  * under its centre. A Bunker belongs to the enemy main when it stands in the main's BWEM Area or within
  * {@link TerranWallMain#CHOKE_TILE_RADIUS} of a chokepoint of that Area, the ramp among them, and otherwise to the
  * enemy natural when it stands in the natural's area as {@link TerranWallNatural} reads it, so one Bunker is never
