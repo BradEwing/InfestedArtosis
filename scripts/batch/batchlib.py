@@ -101,11 +101,15 @@ def retry_entry(game, attempt):
     }
 
 
-def play_index(game, play_fn, max_retries, stopped=lambda: False):
+def mark_retried(attempt):
+    attempt["retried"] = True
+
+
+def play_index(game, play_fn, max_retries, stopped=lambda: False, on_retry=mark_retried):
     """Play game, then replay the same index while it leaves no learning row, up to max_retries times.
 
     play_fn(entry) plays one attempt and returns its classify tuple. Returns every attempt in play order;
-    each attempt that was followed by a retry is marked retried."""
+    on_retry(attempt) marks an attempt that is followed by a retry; callers sharing a manifest pass a locked marker."""
     attempts = []
     attempt = game
     while True:
@@ -113,7 +117,7 @@ def play_index(game, play_fn, max_retries, stopped=lambda: False):
         classified = play_fn(attempt)
         if not needs_retry(classified) or len(attempts) > max_retries or stopped():
             return attempts
-        attempt["retried"] = True
+        on_retry(attempt)
         attempt = retry_entry(game, len(attempts))
 
 

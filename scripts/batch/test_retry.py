@@ -95,6 +95,16 @@ class PlayIndexTest(unittest.TestCase):
         self.assertEqual(1, len(attempts))
 
 
+class OnRetryTest(unittest.TestCase):
+    def test_custom_marker_replaces_the_default(self):
+        marked = []
+        game = entry(0)
+        bl.play_index(game, lambda g: ("CRASH", 1, None) if g["game_name"] == "T000" else ("WIN", 1, ROW), 2,
+                      on_retry=lambda g: marked.append(g["game_name"]))
+        self.assertEqual(["T000"], marked)
+        self.assertNotIn("retried", game)
+
+
 class LaunchFailureCountTest(unittest.TestCase):
     def test_retried_index_counts_once(self):
         _, failures = drive([entry(0)], {n: ("NO_RESULT", None, None) for n in ("T000", "T000R1", "T000R2")}, 2, [])

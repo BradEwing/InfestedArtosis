@@ -202,7 +202,7 @@ def report(run_id, tail=10, archive_mode="none"):
     print(f"Batch {run_id} | {status}")
     print(f"  jar {manifest.get('jar_version')} ({(manifest.get('jar_sha256') or '')[:12]}) | "
           f"git {manifest.get('git_rev')} | mode {mode} | jobs {manifest.get('jobs')} | "
-          f"{len(results)}/{len(manifest['opponents']) * manifest['games_per_opponent']} launched")
+          f"{len(bl.final_attempts(results))}/{len(manifest['opponents']) * manifest['games_per_opponent']} launched")
     print(f"  flags {describe_flags(manifest)}")
     if not results:
         print("  No games launched yet.")

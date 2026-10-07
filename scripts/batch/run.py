@@ -214,12 +214,20 @@ def play_safely(game, args, manifest, total, log_file):
         return play_one(game, args, manifest, total, log_file)
     except Exception as e:
         print(f"[{game['index'] + 1}/{total}] vs {game['opponent']} -> ERROR {e}", flush=True)
+        classified = bl.classify(game)
         with manifest_lock:
-            game["outcome"] = "NO_RESULT"
+            game["outcome"] = classified[0]
             game["error"] = str(e)
             game["finished_at"] = datetime.now().isoformat(timespec="seconds")
             bl.save_manifest(manifest)
-        return "NO_RESULT", None, None
+        return classified
+
+
+def mark_retried_locked(game, manifest):
+    with manifest_lock:
+        bl.mark_retried(game)
+        manifest["retries"] += 1
+        bl.save_manifest(manifest)
 
 
 def worker(q, sem, args, manifest, total, log_file):
@@ -233,7 +241,8 @@ def worker(q, sem, args, manifest, total, log_file):
                 game,
                 lambda g: play_safely(g, args, manifest, total, log_file),
                 manifest["max_retries"],
-                stop_requested.is_set)
+                stop_requested.is_set,
+                lambda g: mark_retried_locked(g, manifest))
             with manifest_lock:
                 launch_failures[0] = bl.next_failure_count(launch_failures[0], attempts)
                 if launch_failures[0] >= MAX_CONSECUTIVE_LAUNCH_FAILURES and not stop_requested.is_set():
