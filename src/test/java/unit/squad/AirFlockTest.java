@@ -4,6 +4,7 @@ import bwapi.Position;
 import bwapi.UnitType;
 import org.junit.jupiter.api.Test;
 import telemetry.FlockRow;
+import util.MapEdge;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -144,8 +145,8 @@ class AirFlockTest {
     }
 
     @Test
-    void aFarMemberPinnedAgainstTheMapEdgeRegroupsOnTheAnchor() {
-        Position anchor = new Position(600, 600);
+    void aFarMemberInACornerFleesAlongAnEdgeInsteadOfPinningOnTheAnchor() {
+        Position anchor = new Position(300, 300);
         Position member = new Position(10, 10);
         Position shared = new Position(1000, 1000);
         List<Position> enemies = Collections.singletonList(new Position(200, 200));
@@ -153,9 +154,25 @@ class AirFlockTest {
         assertTrue(AirFlock.pathThroughEnemy(member, anchor, enemies));
         Position flee = AirFlock.fleePoint(member, shared, enemies, MAP, MAP);
         assertNotNull(flee);
-        assertTrue(flee.getDistance(member) < AirFlock.MIN_FLEE_STEP);
 
-        assertEquals(anchor, memberTarget(member, anchor, shared, enemies, MAP, MAP));
+        assertTrue(flee.getDistance(member) >= AirFlock.MIN_FLEE_STEP);
+        assertTrue(MapEdge.inside(flee, MAP, MAP, MapEdge.INSET));
+        assertEquals(AirFlock.RetreatBranch.FLEE,
+                AirFlock.retreatBranch(member, anchor, shared, enemies, MAP, MAP, false));
+    }
+
+    @Test
+    void theSharedRetreatPointOfAFlockAtTheBottomEdgeStaysInsideTheInsetAndSlidesAlongTheEdge() {
+        Position anchor = new Position(1583, 4036);
+        Position enemy = new Position(1583, 3900);
+
+        Position point = AirFlock.retreatPoint(anchor, Collections.singletonList(anchor),
+                Collections.singletonList(enemy), MAP, MAP);
+
+        assertNotNull(point);
+        assertTrue(MapEdge.inside(point, MAP, MAP, MapEdge.INSET));
+        assertTrue(point.getDistance(anchor) >= AirFlock.RETREAT_FLEE_DISTANCE / 2);
+        assertNotEquals(anchor.getX(), point.getX());
     }
 
     @Test

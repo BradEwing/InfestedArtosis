@@ -28,6 +28,9 @@ public class OpponentRecord {
     private Map<String, MapAwareRecord> mapSpecificOpenerRecord;
     private Map<String, MapAwareRecord> mapSpecificBuildOrderRecord;
 
+    @Default
+    private Map<String, Integer> openerBuildPairs = new HashMap<>();
+
     public int totalGames() {
         return this.wins + this.losses;
     }

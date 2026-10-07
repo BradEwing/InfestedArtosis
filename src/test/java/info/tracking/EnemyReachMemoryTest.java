@@ -38,6 +38,19 @@ class EnemyReachMemoryTest {
     }
 
     @Test
+    void theLongestGroundReachIsTheLargestAmongTheTypesSeen() {
+        EnemyReachMemory memory = new EnemyReachMemory();
+        assertEquals(0, memory.longestGroundReach());
+
+        memory.seed(UnitType.Terran_Marine, MARINE_RANGE, 100);
+        assertEquals(MARINE_RANGE, memory.longestGroundReach());
+
+        memory.seed(UnitType.Terran_Siege_Tank_Siege_Mode, 384, 200);
+        assertEquals(384, memory.longestGroundReach());
+        assertEquals(memory.groundReach(UnitType.Terran_Siege_Tank_Siege_Mode), memory.longestGroundReach());
+    }
+
+    @Test
     void reachOnlyRises() {
         EnemyReachMemory memory = new EnemyReachMemory();
 
