@@ -513,7 +513,7 @@ public final class AirHarassTargeting {
     }
 
     /** Tuning value: pixels from an enemy base's center within which a Turret belongs to the base. */
-    static final int EDGE_BASE_RADIUS = HarassHeatMap.RADIUS_TILES * 32;
+    static final int EDGE_BASE_RADIUS = HarassHeatMap.RADIUS_TILES * 32 + 256;
 
     /** Tuning value: frames since a base's core was in sight within which a Turret at the base may be taken on. */
     static final int EDGE_CORE_SIGHT_FRAMES = 720;

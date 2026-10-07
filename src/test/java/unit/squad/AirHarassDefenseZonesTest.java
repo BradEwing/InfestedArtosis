@@ -105,7 +105,7 @@ class AirHarassDefenseZonesTest {
         AirHarassDefenseZones zones = new AirHarassDefenseZones();
         zones.record(a, list(a), NOW);
 
-        int dropped = zones.refresh(none(), point -> false, NOW + 2000);
+        int dropped = zones.refresh(none(), point -> false, NOW + 2000).size();
 
         assertEquals(0, dropped);
         assertEquals(1, zones.size());
@@ -119,7 +119,7 @@ class AirHarassDefenseZonesTest {
         AirHarassDefenseZones zones = new AirHarassDefenseZones();
         zones.record(a, list(a, b), NOW);
 
-        int dropped = zones.refresh(none(), point -> true, NOW + 100);
+        int dropped = zones.refresh(none(), point -> true, NOW + 100).size();
 
         assertEquals(1, dropped);
         assertEquals(0, zones.size());
@@ -148,7 +148,7 @@ class AirHarassDefenseZonesTest {
         AirHarassDefenseZones zones = new AirHarassDefenseZones();
         zones.record(a, list(a), NOW);
 
-        int dropped = zones.refresh(list(away), point -> false, NOW + 100);
+        int dropped = zones.refresh(list(away), point -> false, NOW + 100).size();
 
         assertEquals(1, dropped);
         assertEquals(0, zones.size());
@@ -161,11 +161,14 @@ class AirHarassDefenseZonesTest {
         AirHarassDefenseZones zones = new AirHarassDefenseZones();
         zones.record(a, list(a, b), NOW);
 
-        zones.forget(1);
+        assertTrue(zones.forget(1, NOW).isEmpty());
         assertEquals(Collections.singletonList(2), ids(zones.remembered(none())));
 
-        zones.forget(2);
+        List<AirHarassDefenseZones.Drop> drops = zones.forget(2, NOW + 50);
         assertEquals(0, zones.size());
+        assertEquals(1, drops.size());
+        assertEquals(AirHarassDefenseZones.Cause.DEAD, drops.get(0).getCause());
+        assertEquals(50, drops.get(0).getAgeFrames());
     }
 
     @Test
@@ -174,8 +177,11 @@ class AirHarassDefenseZonesTest {
         AirHarassDefenseZones zones = new AirHarassDefenseZones();
         zones.record(a, list(a), NOW);
 
-        assertEquals(0, zones.refresh(none(), point -> false, NOW + AirHarassDefenseZones.MAX_AGE_FRAMES));
-        assertEquals(1, zones.refresh(none(), point -> false, NOW + AirHarassDefenseZones.MAX_AGE_FRAMES + 1));
+        assertEquals(0, zones.refresh(none(), point -> false, NOW + AirHarassDefenseZones.MAX_AGE_FRAMES).size());
+        List<AirHarassDefenseZones.Drop> drops = zones.refresh(none(), point -> false,
+                NOW + AirHarassDefenseZones.MAX_AGE_FRAMES + 1);
+        assertEquals(1, drops.size());
+        assertEquals(AirHarassDefenseZones.Cause.AGED, drops.get(0).getCause());
     }
 
     @Test

@@ -4,6 +4,7 @@ import bwapi.Position;
 import bwapi.UnitType;
 import lombok.Builder;
 import lombok.Getter;
+import unit.squad.AirHarassDefenseZones;
 import unit.squad.AirHarassEvaluator;
 import unit.squad.AirHarassState;
 import unit.squad.AirHarassTargeting;
@@ -117,7 +118,8 @@ public final class HarassRow {
     @Builder.Default
     private final int zoneUnits = -1;
     @Builder.Default
-    private final int zonesCleared = -1;
+    private final int zoneAge = -1;
+    private final AirHarassDefenseZones.Cause zoneCause;
 
     /**
      * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.

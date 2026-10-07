@@ -371,10 +371,31 @@ public final class AirHarassEvaluator {
      * @return true to hold
      */
     public static boolean holdsBlindAdvance(int harassExitFrame, int now, boolean enemyMeasured, SquadStatus status) {
-        if (harassExitFrame <= 0 || enemyMeasured || status == SquadStatus.FIGHT) {
+        return holdsBlindAdvance(harassExitFrame, now, enemyMeasured, status, false);
+    }
+
+    /**
+     * Whether a blind ADVANCE is held, as {@link #holdsBlindAdvance(int, int, boolean, SquadStatus)} reads it, or
+     * while reinforcements fly to the squad and hold its harass entry, see {@link AirReinforcement.LinkHold}, so the
+     * flock waits for them instead of marching on the enemy alone. A measured enemy and a squad already in FIGHT are
+     * never held.
+     *
+     * @param harassExitFrame frame the squad's last harass ended, or 0 when it never harassed
+     * @param now current frame
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param status the squad's status entering the tick
+     * @param linkHeld whether reinforcements fly to the squad inside the link hold window
+     * @return true to hold
+     */
+    public static boolean holdsBlindAdvance(int harassExitFrame, int now, boolean enemyMeasured, SquadStatus status,
+                                            boolean linkHeld) {
+        if (enemyMeasured || status == SquadStatus.FIGHT) {
             return false;
         }
-        return now - harassExitFrame <= REENTRY_HOLD_FRAMES;
+        if (linkHeld) {
+            return true;
+        }
+        return harassExitFrame > 0 && now - harassExitFrame <= REENTRY_HOLD_FRAMES;
     }
 
     /**

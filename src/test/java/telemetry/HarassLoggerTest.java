@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import unit.squad.AirHarassDefenseZones;
 import unit.squad.AirHarassEvaluator;
 import unit.squad.AirHarassState;
 import unit.squad.AirHarassTargeting;
@@ -251,7 +252,7 @@ class HarassLoggerTest {
         assertEquals("WORKER", fields[columnIndex("retarget_new_tier")]);
         assertEquals("2", tickFields[columnIndex("defense_zones")]);
         assertEquals("5", tickFields[columnIndex("zone_units")]);
-        assertEquals("-1", tickFields[columnIndex("zones_cleared")]);
+        assertEquals("-1", tickFields[columnIndex("zone_age")]);
     }
 
     @Test
@@ -259,7 +260,7 @@ class HarassLoggerTest {
         HarassRow record = HarassRow.builder().frame(11300).squadId("squad-1").event(HarassRow.Event.ZONE_RECORD)
                 .aaAtTarget(1).defenseZones(3).zoneUnits(4).build();
         HarassRow clear = HarassRow.builder().frame(11400).event(HarassRow.Event.ZONE_CLEAR)
-                .defenseZones(1).zonesCleared(2).build();
+                .defenseZones(1).zoneAge(900).zoneCause(AirHarassDefenseZones.Cause.SEEN_CLEAR).build();
 
         String[] recordFields = HarassLogger.row("game-1", record).split(",", -1);
         String[] clearFields = HarassLogger.row("game-1", clear).split(",", -1);
@@ -271,8 +272,9 @@ class HarassLoggerTest {
         assertEquals("4", recordFields[columnIndex("zone_units")]);
         assertEquals("ZONE_CLEAR", clearFields[columnIndex("event")]);
         assertEquals("NONE", clearFields[columnIndex("squad_id")]);
-        assertEquals("2", clearFields[columnIndex("zones_cleared")]);
-        assertColumnsInOrder("zone_units", "zones_cleared");
+        assertEquals("900", clearFields[columnIndex("zone_age")]);
+        assertEquals("SEEN_CLEAR", clearFields[columnIndex("zone_cause")]);
+        assertColumnsInOrder("zone_units", "zone_age", "zone_cause");
     }
 
     @Test

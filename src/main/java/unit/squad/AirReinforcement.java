@@ -1,6 +1,7 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.Race;
 import bwapi.UnitType;
 import lombok.Getter;
 
@@ -8,8 +9,10 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -53,16 +56,88 @@ public final class AirReinforcement {
     }
 
     /**
-     * Whether reinforcements that took their route at a frame still hold the entry of the squad they fly to: from
-     * that frame until {@link #LINK_HOLD_FRAMES} have passed, so a squad is never held for longer than that however
-     * long they take to arrive.
-     *
-     * @param routedFrame frame the reinforcement took its route to the squad
-     * @param now current frame
-     * @return true while the hold stands
+     * The hold reinforcements flying to a squad put on its harass entry, bounded per squad: it starts the first
+     * frame reinforcements are in flight to the squad and ends {@link #LINK_HOLD_FRAMES} later, whatever new or
+     * re-routed reinforcements follow. It re-arms after {@link #LINK_HOLD_FRAMES} frames with none in flight, or on
+     * {@link #reset}.
      */
-    public static boolean holdsEntry(int routedFrame, int now) {
-        return routedFrame >= 0 && now - routedFrame < LINK_HOLD_FRAMES;
+    public static final class LinkHold {
+        private int since = -1;
+        private int lastInFlight = -1;
+
+        /**
+         * Steps the hold for this frame.
+         *
+         * @param inFlight whether reinforcements that could join a harass are flying to the squad
+         * @param now current frame
+         * @return true while the entry is held
+         */
+        public boolean step(boolean inFlight, int now) {
+            if (inFlight) {
+                lastInFlight = now;
+                if (since < 0) {
+                    since = now;
+                }
+                return now - since < LINK_HOLD_FRAMES;
+            }
+            if (since >= 0 && now - lastInFlight >= LINK_HOLD_FRAMES) {
+                since = -1;
+            }
+            return false;
+        }
+
+        /**
+         * Whether the hold stands now, without stepping it.
+         *
+         * @param inFlight whether reinforcements that could join a harass are flying to the squad
+         * @param now current frame
+         * @return true while the entry is held
+         */
+        public boolean holding(boolean inFlight, int now) {
+            return inFlight && since >= 0 && now - since < LINK_HOLD_FRAMES;
+        }
+
+        /**
+         * Re-arms the hold, as when the squad enters a harass.
+         */
+        public void reset() {
+            since = -1;
+            lastInFlight = -1;
+        }
+    }
+
+    /**
+     * Whether reinforcements hold a squad's harass entry at all: only a squad that could start a harass, and only
+     * reinforcements that could join one, see {@link #mayReinforce}.
+     *
+     * @param opponentRace the opponent's race
+     * @param squadComposition the squad's unit counts by type
+     * @return true when the squad passes the matchup and Mutalisks-only gates of the entry
+     */
+    public static boolean linkHoldApplies(Race opponentRace, Map<UnitType, Integer> squadComposition) {
+        return AirHarassEvaluator.harassMatchup(opponentRace) && AirHarassEvaluator.mutalisksOnly(squadComposition);
+    }
+
+    /**
+     * The anti-air a path search prices: the known threats, then the remembered ones whose id is not among them.
+     *
+     * @param known the known anti-air threats
+     * @param remembered the anti-air the defense zones remember
+     * @return the threats to price, each unit once
+     */
+    public static List<AirHarassTargeting.AirThreat> priced(Collection<AirHarassTargeting.AirThreat> known,
+                                                            Collection<AirHarassTargeting.AirThreat> remembered) {
+        List<AirHarassTargeting.AirThreat> priced = new ArrayList<>(known);
+        Set<Integer> ids = new HashSet<>();
+        for (AirHarassTargeting.AirThreat threat : known) {
+            ids.add(threat.getId());
+        }
+        for (AirHarassTargeting.AirThreat threat : remembered) {
+            if (ids.add(threat.getId())) {
+                priced.add(threat);
+            }
+        }
+        return priced;
     }
 
     /**

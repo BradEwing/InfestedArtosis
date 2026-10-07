@@ -571,7 +571,7 @@ public class AirHarassController {
             return;
         }
         if (!ours) {
-            defenseZones.forget(unit.getID());
+            logDrops(defenseZones.forget(unit.getID(), now), now);
         }
         if (ours) {
             creditLoss(unit, squads, now);
@@ -1020,21 +1020,26 @@ public class AirHarassController {
                     weapon -> visible ? unit.getPlayer().weaponMaxRange(weapon) : weapon.maxRange());
             view.threats.add(AirHarassTargeting.AirThreat.of(unit.getID(), type, position, range));
         }
-        int cleared = defenseZones.refresh(view.threats, point -> game.isVisible(point.toTilePosition()), now);
-        if (cleared > 0) {
-            HarassTelemetry.row(HarassRow.builder()
-                    .frame(now)
-                    .event(HarassRow.Event.ZONE_CLEAR)
-                    .defenseZones(defenseZones.size())
-                    .zonesCleared(cleared)
-                    .build());
-        }
+        logDrops(defenseZones.refresh(view.threats, point -> game.isVisible(point.toTilePosition()), now), now);
         for (Base base : gameState.getBaseData().getEnemyBases()) {
             view.sightingAges.put(base.getCenter(), sightingAge(base, now));
         }
         view.zoned = defenseZones.remembered(view.threats);
         view.price(0, null, Collections.emptySet());
         return view;
+    }
+
+    private void logDrops(List<AirHarassDefenseZones.Drop> drops, int now) {
+        for (AirHarassDefenseZones.Drop drop : drops) {
+            HarassTelemetry.row(HarassRow.builder()
+                    .frame(now)
+                    .event(HarassRow.Event.ZONE_CLEAR)
+                    .center(drop.getCenter())
+                    .defenseZones(defenseZones.size())
+                    .zoneAge(drop.getAgeFrames())
+                    .zoneCause(drop.getCause())
+                    .build());
+        }
     }
 
     private Set<TilePosition> resourceTilesOf(Base base) {

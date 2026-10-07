@@ -45,6 +45,7 @@ public class AirReinforcer {
     private final GameState gameState;
     private final Map<String, Plan> plans = new HashMap<>();
     private final Set<String> heldTargets = new HashSet<>();
+    private final Map<String, AirReinforcement.LinkHold> holds = new HashMap<>();
     private final Function<Collection<AirHarassTargeting.AirThreat>, List<AirHarassTargeting.AirThreat>> remembered;
 
     public AirReinforcer(Game game, GameState gameState) {
@@ -68,17 +69,20 @@ public class AirReinforcer {
         private final int frame;
         private final int routedFrame;
         private final int zoneThreats;
+        private final boolean joinsHarass;
 
-        private Plan(Squad target, List<Position> path, int frame, int routedFrame, int zoneThreats) {
+        private Plan(Squad target, List<Position> path, int frame, int routedFrame, int zoneThreats,
+                     boolean joinsHarass) {
             this.target = target;
             this.path = path;
             this.frame = frame;
             this.routedFrame = routedFrame;
             this.zoneThreats = zoneThreats;
+            this.joinsHarass = joinsHarass;
         }
 
         private Plan keepingRoute(int routed) {
-            return new Plan(target, path, frame, routed, zoneThreats);
+            return new Plan(target, path, frame, routed, zoneThreats, joinsHarass);
         }
     }
 
@@ -129,22 +133,16 @@ public class AirReinforcer {
     }
 
     /**
-     * Whether reinforcements flying to a squad hold its entry into a harass: any of them routed to it less than
-     * {@link AirReinforcement#LINK_HOLD_FRAMES} ago, see {@link AirReinforcement#holdsEntry}. The first frame a squad
-     * is held writes a HOLD row.
+     * Whether reinforcements flying to a squad hold its entry into a harass for now, see
+     * {@link AirReinforcement.LinkHold}. The first frame a squad is held writes a HOLD row.
      *
      * @param target the squad about to enter
      * @param now current frame
      * @return true while the hold stands
      */
     public boolean holdsEntry(Squad target, int now) {
-        boolean held = false;
-        for (Plan plan : plans.values()) {
-            if (plan.target == target && AirReinforcement.holdsEntry(plan.routedFrame, now)) {
-                held = true;
-                break;
-            }
-        }
+        AirReinforcement.LinkHold hold = holds.computeIfAbsent(target.getId(), id -> new AirReinforcement.LinkHold());
+        boolean held = hold.step(joinersInFlightTo(target) > 0, now);
         if (!held) {
             heldTargets.remove(target.getId());
         } else if (heldTargets.add(target.getId())) {
@@ -153,6 +151,38 @@ public class AirReinforcer {
                     .build());
         }
         return held;
+    }
+
+    /**
+     * Whether the entry of a squad is held now, without stepping the hold.
+     *
+     * @param target the squad
+     * @param now current frame
+     * @return true while reinforcements that could join a harass fly to it inside the hold window
+     */
+    public boolean isHolding(Squad target, int now) {
+        AirReinforcement.LinkHold hold = holds.get(target.getId());
+        return hold != null && hold.holding(joinersInFlightTo(target) > 0, now);
+    }
+
+    /**
+     * Re-arms the hold of a squad that entered a harass.
+     *
+     * @param target the squad
+     */
+    public void released(Squad target) {
+        holds.remove(target.getId());
+        heldTargets.remove(target.getId());
+    }
+
+    private int joinersInFlightTo(Squad target) {
+        int count = 0;
+        for (Plan plan : plans.values()) {
+            if (plan.target == target && plan.joinsHarass) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
@@ -167,6 +197,7 @@ public class AirReinforcer {
         }
         plans.keySet().retainAll(ids);
         heldTargets.retainAll(ids);
+        holds.keySet().retainAll(ids);
     }
 
     /**
@@ -247,11 +278,11 @@ public class AirReinforcer {
         }
         List<AirHarassTargeting.AirThreat> threats = threats(now);
         List<AirHarassTargeting.AirThreat> zoned = remembered.apply(threats);
-        List<AirHarassTargeting.AirThreat> priced = new ArrayList<>(threats);
-        priced.addAll(zoned);
+        List<AirHarassTargeting.AirThreat> priced = AirReinforcement.priced(threats, zoned);
         AirReinforcement.Route<Squad> route = AirReinforcement.choose(squad.getCenter(), candidates, priced,
                 inMap());
-        return route == null ? null : new Plan(route.getTarget(), route.getPath(), now, now, zoned.size());
+        return route == null ? null : new Plan(route.getTarget(), route.getPath(), now, now, zoned.size(),
+                AirReinforcement.mayReinforce(SquadStatus.HARASS, squad.getComposition()));
     }
 
     private static boolean validTarget(Squad squad, Squad target, Collection<Squad> squads) {

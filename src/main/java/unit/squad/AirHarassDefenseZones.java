@@ -18,7 +18,7 @@ import java.util.function.Predicate;
 /**
  * The defense groups a flock turned away from, remembered until their ground has been seen clear.
  *
- * <p>A zone is recorded when a harass ends on newly seen anti-air that stood only at the flock: its center is the
+ * <p>A zone is recorded when a harass ends on newly seen anti-air, at the flock or at the target: its center is the
  * trigger's position, its radius the trigger's reach plus {@link #PADDING}, and its members are the trigger and every
  * known anti-air unit within {@link #MEMBER_RADIUS} of it or covering it, see {@link AirHarassScouting#contributors}.
  * Each member is priced as a threat at its last known position and reach, on top of the anti-air currently known, so
@@ -41,6 +41,32 @@ public final class AirHarassDefenseZones {
     private final List<Zone> zones = new ArrayList<>();
 
     /**
+     * Why a zone was dropped.
+     */
+    public enum Cause {
+        SEEN_CLEAR,
+        MOVED,
+        DEAD,
+        AGED
+    }
+
+    /**
+     * A zone that was dropped: where it stood, how long it was remembered and why it went.
+     */
+    @Getter
+    public static final class Drop {
+        private final Position center;
+        private final int ageFrames;
+        private final Cause cause;
+
+        Drop(Position center, int ageFrames, Cause cause) {
+            this.center = center;
+            this.ageFrames = ageFrames;
+            this.cause = cause;
+        }
+    }
+
+    /**
      * One remembered defense group.
      */
     @Getter
@@ -48,6 +74,7 @@ public final class AirHarassDefenseZones {
         private final Position center;
         private int radius;
         private int recordedFrame;
+        private Cause lastRemoval = Cause.SEEN_CLEAR;
         private final Map<Integer, AirHarassTargeting.AirThreat> members = new LinkedHashMap<>();
 
         Zone(Position center, int radius, int recordedFrame) {
@@ -109,14 +136,14 @@ public final class AirHarassDefenseZones {
      * @param threats every known anti-air threat
      * @param visible whether a position is in sight now
      * @param now current frame
-     * @return how many zones were dropped
+     * @return the zones dropped
      */
-    public int refresh(Collection<AirHarassTargeting.AirThreat> threats, Predicate<Position> visible, int now) {
+    public List<Drop> refresh(Collection<AirHarassTargeting.AirThreat> threats, Predicate<Position> visible, int now) {
         Map<Integer, AirHarassTargeting.AirThreat> known = new HashMap<>();
         for (AirHarassTargeting.AirThreat threat : threats) {
             known.put(threat.getId(), threat);
         }
-        int dropped = 0;
+        List<Drop> dropped = new ArrayList<>();
         Iterator<Zone> zoneIterator = zones.iterator();
         while (zoneIterator.hasNext()) {
             Zone zone = zoneIterator.next();
@@ -128,16 +155,19 @@ public final class AirHarassDefenseZones {
                 if (current == null) {
                     if (seen) {
                         members.remove();
+                        zone.lastRemoval = Cause.SEEN_CLEAR;
                     }
                 } else if (current.getPosition().getDistance(zone.center) > zone.radius + MEMBER_RADIUS) {
                     members.remove();
+                    zone.lastRemoval = Cause.MOVED;
                 } else {
                     member.setValue(current);
                 }
             }
-            if (zone.members.isEmpty() || now - zone.recordedFrame > MAX_AGE_FRAMES) {
+            boolean aged = now - zone.recordedFrame > MAX_AGE_FRAMES;
+            if (zone.members.isEmpty() || aged) {
                 zoneIterator.remove();
-                dropped++;
+                dropped.add(new Drop(zone.center, now - zone.recordedFrame, aged ? Cause.AGED : zone.lastRemoval));
             }
         }
         return dropped;
@@ -147,16 +177,21 @@ public final class AirHarassDefenseZones {
      * Forgets a unit that died, in every zone, and drops the zones it leaves empty.
      *
      * @param unitId the dead unit's id
+     * @param now current frame
+     * @return the zones dropped
      */
-    public void forget(int unitId) {
+    public List<Drop> forget(int unitId, int now) {
+        List<Drop> dropped = new ArrayList<>();
         Iterator<Zone> zoneIterator = zones.iterator();
         while (zoneIterator.hasNext()) {
             Zone zone = zoneIterator.next();
             zone.members.remove(unitId);
             if (zone.members.isEmpty()) {
                 zoneIterator.remove();
+                dropped.add(new Drop(zone.center, now - zone.recordedFrame, Cause.DEAD));
             }
         }
+        return dropped;
     }
 
     /**

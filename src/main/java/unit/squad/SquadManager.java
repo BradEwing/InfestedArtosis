@@ -1826,7 +1826,8 @@ public class SquadManager {
                 squad.getHarassExitEngageFrame(), squad.getHarassExitEngageTarget(), stalled, now);
         if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now) && !stalled,
                 squad.isFightLocked(now), now) || hold == AirHarassEvaluator.ReentryHold.ALL
-                || airReinforcer.holdsEntry(squad, now)) {
+                || AirReinforcement.linkHoldApplies(gameState.getOpponentRace(), squad.getComposition())
+                && airReinforcer.holdsEntry(squad, now)) {
             return false;
         }
         Position heldTarget = hold == AirHarassEvaluator.ReentryHold.TARGET
@@ -1845,6 +1846,7 @@ public class SquadManager {
         }
         clearCombatSimSnapshot(squad);
         squad.setStatus(SquadStatus.HARASS);
+        airReinforcer.released(squad);
         if (squad instanceof AirSquad) {
             ((AirSquad) squad).getStallDetector().reset();
         }
@@ -2572,7 +2574,7 @@ public class SquadManager {
                     break;
                 }
                 if (AirHarassEvaluator.holdsBlindAdvance(squad.getHarassExitFrame(), now, enemyMeasured,
-                        squad.getStatus())) {
+                        squad.getStatus(), airReinforcer.isHolding(squad, now))) {
                     holdSquad(squad, managedFighters);
                     SquadDecisions.pathTaken(squad, DecisionPath.HARASS_HOLD);
                     break;

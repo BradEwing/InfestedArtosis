@@ -46,7 +46,7 @@ public final class AirHarassScouting {
      */
     static final int ESCALATION_FRAMES = AirHarassEvaluator.REENTRY_HOLD_FRAMES + CARRY_FRAMES;
     /** Tuning value: pixels from a refused base's center within which an exposed group is no raid target. */
-    static final int REFUSED_BASE_RADIUS = HarassHeatMap.RADIUS_TILES * 32;
+    static final int REFUSED_BASE_RADIUS = HarassHeatMap.RADIUS_TILES * 32 + 256;
 
     private AirHarassScouting() {
     }
@@ -186,7 +186,7 @@ public final class AirHarassScouting {
      * @param refusedUntil last refused frame of each refused base
      * @param now current frame
      * @param <B> base type
-     * @return the bases not refused, in their original order
+     * @return the bases refused, in their original order
      */
     public static <B> List<B> refused(Collection<B> bases, Map<B, Integer> refusedUntil, int now) {
         List<B> kept = new ArrayList<>(bases);
@@ -228,7 +228,7 @@ public final class AirHarassScouting {
      * @param refusedUntil last refused frame of each refused base
      * @param now current frame
      * @param <B> base type
-     * @return the bases refused, in their original order
+     * @return the bases not refused, in their original order
      */
     public static <B> List<B> unrefused(Collection<B> bases, Map<B, Integer> refusedUntil, int now) {
         List<B> kept = new ArrayList<>();

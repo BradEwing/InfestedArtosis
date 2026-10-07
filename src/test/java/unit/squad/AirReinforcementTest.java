@@ -298,11 +298,79 @@ class AirReinforcementTest {
     }
 
     @Test
-    void reinforcementsHoldTheEntryFromTheirRouteUntilTheLinkHoldRunsOut() {
-        assertTrue(AirReinforcement.holdsEntry(1000, 1000));
-        assertTrue(AirReinforcement.holdsEntry(1000, 1000 + AirReinforcement.LINK_HOLD_FRAMES - 1));
-        assertFalse(AirReinforcement.holdsEntry(1000, 1000 + AirReinforcement.LINK_HOLD_FRAMES));
-        assertFalse(AirReinforcement.holdsEntry(-1, 1000));
+    void reinforcementsInFlightHoldTheEntryUntilTheLinkHoldRunsOut() {
+        AirReinforcement.LinkHold hold = new AirReinforcement.LinkHold();
+        assertFalse(hold.step(false, 1000));
+        assertTrue(hold.step(true, 1000));
+        assertTrue(hold.step(true, 1000 + AirReinforcement.LINK_HOLD_FRAMES - 1));
+        assertFalse(hold.step(true, 1000 + AirReinforcement.LINK_HOLD_FRAMES));
+    }
+
+    @Test
+    void chainedReinforcementsDoNotExtendTheHoldOfOneSquad() {
+        AirReinforcement.LinkHold hold = new AirReinforcement.LinkHold();
+        int start = 2000;
+        assertTrue(hold.step(true, start));
+        assertTrue(hold.step(true, start + 600));
+        assertFalse(hold.step(true, start + AirReinforcement.LINK_HOLD_FRAMES));
+        assertFalse(hold.step(true, start + 1200));
+    }
+
+    @Test
+    void aBriefGapBetweenRoutesDoesNotRestartTheHold() {
+        AirReinforcement.LinkHold hold = new AirReinforcement.LinkHold();
+        int start = 2000;
+        assertTrue(hold.step(true, start));
+        assertFalse(hold.step(false, start + 100));
+        assertTrue(hold.step(true, start + 200));
+        assertFalse(hold.step(true, start + AirReinforcement.LINK_HOLD_FRAMES + 50));
+    }
+
+    @Test
+    void theHoldReArmsAfterAFullWindowWithNoneInFlightOrOnReset() {
+        AirReinforcement.LinkHold hold = new AirReinforcement.LinkHold();
+        assertTrue(hold.step(true, 1000));
+        assertFalse(hold.step(true, 1000 + AirReinforcement.LINK_HOLD_FRAMES));
+        assertFalse(hold.step(false, 1000 + AirReinforcement.LINK_HOLD_FRAMES + 10));
+        int later = 1000 + 3 * AirReinforcement.LINK_HOLD_FRAMES;
+        assertFalse(hold.step(false, later));
+        assertTrue(hold.step(true, later + 1));
+
+        hold.reset();
+        assertFalse(hold.holding(true, later + 2));
+        assertTrue(hold.step(true, later + 3));
+    }
+
+    @Test
+    void holdingReadsTheHoldWithoutSteppingIt() {
+        AirReinforcement.LinkHold hold = new AirReinforcement.LinkHold();
+        assertFalse(hold.holding(true, 1000));
+        hold.step(true, 1000);
+        assertTrue(hold.holding(true, 1100));
+        assertFalse(hold.holding(false, 1100));
+    }
+
+    @Test
+    void onlyASquadThatCouldHarassIsHeld() {
+        assertTrue(AirReinforcement.linkHoldApplies(bwapi.Race.Terran, composition(UnitType.Zerg_Mutalisk, 8)));
+        assertFalse(AirReinforcement.linkHoldApplies(bwapi.Race.Zerg, composition(UnitType.Zerg_Mutalisk, 8)));
+        Map<UnitType, Integer> mixed = composition(UnitType.Zerg_Mutalisk, 6);
+        mixed.put(UnitType.Zerg_Guardian, 1);
+        assertFalse(AirReinforcement.linkHoldApplies(bwapi.Race.Terran, mixed));
+    }
+
+    @Test
+    void aRememberedMemberAbsentFromTheKnownThreatsIsPricedAndAKnownOneIsNot() {
+        AirHarassTargeting.AirThreat known = threat(1, UnitType.Terran_Missile_Turret, new Position(1700, 2000));
+        AirHarassTargeting.AirThreat both = threat(1, UnitType.Terran_Missile_Turret, new Position(1700, 2000));
+        AirHarassTargeting.AirThreat only = threat(2, UnitType.Terran_Goliath, new Position(2300, 2000));
+
+        List<AirHarassTargeting.AirThreat> priced = AirReinforcement.priced(
+                Collections.singletonList(known), Arrays.asList(both, only));
+
+        assertEquals(Arrays.asList(known, only), priced);
+        assertFalse(AirHarassTargeting.segmentClear(FROM, GOAL, priced));
+        assertEveryLegOutside(FROM, AirReinforcement.safePath(FROM, GOAL, priced, ANYWHERE), priced);
     }
 
     @Test
