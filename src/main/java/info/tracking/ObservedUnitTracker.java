@@ -597,10 +597,24 @@ public class ObservedUnitTracker {
      * footprint; one that lifted and landed back in place has one again.
      */
     public List<TileFootprint> getGroundedFootprints(Predicate<UnitType> typeFilter, Time firstObservedBy) {
+        return footprints(typeFilter, firstObservedBy, ObservedUnit::isGroundedAtAnchor);
+    }
+
+    /**
+     * As {@link #getGroundedFootprints}, but a building last seen lifted near its anchor keeps its footprint, see
+     * {@link ObservedUnit#blocksGroundAtAnchor()}: a lifted wall building opens no way a ground scout could take
+     * on the strength of that sighting.
+     */
+    public List<TileFootprint> getBlockingFootprints(Predicate<UnitType> typeFilter, Time firstObservedBy) {
+        return footprints(typeFilter, firstObservedBy, ObservedUnit::blocksGroundAtAnchor);
+    }
+
+    private List<TileFootprint> footprints(Predicate<UnitType> typeFilter, Time firstObservedBy,
+                                           Predicate<ObservedUnit> standing) {
         List<TileFootprint> footprints = new ArrayList<>();
         for (ObservedUnit ou : observedUnits.values()) {
             if (ou.getDestroyedFrame() != null || !typeFilter.test(ou.getUnitType())
-                    || ou.getFirstObservedFrame().greaterThan(firstObservedBy) || !ou.isGroundedAtAnchor()) {
+                    || ou.getFirstObservedFrame().greaterThan(firstObservedBy) || !standing.test(ou)) {
                 continue;
             }
             footprints.add(TileFootprint.centredAt(ou.getUnitType(), ou.getGroundedAnchor()));

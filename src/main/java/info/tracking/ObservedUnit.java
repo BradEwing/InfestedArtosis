@@ -10,6 +10,9 @@ import util.Time;
 
 @Data
 public class ObservedUnit {
+    /** A building last seen lifted this close to the spot it stood on, in pixels, still plugs that spot. */
+    public static final int LIFTED_BLOCK_RADIUS_PIXELS = 192;
+
     private Time firstObservedFrame;
     /**
      * The first frame the unit was observed as its current type. A Drone first seen at 1:00 and next seen as a
@@ -82,6 +85,19 @@ public class ObservedUnit {
             return false;
         }
         return buildTile(lastKnownLocation).equals(buildTile(groundedAnchor));
+    }
+
+    /**
+     * Whether the building still plugs the ground it first stood on: it was last seen grounded there, or last seen
+     * lifted within {@link #LIFTED_BLOCK_RADIUS_PIXELS} of that spot, where a lifted wall building hovers over the
+     * gap it opened and lands back. One last seen lifted farther off, or landed on other tiles, does not.
+     */
+    public boolean blocksGroundAtAnchor() {
+        if (isGroundedAtAnchor()) {
+            return true;
+        }
+        return groundedAnchor != null && lastSeenLifted && lastKnownLocation != null
+                && lastKnownLocation.getDistance(groundedAnchor) <= LIFTED_BLOCK_RADIUS_PIXELS;
     }
 
     private boolean isOnBuildTileCentre(Position position) {

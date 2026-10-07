@@ -11,5 +11,7 @@ public enum BaseCheckSkip {
     /** A check already out was recalled because its route passes a death site recorded just now. */
     DEATH_RECALL,
     /** A ground check was not sent, or was recalled, because enemy buildings seal every ground route to the base. */
-    WALLED
+    WALLED,
+    /** The base or its route lies within static-defence range of a known Bunker, Cannon or Sunken. */
+    STATIC_DEFENCE
 }

@@ -20,7 +20,9 @@ import info.map.ScoutPath;
 import telemetry.BaseCheckEnd;
 import telemetry.BaseCheckSkip;
 import telemetry.BaseChecks;
+import info.tracking.StrategyTracker;
 import telemetry.PerchAssignments;
+import telemetry.PlanEvents;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.TileFootprint;
@@ -28,6 +30,7 @@ import util.Time;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -50,6 +53,9 @@ public class ScoutManager {
     private HashSet<ManagedUnit> zerglingScouts = new HashSet<>();
 
     private ScoutPath enemyMainScoutPath;
+
+    private final Set<BunkerScoutGate.Destination> bunkerSkipsRecorded =
+            EnumSet.noneOf(BunkerScoutGate.Destination.class);
 
     private List<ManagedUnit> recalledOverlords = new ArrayList<>();
 
@@ -147,9 +153,9 @@ public class ScoutManager {
      * {@link BaseCheckScheduler#PERIODIC_PROBE_START_FRAME} only a start location never seen is a candidate, and
      * only while the enemy main is unknown; from then on the stalest available base once it has gone
      * {@link BaseCheckScheduler#CHECK_INTERVAL_FRAMES} unseen, a start location never seen first. Bases already
-     * being checked, walled off from our side by known enemy buildings, held back after a failed check, reached
-     * by a route passing a remembered static-defence
-     * death, or reached by a route past a static defence that a check already out also passes are skipped, and
+     * being checked, behind a held Bunker, walled off from our side by known enemy buildings, held back after a
+     * failed check, reached by a route passing a remembered static-defence death or any known Bunker, Cannon or
+     * Sunken, or reached by a route past a static defence that a check already out also passes are skipped, and
      * a skip of the base the scheduler would have chosen is logged at most once per
      * {@link #SKIP_LOG_INTERVAL_FRAMES} and only when {@code logSkips} says a dispatch was otherwise possible.
      * Overlord checks do not count toward a shared defence.
@@ -194,9 +200,14 @@ public class ScoutManager {
         List<Position> defences = BaseCheckScheduler.staticDefencePositions(sightings);
         Map<Base, BaseCheckSkip> skipReasons = new HashMap<>();
         Map<Base, Position> skipSites = new HashMap<>();
+        Set<Base> bunkerHeld = new HashSet<>();
         for (Base base : checkable) {
             if (blocked.contains(base)
                     || !BaseCheckScheduler.isDue(BaseCheckScheduler.age(lastSeenFrames.get(base), now))) {
+                continue;
+            }
+            if (!mayScoutBase(base)) {
+                bunkerHeld.add(base);
                 continue;
             }
             BaseCheckSkip reason = BaseCheckSkip.WALLED;
@@ -204,6 +215,10 @@ public class ScoutManager {
             if (site == null) {
                 site = BaseCheckScheduler.deathSiteOnRoute(routePositions(base), recentDeaths);
                 reason = BaseCheckSkip.DEATH_ROUTE;
+            }
+            if (site == null) {
+                site = staticDefenceVeto(base, defences);
+                reason = BaseCheckSkip.STATIC_DEFENCE;
             }
             if (site == null) {
                 site = defenceSharedWithCheckInFlight(base, defences);
@@ -218,10 +233,15 @@ public class ScoutManager {
                 startLocations, now);
         List<Base> excluded = new ArrayList<>(blocked);
         excluded.addAll(skipReasons.keySet());
+        excluded.addAll(bunkerHeld);
         Base chosen = BaseCheckScheduler.next(checkable, lastSeenFrames, groundDistances, excluded,
                 startLocations, now);
-        if (logSkips && wanted != null && !wanted.equals(chosen) && skipReasons.containsKey(wanted)) {
-            logSkip(wanted, skipReasons.get(wanted), skipSites.get(wanted), now);
+        if (logSkips && wanted != null && !wanted.equals(chosen)) {
+            if (bunkerHeld.contains(wanted)) {
+                recordBunkerSkip(wanted);
+            } else if (skipReasons.containsKey(wanted)) {
+                logSkip(wanted, skipReasons.get(wanted), skipSites.get(wanted), now);
+            }
         }
         return chosen;
     }
@@ -263,8 +283,15 @@ public class ScoutManager {
         if (searching) {
             return true;
         }
-        Position shared = defenceSharedWithCheckInFlight(enemyMain,
-                BaseCheckScheduler.staticDefencePositions(sightings));
+        List<Position> defences = BaseCheckScheduler.staticDefencePositions(sightings);
+        Position defence = staticDefenceVeto(enemyMain, defences);
+        if (defence != null) {
+            if (logRefusals) {
+                logSkip(enemyMain, BaseCheckSkip.STATIC_DEFENCE, defence, now);
+            }
+            return false;
+        }
+        Position shared = defenceSharedWithCheckInFlight(enemyMain, defences);
         if (shared != null) {
             if (logRefusals) {
                 logSkip(enemyMain, BaseCheckSkip.SHARED_DEFENCE, shared, now);
@@ -272,6 +299,15 @@ public class ScoutManager {
             return false;
         }
         return true;
+    }
+
+    private Position staticDefenceVeto(Base base, List<Position> defences) {
+        if (defences.isEmpty()) {
+            return null;
+        }
+        List<Position> route = routePositions(base);
+        route.add(base.getCenter());
+        return BaseCheckScheduler.staticDefenceOnRoute(route, defences);
     }
 
     private List<Position> deathSitesWithinMemory(int now) {
@@ -286,9 +322,10 @@ public class ScoutManager {
 
     /**
      * Whether known enemy buildings seal every ground route from our main to a base, so a zergling sent there
-     * would meet the wall. Measured on tile steps with the grounded enemy buildings other than town halls
-     * blocked, and refreshed every {@link #WALL_RECOMPUTE_FRAMES} frames. A base the ground walk reaches with no
-     * buildings blocked, and not with them, is walled; one terrain alone cuts off, or with no wall known, is not.
+     * would meet the wall. Measured on tile steps with the enemy buildings other than town halls that stand
+     * grounded, or were last seen lifted near where they stood, blocked, and refreshed every
+     * {@link #WALL_RECOMPUTE_FRAMES} frames. A base the ground walk reaches with no buildings blocked, and not with
+     * them, is walled; one terrain alone cuts off, or with no wall known, is not.
      *
      * @param base the base a ground check would go to
      * @return true when no ground route reaches the base
@@ -309,7 +346,7 @@ public class ScoutManager {
             openDistances = gameState.getGameMap().groundStepDistances(source, tile -> false);
         }
         List<TileFootprint> footprints = gameState.getObservedUnitTracker()
-                .getGroundedFootprints(type -> type.isBuilding() && !type.isResourceDepot(), new Time(now));
+                .getBlockingFootprints(type -> type.isBuilding() && !type.isResourceDepot(), new Time(now));
         wallDistances = gameState.getGameMap().groundStepDistances(source,
                 BaseReachability.blockedTiles(footprints)::contains);
         wallComputedFrame = now;
@@ -536,6 +573,11 @@ public class ScoutManager {
                     && isWalledOff(check.base) && isOnOurSideOfWall(scout)) {
                 reason = BaseCheckScheduler.Release.THREAT;
                 BaseChecks.skipped(now, check.base.getLocation(), BaseCheckSkip.WALLED, check.base.getCenter());
+            }
+            if (reason == BaseCheckScheduler.Release.NONE && scout.getUnitType() != UnitType.Zerg_Overlord
+                    && !mayScoutBase(check.base)) {
+                reason = BaseCheckScheduler.Release.THREAT;
+                recordBunkerSkip(check.base);
             }
             if (reason != BaseCheckScheduler.Release.NONE) {
                 finishBaseCheck(scout, check, reason);
@@ -794,6 +836,57 @@ public class ScoutManager {
                 isEnemyBaseLocated());
     }
 
+    /**
+     * Whether a ground scout may route to the enemy main: not while a detected Bunker holds the natural or the main,
+     * see {@link BunkerScoutGate}. Opening the route re-arms {@link #recordBunkerSkip}.
+     */
+    boolean mayScoutEnemyMain() {
+        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
+        if (enemyMain == null) {
+            return true;
+        }
+        return mayScoutBase(enemyMain);
+    }
+
+    /**
+     * Whether a ground scout may route to a base: not while a detected Bunker holds the way to it, see
+     * {@link BunkerScoutGate#mayRouteToBase}. Opening the route re-arms {@link #recordBunkerSkip}.
+     *
+     * @param base the base a ground scout would go to
+     * @return false while a held Bunker closes the route to it
+     */
+    public boolean mayScoutBase(Base base) {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        if (strategyTracker == null) {
+            return true;
+        }
+        TilePosition main = locationOf(gameState.getBaseData().getMainEnemyBase());
+        TilePosition natural = locationOf(gameState.getBaseData().getEnemyNaturalBase());
+        boolean may = BunkerScoutGate.mayRouteToBase(strategyTracker.isBunkerNaturalHeld(),
+                strategyTracker.isBunkerMainHeld(), base.getLocation(), main, natural);
+        if (may) {
+            bunkerSkipsRecorded.remove(BunkerScoutGate.destination(base.getLocation(), main, natural));
+        }
+        return may;
+    }
+
+    private static TilePosition locationOf(Base base) {
+        return base == null ? null : base.getLocation();
+    }
+
+    /**
+     * Writes a SCOUT_SKIPPED row for a ground scout withheld from, or recalled off, a base by a held Bunker, once
+     * per destination until the route opens again.
+     */
+    private void recordBunkerSkip(Base base) {
+        BunkerScoutGate.Destination destination = BunkerScoutGate.destination(base.getLocation(),
+                locationOf(gameState.getBaseData().getMainEnemyBase()),
+                locationOf(gameState.getBaseData().getEnemyNaturalBase()));
+        if (bunkerSkipsRecorded.add(destination)) {
+            PlanEvents.scoutSkipped(BunkerScoutGate.skipLabel(destination));
+        }
+    }
+
     private boolean isEnemyBaseLocated() {
         return gameState.getBaseData().knowEnemyMainBase()
                 || gameState.getScoutData().isEnemyBuildingLocationKnown();
@@ -826,17 +919,26 @@ public class ScoutManager {
                 currentScouts++;
             }
         }
-        return BaseCheckScheduler.searchLingsToSend(neverSeen(enemyMain), lastDispatchFrames.getOrDefault(enemyMain, -1),
-                currentFrame, Math.max(0, maxScouts - currentScouts));
+        int toSend = BaseCheckScheduler.searchLingsToSend(neverSeen(enemyMain),
+                lastDispatchFrames.getOrDefault(enemyMain, -1), currentFrame, Math.max(0, maxScouts - currentScouts));
+        if (toSend > 0 && !mayScoutEnemyMain()) {
+            recordBunkerSkip(enemyMain);
+            return 0;
+        }
+        return toSend;
     }
 
     private boolean neverSeen(Base enemyMain) {
         return Config.baseChecks && gameState.getScoutData().getBaseLastSeenFrame(enemyMain.getLocation()) < 0;
     }
 
-    private TilePosition pollDroneScoutTarget() {
+    private TilePosition pollDroneScoutTarget(boolean bunkerGated) {
         BaseData baseData = gameState.getBaseData();
         if (baseData.knowEnemyMainBase()) {
+            if (bunkerGated && !mayScoutEnemyMain()) {
+                recordBunkerSkip(baseData.getMainEnemyBase());
+                return null;
+            }
             return scoutEnemyMain();
         }
         if (baseData.isEnemyMainBaseFound()) {
@@ -940,7 +1042,7 @@ public class ScoutManager {
         TilePosition target = null;
         if (managedUnit.getUnitType() == UnitType.Zerg_Drone ||
             managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
-            target = this.pollDroneScoutTarget();
+            target = this.pollDroneScoutTarget(managedUnit.getUnitType() == UnitType.Zerg_Zergling);
         } else {
             target = gameState.pollScoutTarget();
         }

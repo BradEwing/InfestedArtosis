@@ -347,6 +347,48 @@ class ObservedUnitTrackerTest {
     }
 
     @Test
+    void aBarracksLastSeenLiftedNearItsAnchorStillBlocksTheWalk() {
+        ObservedUnit barracks = groundedBarracks();
+        barracks.setLastKnownLocation(new Position(GROUNDED.getX() - 1, GROUNDED.getY() - 43));
+        barracks.recordLift(true);
+
+        assertTrue(barracks.blocksGroundAtAnchor());
+        assertEquals(1, blockingFootprints(barracks).size());
+        assertFootprintAt(GROUNDED, blockingFootprints(barracks));
+    }
+
+    @Test
+    void aBarracksLastSeenLiftedFarFromItsAnchorNoLongerBlocksTheWalk() {
+        ObservedUnit barracks = groundedBarracks();
+        barracks.setLastKnownLocation(new Position(GROUNDED.getX() + ObservedUnit.LIFTED_BLOCK_RADIUS_PIXELS + 1,
+                GROUNDED.getY()));
+        barracks.recordLift(true);
+
+        assertFalse(barracks.blocksGroundAtAnchor());
+        assertTrue(blockingFootprints(barracks).isEmpty());
+    }
+
+    @Test
+    void aGroundedBarracksBlocksTheWalkAndADestroyedOneDoesNot() {
+        ObservedUnit barracks = groundedBarracks();
+
+        assertEquals(1, blockingFootprints(barracks).size());
+
+        barracks.setDestroyedFrame(DRONE_COMPLETED);
+
+        assertTrue(blockingFootprints(barracks).isEmpty());
+    }
+
+    @Test
+    void aBarracksNeverAnchoredBlocksNothing() {
+        ObservedUnit barracks = ObservedUnitFixture.observedUnit(UnitType.Terran_Barracks, new Position(3391, 901),
+                DRONE_OBSERVED);
+        barracks.recordLift(true);
+
+        assertFalse(barracks.blocksGroundAtAnchor());
+    }
+
+    @Test
     void aGateBarracksLiftedAndLandedBackInPlaceHasItsFootprintAgain() {
         ObservedUnit barracks = groundedBarracks();
         barracks.setLastKnownLocation(new Position(GROUNDED.getX() - 1, GROUNDED.getY() - 43));
@@ -413,6 +455,10 @@ class ObservedUnitTrackerTest {
 
     private static List<TileFootprint> footprints(ObservedUnit observedUnit) {
         return ObservedUnitFixture.trackerHolding(observedUnit).getGroundedFootprints(type -> true, WALL_CUTOFF);
+    }
+
+    private static List<TileFootprint> blockingFootprints(ObservedUnit observedUnit) {
+        return ObservedUnitFixture.trackerHolding(observedUnit).getBlockingFootprints(type -> true, WALL_CUTOFF);
     }
 
     private static TileFootprint barracksAt(int left, int top) {

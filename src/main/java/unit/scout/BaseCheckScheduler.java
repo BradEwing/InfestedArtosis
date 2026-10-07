@@ -19,16 +19,19 @@ import java.util.stream.Collectors;
 public final class BaseCheckScheduler {
 
     /**
-     * A base is due for a check once it has gone this long unseen. A tuning value, one minute of game time,
+     * A base is due for a check once it has gone this long unseen. A tuning value, forty seconds of game time,
      * kept apart from the 720 frame constant the air harass uses to age an anti-air sighting.
      */
-    public static final int CHECK_INTERVAL_FRAMES = new Time(1, 0).getFrames();
+    public static final int CHECK_INTERVAL_FRAMES = new Time(0, 40).getFrames();
+
+    /** Tuning value: the wait after the first failed check of a base, before it doubles with each further failure. */
+    public static final int RETRY_BASE_FRAMES = new Time(1, 0).getFrames();
 
     /** Tuning value: no base is checked before this frame, when the army is out and lings are spare. */
     public static final int FIRST_CHECK_FRAME = new Time(4, 0).getFrames();
 
     /** Tuning value: frames after which a check that has not seen its base is abandoned. */
-    public static final int CHECK_TIMEOUT_FRAMES = 2 * CHECK_INTERVAL_FRAMES;
+    public static final int CHECK_TIMEOUT_FRAMES = new Time(2, 0).getFrames();
 
     /** Tuning value: a scout under this share of its hit points is recalled. */
     public static final double RECALL_HIT_POINT_SHARE = 0.5;
@@ -37,16 +40,16 @@ public final class BaseCheckScheduler {
     public static final int OCCUPIED_RADIUS_PIXELS = 320;
 
     /** Tuning value: ling checks, each to its own base, that may be out at once. */
-    public static final int MAX_LING_CHECKS = 3;
+    public static final int MAX_LING_CHECKS = 4;
 
     /** Tuning value: overlord checks that may be out at once. */
     public static final int MAX_OVERLORD_CHECKS = 1;
 
-    /** Tuning value: the longest a base is left alone after failed checks, in check intervals. */
+    /** Tuning value: the longest a base is left alone after failed checks, in retry waits. */
     public static final int MAX_BACKOFF_INTERVALS = 8;
 
     /** Tuning value: how long a scout's death site is remembered when routing checks, in frames. */
-    public static final int DEATH_MEMORY_FRAMES = 4 * CHECK_INTERVAL_FRAMES;
+    public static final int DEATH_MEMORY_FRAMES = new Time(4, 0).getFrames();
 
     /** Tuning value: a route passing this close to a remembered death site, in pixels, is avoided. */
     public static final int DEATH_AVOID_RADIUS_PIXELS = 288;
@@ -286,6 +289,18 @@ public final class BaseCheckScheduler {
     }
 
     /**
+     * The static defence a check to a base would meet before any scout has died there.
+     *
+     * @param route points along the ground route to the base, ending at the base
+     * @param defences positions of known static defence
+     * @return the first defence within {@link #DEATH_AVOID_RADIUS_PIXELS} of a route point, or null
+     */
+    public static Position staticDefenceOnRoute(Collection<Position> route, Collection<Position> defences) {
+        List<Position> near = defencesNearRoute(route, defences);
+        return near.isEmpty() ? null : near.get(0);
+    }
+
+    /**
      * Whether two routes run past the same static defence, so two scouts sent along them would meet it
      * together.
      *
@@ -401,9 +416,9 @@ public final class BaseCheckScheduler {
     }
 
     /**
-     * The frame a base may next be checked after a check of it failed to see it. The wait is one check interval
-     * after the first failure and doubles with each consecutive failure, up to {@link #MAX_BACKOFF_INTERVALS}
-     * intervals.
+     * The frame a base may next be checked after a check of it failed to see it. The wait is one
+     * {@link #RETRY_BASE_FRAMES} after the first failure and doubles with each consecutive failure, up to
+     * {@link #MAX_BACKOFF_INTERVALS} times that.
      *
      * @param now the frame the check failed
      * @param consecutiveFailures failed checks of this base in a row, counting this one
@@ -411,7 +426,7 @@ public final class BaseCheckScheduler {
      */
     public static int retryFrame(int now, int consecutiveFailures) {
         int intervals = 1 << Math.max(0, Math.min(consecutiveFailures - 1, 30));
-        return now + CHECK_INTERVAL_FRAMES * Math.min(intervals, MAX_BACKOFF_INTERVALS);
+        return now + RETRY_BASE_FRAMES * Math.min(intervals, MAX_BACKOFF_INTERVALS);
     }
 
     /**

@@ -72,6 +72,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILDER_REDISPATCH = "BUILDER_REDISPATCH";
     private static final String EVENT_GEYSER_DEPLETED = "GEYSER_DEPLETED";
     private static final String EVENT_BUILD_ORDER_TRANSITION = "BUILD_ORDER_TRANSITION";
+    private static final String EVENT_SCOUT_SKIPPED = "SCOUT_SKIPPED";
     private static final String EVENT_BASE_CLAIMED = "BASE_CLAIMED";
     private static final String EVENT_MINERAL_PATCH_SEEN_GONE = "MINERAL_PATCH_SEEN_GONE";
     private static final String EVENT_DRONE_ROUND_OPEN = "DRONE_ROUND_OPEN";
@@ -187,6 +188,10 @@ public class PlanEventLogger implements PlanEventSink {
      * leave every plan column empty. item is the build handing over, the build taking over and the
      * trigger, as 2HatchMuta>LurkerDefilerUltra:GOLIATHS; build_order is still the chain before the
      * handover.
+     * <p>
+     * SCOUT_SKIPPED rows are written when a ground scout is withheld from, or recalled off, a route a detected
+     * Bunker holds, and leave every plan column empty. item is the reason and the destination, as
+     * BUNKER:ENEMY_MAIN. One row is written per hold, not every frame it stays held.
      * <p>
      * TECH_SITE_MISS rows are written when a build order about to plan a tech building finds no room on creep
      * for it at the main while we hold the main, and leave the plan id empty. item is the building. build_tile_x
@@ -797,6 +802,24 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: scouts are assigned during the
+     * unit manager's frame, which may run ahead of this logger's onFrame.
+     */
+    @Override
+    public void onScoutSkipped(String skipLabel) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(scoutSkippedRow(skipLabel));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * The frame is re-read for the reason {@link #onStrategyDetected} gives: the build order probes the site
      * during production, which may run ahead of this logger's onFrame on the same frame.
      */
@@ -1322,6 +1345,23 @@ public class PlanEventLogger implements PlanEventSink {
         appendEvent(sb, EVENT_BUILD_ORDER_TRANSITION);
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(transitionLabel)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
+    /** A row for a ground scout kept off a held route, which no plan owns, so the plan columns are empty. */
+    private String scoutSkippedRow(String skipLabel) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_SCOUT_SKIPPED);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(skipLabel)).append(',');
         appendEmpty(sb, 4);
         appendBlocker(sb, PlanBlocker.NONE, 0);
         appendEmpty(sb, 3);

@@ -28,8 +28,8 @@ class BaseCheckSchedulerTest {
     }
 
     @Test
-    void intervalIsOneMinuteAndNotTheHarassStrikeConstant() {
-        assertEquals(1440, BaseCheckScheduler.CHECK_INTERVAL_FRAMES);
+    void intervalIsFortySecondsAndNotTheHarassStrikeConstant() {
+        assertEquals(960, BaseCheckScheduler.CHECK_INTERVAL_FRAMES);
     }
 
     @Test
@@ -80,7 +80,7 @@ class BaseCheckSchedulerTest {
 
     @Test
     void noBaseIsCheckedBeforeItIsDue() {
-        Map<String, Integer> lastSeen = map("a", NOW - 1000, "b", NOW - 1439);
+        Map<String, Integer> lastSeen = map("a", NOW - 100, "b", NOW - (BaseCheckScheduler.CHECK_INTERVAL_FRAMES - 1));
         assertNull(BaseCheckScheduler.next(Arrays.asList("a", "b"), lastSeen, Collections.emptyMap(),
                 Collections.emptyList(), NOW));
     }
@@ -149,12 +149,12 @@ class BaseCheckSchedulerTest {
         int retryFrame = BaseCheckScheduler.retryFrame(NOW, 1);
         assertEquals("b", BaseCheckScheduler.next(Arrays.asList("a", "b"), lastSeen, Collections.emptyMap(),
                 Collections.singletonList("a"), NOW));
-        assertEquals(NOW + BaseCheckScheduler.CHECK_INTERVAL_FRAMES, retryFrame);
+        assertEquals(NOW + BaseCheckScheduler.RETRY_BASE_FRAMES, retryFrame);
     }
 
     @Test
     void theRetryWaitDoublesWithEachFailureUpToTheCap() {
-        int interval = BaseCheckScheduler.CHECK_INTERVAL_FRAMES;
+        int interval = BaseCheckScheduler.RETRY_BASE_FRAMES;
         assertEquals(NOW + interval, BaseCheckScheduler.retryFrame(NOW, 1));
         assertEquals(NOW + 2 * interval, BaseCheckScheduler.retryFrame(NOW, 2));
         assertEquals(NOW + 4 * interval, BaseCheckScheduler.retryFrame(NOW, 3));
@@ -354,9 +354,9 @@ class BaseCheckSchedulerTest {
     }
 
     @Test
-    void lingCheckCapIsThree() {
-        assertTrue(BaseCheckScheduler.mayStartCheck(2, false));
-        assertFalse(BaseCheckScheduler.mayStartCheck(3, false));
+    void lingCheckCapIsFour() {
+        assertTrue(BaseCheckScheduler.mayStartCheck(3, false));
+        assertFalse(BaseCheckScheduler.mayStartCheck(4, false));
     }
 
     @Test
@@ -401,6 +401,33 @@ class BaseCheckSchedulerTest {
         List<Position> first = Arrays.asList(new Position(0, 0), new Position(1000, 1100));
         List<Position> second = Arrays.asList(new Position(0, 500), new Position(900, 1000));
         assertEquals(defence, BaseCheckScheduler.sharedDefence(first, second, Collections.singletonList(defence)));
+    }
+
+    @Test
+    void aRoutePassingAKnownDefenceMeetsItBeforeAnyScoutHasDied() {
+        Position bunker = new Position(1000, 1000);
+        List<Position> route = Arrays.asList(new Position(0, 0), new Position(1000, 1100));
+        assertEquals(bunker, BaseCheckScheduler.staticDefenceOnRoute(route,
+                Arrays.asList(new Position(5000, 5000), bunker)));
+    }
+
+    @Test
+    void aRouteJustOutsideTheAvoidRadiusMeetsNoDefence() {
+        Position bunker = new Position(BaseCheckScheduler.DEATH_AVOID_RADIUS_PIXELS + 1, 0);
+        assertNull(BaseCheckScheduler.staticDefenceOnRoute(Collections.singletonList(new Position(0, 0)),
+                Collections.singletonList(bunker)));
+    }
+
+    @Test
+    void aRouteMeetsNoDefenceWhenNoneIsKnown() {
+        assertNull(BaseCheckScheduler.staticDefenceOnRoute(Collections.singletonList(new Position(0, 0)),
+                Collections.emptyList()));
+    }
+
+    @Test
+    void aBaseIsDueWellInsideTheNinetySecondTargetAndAFailedBaseStillWaitsAMinute() {
+        assertTrue(BaseCheckScheduler.CHECK_INTERVAL_FRAMES < 90 * 24);
+        assertEquals(1440, BaseCheckScheduler.RETRY_BASE_FRAMES);
     }
 
     @Test

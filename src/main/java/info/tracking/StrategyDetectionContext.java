@@ -70,6 +70,18 @@ public class StrategyDetectionContext {
     }
 
     /**
+     * Whether a tile lies in the BWEM Area of the enemy main. Null while the enemy main is unknown.
+     */
+    public Predicate<TilePosition> enemyMainArea() {
+        Base enemyMain = baseData.getMainEnemyBase();
+        if (enemyMain == null || enemyMain.getArea() == null) {
+            return null;
+        }
+        Area mainArea = enemyMain.getArea();
+        return tile -> isInArea(tile, mainArea);
+    }
+
+    /**
      * Tiles within tileRadius manhattan tiles of the centre of a chokepoint of the enemy main's BWEM Area, the
      * ground a wall across the main's ramp or entrance stands on. Null while the enemy main is unknown.
      */
