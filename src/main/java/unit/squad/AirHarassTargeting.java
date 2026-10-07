@@ -3,6 +3,7 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.UnitType;
 import bwapi.WeaponType;
+import info.map.HarassHeatMap;
 import info.tracking.EnemyReachMemory;
 import lombok.Builder;
 import lombok.Getter;
@@ -15,6 +16,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
@@ -508,6 +510,32 @@ public final class AirHarassTargeting {
             }
         }
         return true;
+    }
+
+    /** Tuning value: pixels from an enemy base's center within which a Turret belongs to the base. */
+    static final int EDGE_BASE_RADIUS = HarassHeatMap.RADIUS_TILES * 32;
+
+    /** Tuning value: frames since a base's core was in sight within which a Turret at the base may be taken on. */
+    static final int EDGE_CORE_SIGHT_FRAMES = 720;
+
+    /**
+     * Whether a lone Turret may be taken on as an edge Turret: one beside no known enemy base, an exposed target's
+     * Turret, or one at a base whose core was in sight within {@link #EDGE_CORE_SIGHT_FRAMES}, since a base's next
+     * Turret is only discovered on arrival and its core being seen tells the flock that none stands beyond.
+     *
+     * @param turret the Turret's position
+     * @param sightingAges frames since the core of each known enemy base, by its center, was in sight
+     * @return true when the Turret may be taken on
+     */
+    public static boolean edgeTurretOpen(Position turret, Map<Position, Integer> sightingAges) {
+        Position nearest = null;
+        for (Position base : sightingAges.keySet()) {
+            if (base.getDistance(turret) <= EDGE_BASE_RADIUS
+                    && (nearest == null || base.getDistance(turret) < nearest.getDistance(turret))) {
+                nearest = base;
+            }
+        }
+        return nearest == null || sightingAges.get(nearest) <= EDGE_CORE_SIGHT_FRAMES;
     }
 
     private static boolean isLone(AirThreat turret, Collection<AirThreat> threats) {

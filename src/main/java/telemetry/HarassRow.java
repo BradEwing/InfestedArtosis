@@ -31,7 +31,9 @@ public final class HarassRow {
         EXIT,
         AA_REACTION,
         UNIT_RETARGET,
-        EDGE_TURRET
+        EDGE_TURRET,
+        ZONE_RECORD,
+        ZONE_CLEAR
     }
 
     private final int frame;
@@ -114,6 +116,8 @@ public final class HarassRow {
     private final int defenseZones = -1;
     @Builder.Default
     private final int zoneUnits = -1;
+    @Builder.Default
+    private final int zonesCleared = -1;
 
     /**
      * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.

@@ -43,8 +43,46 @@ public final class AirReinforcement {
     static final int MAX_DETOUR_NODES = 256;
     /** Tuning value: frames between path searches for a reinforcing squad. */
     public static final int REPLAN_FRAMES = 12;
+    /**
+     * Tuning value: frames the entry of a squad that reinforcements are flying to is held for, counted from the frame
+     * the first of them took its route.
+     */
+    public static final int LINK_HOLD_FRAMES = 720;
 
     private AirReinforcement() {
+    }
+
+    /**
+     * Whether reinforcements that took their route at a frame still hold the entry of the squad they fly to: from
+     * that frame until {@link #LINK_HOLD_FRAMES} have passed, so a squad is never held for longer than that however
+     * long they take to arrive.
+     *
+     * @param routedFrame frame the reinforcement took its route to the squad
+     * @param now current frame
+     * @return true while the hold stands
+     */
+    public static boolean holdsEntry(int routedFrame, int now) {
+        return routedFrame >= 0 && now - routedFrame < LINK_HOLD_FRAMES;
+    }
+
+    /**
+     * The pixels a path adds to the straight flight to its last waypoint.
+     *
+     * @param from the start point
+     * @param path waypoints after the start
+     * @return the detour, never negative; 0 for an empty path
+     */
+    public static double detour(Position from, List<Position> path) {
+        if (path.isEmpty()) {
+            return 0;
+        }
+        double length = 0;
+        Position at = from;
+        for (Position point : path) {
+            length += at.getDistance(point);
+            at = point;
+        }
+        return Math.max(0, length - from.getDistance(at));
     }
 
     /**

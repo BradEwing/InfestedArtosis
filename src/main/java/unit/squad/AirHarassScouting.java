@@ -45,6 +45,8 @@ public final class AirHarassScouting {
      * within about the carry window.
      */
     static final int ESCALATION_FRAMES = AirHarassEvaluator.REENTRY_HOLD_FRAMES + CARRY_FRAMES;
+    /** Tuning value: pixels from a refused base's center within which an exposed group is no raid target. */
+    static final int REFUSED_BASE_RADIUS = HarassHeatMap.RADIUS_TILES * 32;
 
     private AirHarassScouting() {
     }
@@ -178,13 +180,55 @@ public final class AirHarassScouting {
     }
 
     /**
-     * The bases a harass may enter now: every base whose refusal, see {@link #refusesBase}, has run out.
+     * The bases refused now: every base whose refusal, see {@link #refusesBase}, has not run out.
      *
      * @param bases candidate bases
      * @param refusedUntil last refused frame of each refused base
      * @param now current frame
      * @param <B> base type
      * @return the bases not refused, in their original order
+     */
+    public static <B> List<B> refused(Collection<B> bases, Map<B, Integer> refusedUntil, int now) {
+        List<B> kept = new ArrayList<>(bases);
+        kept.removeAll(unrefused(bases, refusedUntil, now));
+        return kept;
+    }
+
+    /**
+     * The exposed groups a harass may raid while bases are refused: every group whose anchor is farther than
+     * {@link #REFUSED_BASE_RADIUS} from the center of every refused base, since a raid on ground beside a refused
+     * base meets the defense that turned the flock away from it.
+     *
+     * @param groups candidate exposed groups
+     * @param refusedCenters centers of the bases refused now
+     * @return the groups not beside a refused base, in their original order
+     */
+    public static List<ExposedTargets.Group> besideNoRefusedBase(Collection<ExposedTargets.Group> groups,
+                                                                 Collection<Position> refusedCenters) {
+        List<ExposedTargets.Group> kept = new ArrayList<>();
+        for (ExposedTargets.Group group : groups) {
+            boolean beside = false;
+            for (Position center : refusedCenters) {
+                if (center.getDistance(group.getAnchor()) <= REFUSED_BASE_RADIUS) {
+                    beside = true;
+                    break;
+                }
+            }
+            if (!beside) {
+                kept.add(group);
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * The bases a harass may enter now: every base whose refusal, see {@link #refusesBase}, has run out.
+     *
+     * @param bases candidate bases
+     * @param refusedUntil last refused frame of each refused base
+     * @param now current frame
+     * @param <B> base type
+     * @return the bases refused, in their original order
      */
     public static <B> List<B> unrefused(Collection<B> bases, Map<B, Integer> refusedUntil, int now) {
         List<B> kept = new ArrayList<>();

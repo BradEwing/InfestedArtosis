@@ -503,4 +503,34 @@ class AirHarassScoutingTest {
         assertTrue(AirHarassScouting.inReach(Collections.singletonList(interceptor), BASE, STRIKE).isEmpty());
         assertNull(AirHarassScouting.react(state, Collections.singletonList(interceptor), BASE, STRIKE, 0, NOW, 600));
     }
+
+    @Test
+    void refusedBasesAreTheOnesTheRefusalStillHolds() {
+        Map<String, Integer> refusedUntil = new HashMap<>();
+        refusedUntil.put("a", NOW + 10);
+        refusedUntil.put("b", NOW - 1);
+
+        assertEquals(Collections.singletonList("a"),
+                AirHarassScouting.refused(Arrays.asList("a", "b", "c"), refusedUntil, NOW));
+    }
+
+    @Test
+    void anExposedGroupBesideARefusedBaseIsNoRaidTarget() {
+        ExposedTargets.Group beside = new ExposedTargets.Group(new Position(1200, 1000), 3, 10, Collections.emptySet());
+        ExposedTargets.Group away = new ExposedTargets.Group(
+                new Position(1000 + AirHarassScouting.REFUSED_BASE_RADIUS + 1, 1000), 3, 10, Collections.emptySet());
+
+        List<ExposedTargets.Group> kept = AirHarassScouting.besideNoRefusedBase(Arrays.asList(beside, away),
+                Collections.singletonList(new Position(1000, 1000)));
+
+        assertEquals(Collections.singletonList(away), kept);
+    }
+
+    @Test
+    void everyExposedGroupStaysWithNoBaseRefused() {
+        ExposedTargets.Group group = new ExposedTargets.Group(new Position(1200, 1000), 3, 10, Collections.emptySet());
+
+        assertEquals(Collections.singletonList(group),
+                AirHarassScouting.besideNoRefusedBase(Collections.singletonList(group), Collections.emptyList()));
+    }
 }

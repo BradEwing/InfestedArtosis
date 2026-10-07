@@ -229,7 +229,7 @@ public class SquadManager {
         this.agentFactory = new BWMirrorAgentFactory();
         this.containmentEvaluator = new ContainmentEvaluator(gameState);
         this.airHarass = new AirHarassController(game, gameState);
-        this.airReinforcer = new AirReinforcer(game, gameState);
+        this.airReinforcer = new AirReinforcer(game, gameState, airHarass::rememberedAntiAir);
     }
 
     public void updateFightSquads() {
@@ -1811,7 +1811,8 @@ public class SquadManager {
      * the Overlord squad, since they would trail the Mutalisks into the enemy base.
      *
      * @param squad fight squad cleared to act
-     * @return true when the squad entered HARASS
+     * @return true when the squad entered HARASS; false while reinforcements fly to it, see
+     *     {@link AirReinforcer#holdsEntry}
      */
     private boolean tryEnterHarass(Squad squad) {
         int now = game.getFrameCount();
@@ -1824,7 +1825,8 @@ public class SquadManager {
         AirHarassEvaluator.ReentryHold hold = AirHarassEvaluator.reentryHold(Config.airFlapEscape,
                 squad.getHarassExitEngageFrame(), squad.getHarassExitEngageTarget(), stalled, now);
         if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now) && !stalled,
-                squad.isFightLocked(now), now) || hold == AirHarassEvaluator.ReentryHold.ALL) {
+                squad.isFightLocked(now), now) || hold == AirHarassEvaluator.ReentryHold.ALL
+                || airReinforcer.holdsEntry(squad, now)) {
             return false;
         }
         Position heldTarget = hold == AirHarassEvaluator.ReentryHold.TARGET

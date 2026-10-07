@@ -296,4 +296,43 @@ class AirReinforcementTest {
         assertTrue(SquadManager.mayJoinAirSquadAt(SquadStatus.RALLY, SquadManager.AIR_JOIN_DISTANCE - 1, true));
         assertFalse(SquadManager.mayJoinAirSquadAt(SquadStatus.CONTAIN, 0, false));
     }
+
+    @Test
+    void reinforcementsHoldTheEntryFromTheirRouteUntilTheLinkHoldRunsOut() {
+        assertTrue(AirReinforcement.holdsEntry(1000, 1000));
+        assertTrue(AirReinforcement.holdsEntry(1000, 1000 + AirReinforcement.LINK_HOLD_FRAMES - 1));
+        assertFalse(AirReinforcement.holdsEntry(1000, 1000 + AirReinforcement.LINK_HOLD_FRAMES));
+        assertFalse(AirReinforcement.holdsEntry(-1, 1000));
+    }
+
+    @Test
+    void aStraightPathHasNoDetour() {
+        assertEquals(0, AirReinforcement.detour(FROM, Collections.singletonList(GOAL)), 1e-9);
+        assertEquals(0, AirReinforcement.detour(FROM, Collections.emptyList()), 1e-9);
+    }
+
+    @Test
+    void aPathAroundARememberedZoneHasADetourAndKeepsClearOfIt() {
+        List<AirHarassTargeting.AirThreat> zone = Collections.singletonList(
+                threat(1, UnitType.Terran_Missile_Turret, MIDWAY));
+        assertFalse(AirHarassTargeting.segmentClear(FROM, GOAL, zone));
+
+        List<Position> path = AirReinforcement.safePath(FROM, GOAL, zone, ANYWHERE);
+
+        assertNotNull(path);
+        assertTrue(AirReinforcement.detour(FROM, path) > 0);
+        assertEveryLegOutside(FROM, path, zone);
+    }
+
+    @Test
+    void zoneMembersPricedWithTheKnownThreatsAreBothDetoured() {
+        List<AirHarassTargeting.AirThreat> priced = new ArrayList<>();
+        priced.add(threat(1, UnitType.Terran_Missile_Turret, new Position(1700, 2000)));
+        priced.add(threat(2, UnitType.Terran_Goliath, new Position(2300, 2000)));
+
+        List<Position> path = AirReinforcement.safePath(FROM, GOAL, priced, ANYWHERE);
+
+        assertNotNull(path);
+        assertEveryLegOutside(FROM, path, priced);
+    }
 }

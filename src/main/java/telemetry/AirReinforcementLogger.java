@@ -30,7 +30,11 @@ import java.util.function.IntPredicate;
  *
  * <p>ROUTE is written when a rallying air squad starts flying to an active air squad, or changes target, with the
  * number of waypoints of its path in waypoints and its length in path_px; REFUSED when no active air squad has a
- * safe path, once per refusal episode; and JOIN when it arrives and hands its members over.
+ * safe path, once per refusal episode; and JOIN when it arrives and hands its members over. zone_threats is the number of
+ * remembered defense-zone units the path search priced beside the anti-air known now, detour_px the pixels the path
+ * adds to the straight flight, and in_flight the air squads then flying to the same target. JOIN carries link_frames,
+ * the frames from the route to the arrival. HOLD is written when the target squad's harass entry is held while
+ * reinforcements fly to it, once per hold, with in_flight.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -40,7 +44,7 @@ public class AirReinforcementLogger implements AirReinforcementSink {
 
     static final String HEADER = "game_id,frame,event,unit_id,squad_id,squad_status,target_squad_id,target_status,"
             + "center_x,center_y,target_x,target_y,mutas,waypoints,path_px,nearest_mate_px,active_air_squads,"
-            + "hatch_frame,nearest_squad_mate_px";
+            + "hatch_frame,nearest_squad_mate_px,zone_threats,detour_px,in_flight,link_frames";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -266,6 +270,10 @@ public class AirReinforcementLogger implements AirReinforcementSink {
         fields.add(String.valueOf(row.getActiveAirSquads()));
         fields.add(String.valueOf(row.getHatchFrame()));
         fields.add(Csv.format(row.getNearestSquadMateDistance()));
+        fields.add(String.valueOf(row.getZoneThreats()));
+        fields.add(Csv.format(row.getDetour()));
+        fields.add(String.valueOf(row.getInFlight()));
+        fields.add(String.valueOf(row.getLinkFrames()));
         return String.join(",", fields);
     }
 

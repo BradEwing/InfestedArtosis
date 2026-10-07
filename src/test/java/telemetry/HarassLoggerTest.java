@@ -251,6 +251,28 @@ class HarassLoggerTest {
         assertEquals("WORKER", fields[columnIndex("retarget_new_tier")]);
         assertEquals("2", tickFields[columnIndex("defense_zones")]);
         assertEquals("5", tickFields[columnIndex("zone_units")]);
+        assertEquals("-1", tickFields[columnIndex("zones_cleared")]);
+    }
+
+    @Test
+    void zoneRowsCarryTheZoneCountsAndTheClearsAfterMainsColumns() {
+        HarassRow record = HarassRow.builder().frame(11300).squadId("squad-1").event(HarassRow.Event.ZONE_RECORD)
+                .aaAtTarget(1).defenseZones(3).zoneUnits(4).build();
+        HarassRow clear = HarassRow.builder().frame(11400).event(HarassRow.Event.ZONE_CLEAR)
+                .defenseZones(1).zonesCleared(2).build();
+
+        String[] recordFields = HarassLogger.row("game-1", record).split(",", -1);
+        String[] clearFields = HarassLogger.row("game-1", clear).split(",", -1);
+
+        assertEquals(HarassLogger.HEADER.split(",", -1).length, recordFields.length);
+        assertEquals(HarassLogger.HEADER.split(",", -1).length, clearFields.length);
+        assertEquals("ZONE_RECORD", recordFields[columnIndex("event")]);
+        assertEquals("1", recordFields[columnIndex("aa_at_target")]);
+        assertEquals("4", recordFields[columnIndex("zone_units")]);
+        assertEquals("ZONE_CLEAR", clearFields[columnIndex("event")]);
+        assertEquals("NONE", clearFields[columnIndex("squad_id")]);
+        assertEquals("2", clearFields[columnIndex("zones_cleared")]);
+        assertColumnsInOrder("zone_units", "zones_cleared");
     }
 
     @Test

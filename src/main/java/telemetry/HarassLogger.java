@@ -51,8 +51,11 @@ import java.util.Map;
  *
  * <p>defense_zones is how many defense groups the flock turned away from are remembered, see AirHarassDefenseZones, and
  * zone_units how many remembered anti-air units not otherwise known are priced from them, on ENTRY_CHECK and TICK
- * rows. An AA_REACTION row whose anti-air stood only at the flock carries in zone_units the members of the zone it
- * recorded, and -1 when it stood at the target base.
+ * rows. An AA_REACTION row carries in zone_units the members of the zone it recorded. A ZONE_RECORD row is written
+ * with it, at the zone's center, carrying the trigger in aa_trigger_type and aa_trigger_id, aa_at_target, the
+ * members in zone_units and the zones now remembered in defense_zones. A ZONE_CLEAR row is written when zones are
+ * dropped, a member sighted gone or beyond the zone, a dead or aged-out zone, with the number dropped in zones_cleared
+ * and the zones left in defense_zones; it carries no squad.
  *
  * <p>stalled is 1 when the squad's FIGHT and RETREAT crossings read as a stall, see AirStallDetector, and 0 when they
  * do not, on ENTRY_CHECK and ENTER rows; it is -1 while the IA_AIR_FLAP_ESCAPE switch is off, which leaves the stall
@@ -73,7 +76,7 @@ public class HarassLogger implements HarassSink {
             + "aa_known_cover,stalled,exposed_score,base_score,aa_seen_frame,aa_turn_frame,aa_hp_lost,"
             + "aa_trigger_type,aa_trigger_id,aa_at_target,edge_turrets,edge_turret_id,retarget_old_id,"
             + "retarget_old_type,retarget_new_id,retarget_new_type,retarget_old_distance,retarget_new_distance,"
-            + "retarget_old_tier,retarget_new_tier,defense_zones,zone_units";
+            + "retarget_old_tier,retarget_new_tier,defense_zones,zone_units,zones_cleared";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -216,6 +219,7 @@ public class HarassLogger implements HarassSink {
         fields.add(Csv.name(row.getRetargetNewTier()));
         fields.add(String.valueOf(row.getDefenseZones()));
         fields.add(String.valueOf(row.getZoneUnits()));
+        fields.add(String.valueOf(row.getZonesCleared()));
         return String.join(",", fields);
     }
 

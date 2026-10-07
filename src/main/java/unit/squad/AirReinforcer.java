@@ -13,9 +13,13 @@ import unit.managed.UnitRole;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.function.Function;
 import java.util.function.Predicate;
 
 /**
@@ -40,21 +44,41 @@ public class AirReinforcer {
     private final Game game;
     private final GameState gameState;
     private final Map<String, Plan> plans = new HashMap<>();
+    private final Set<String> heldTargets = new HashSet<>();
+    private final Function<Collection<AirHarassTargeting.AirThreat>, List<AirHarassTargeting.AirThreat>> remembered;
 
     public AirReinforcer(Game game, GameState gameState) {
+        this(game, gameState, known -> Collections.emptyList());
+    }
+
+    /**
+     * @param remembered the anti-air remembered beyond the known threats, given the known threats; priced into every
+     *     path as the anti-air the harass defense zones remember
+     */
+    public AirReinforcer(Game game, GameState gameState,
+                         Function<Collection<AirHarassTargeting.AirThreat>, List<AirHarassTargeting.AirThreat>> remembered) {
         this.game = game;
         this.gameState = gameState;
+        this.remembered = remembered;
     }
 
     private static final class Plan {
         private final Squad target;
         private final List<Position> path;
         private final int frame;
+        private final int routedFrame;
+        private final int zoneThreats;
 
-        private Plan(Squad target, List<Position> path, int frame) {
+        private Plan(Squad target, List<Position> path, int frame, int routedFrame, int zoneThreats) {
             this.target = target;
             this.path = path;
             this.frame = frame;
+            this.routedFrame = routedFrame;
+            this.zoneThreats = zoneThreats;
+        }
+
+        private Plan keepingRoute(int routed) {
+            return new Plan(target, path, frame, routed, zoneThreats);
         }
     }
 
@@ -89,6 +113,49 @@ public class AirReinforcer {
     }
 
     /**
+     * How many air squads are flying to a squad to reinforce it.
+     *
+     * @param target the squad they fly to
+     * @return the count
+     */
+    public int inFlightTo(Squad target) {
+        int count = 0;
+        for (Plan plan : plans.values()) {
+            if (plan.target == target) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Whether reinforcements flying to a squad hold its entry into a harass: any of them routed to it less than
+     * {@link AirReinforcement#LINK_HOLD_FRAMES} ago, see {@link AirReinforcement#holdsEntry}. The first frame a squad
+     * is held writes a HOLD row.
+     *
+     * @param target the squad about to enter
+     * @param now current frame
+     * @return true while the hold stands
+     */
+    public boolean holdsEntry(Squad target, int now) {
+        boolean held = false;
+        for (Plan plan : plans.values()) {
+            if (plan.target == target && AirReinforcement.holdsEntry(plan.routedFrame, now)) {
+                held = true;
+                break;
+            }
+        }
+        if (!held) {
+            heldTargets.remove(target.getId());
+        } else if (heldTargets.add(target.getId())) {
+            AirReinforcementTelemetry.row(row(target, AirReinforcementRow.Event.HOLD, target, now)
+                    .inFlight(inFlightTo(target))
+                    .build());
+        }
+        return held;
+    }
+
+    /**
      * Drops the routes of squads no longer in the fight squads.
      *
      * @param squads fight squads
@@ -99,6 +166,7 @@ public class AirReinforcer {
             ids.add(squad.getId());
         }
         plans.keySet().retainAll(ids);
+        heldTargets.retainAll(ids);
     }
 
     /**
@@ -138,17 +206,25 @@ public class AirReinforcer {
                 AirReinforcementTelemetry.row(row(squad, AirReinforcementRow.Event.REFUSED, null, now).build());
                 return Outcome.REFUSED;
             }
-            if (plan == null || plan.target != replanned.target) {
-                AirReinforcementTelemetry.row(row(squad, AirReinforcementRow.Event.ROUTE, replanned.target, now)
-                        .waypoints(replanned.path.size())
-                        .pathLength(pathLength(squad.getCenter(), replanned.path))
+            boolean newRoute = plan == null || plan.target != replanned.target;
+            plan = newRoute ? replanned : replanned.keepingRoute(plan.routedFrame);
+            plans.put(squad.getId(), plan);
+            if (newRoute) {
+                AirReinforcementTelemetry.row(row(squad, AirReinforcementRow.Event.ROUTE, plan.target, now)
+                        .waypoints(plan.path.size())
+                        .pathLength(pathLength(squad.getCenter(), plan.path))
+                        .zoneThreats(plan.zoneThreats)
+                        .detour(AirReinforcement.detour(squad.getCenter(), plan.path))
+                        .inFlight(inFlightTo(plan.target))
                         .build());
             }
-            plan = replanned;
-            plans.put(squad.getId(), plan);
         }
         if (AirReinforcement.arrived(squad.distance(plan.target))) {
-            AirReinforcementTelemetry.row(row(squad, AirReinforcementRow.Event.JOIN, plan.target, now).build());
+            AirReinforcementTelemetry.row(row(squad, AirReinforcementRow.Event.JOIN, plan.target, now)
+                    .zoneThreats(plan.zoneThreats)
+                    .inFlight(inFlightTo(plan.target))
+                    .linkFrames(now - plan.routedFrame)
+                    .build());
             return Outcome.ARRIVED;
         }
         Position point = AirReinforcement.steer(squad.getCenter(), plan.path);
@@ -169,9 +245,13 @@ public class AirReinforcer {
         if (candidates.isEmpty()) {
             return null;
         }
-        AirReinforcement.Route<Squad> route = AirReinforcement.choose(squad.getCenter(), candidates, threats(now),
+        List<AirHarassTargeting.AirThreat> threats = threats(now);
+        List<AirHarassTargeting.AirThreat> zoned = remembered.apply(threats);
+        List<AirHarassTargeting.AirThreat> priced = new ArrayList<>(threats);
+        priced.addAll(zoned);
+        AirReinforcement.Route<Squad> route = AirReinforcement.choose(squad.getCenter(), candidates, priced,
                 inMap());
-        return route == null ? null : new Plan(route.getTarget(), route.getPath(), now);
+        return route == null ? null : new Plan(route.getTarget(), route.getPath(), now, now, zoned.size());
     }
 
     private static boolean validTarget(Squad squad, Squad target, Collection<Squad> squads) {

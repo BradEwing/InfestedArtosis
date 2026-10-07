@@ -6,7 +6,9 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -326,5 +328,31 @@ class AirHarassEdgeTargetsTest {
                 AirHarassTargeting.edgeTurrets(threats, 12, MUTA_AT, Collections.singleton(7)));
 
         assertEquals(threats, priced);
+    }
+
+    @Test
+    void aTurretBesideNoKnownBaseIsOpenAsAnExposedTarget() {
+        assertTrue(AirHarassTargeting.edgeTurretOpen(MUTA_AT, Collections.emptyMap()));
+        Map<Position, Integer> ages = Collections.singletonMap(east(5000), 99999);
+        assertTrue(AirHarassTargeting.edgeTurretOpen(MUTA_AT, ages));
+    }
+
+    @Test
+    void aBasesTurretIsOpenOnlyWhileItsCoreWasSightedRecently() {
+        Position base = east(200);
+        assertTrue(AirHarassTargeting.edgeTurretOpen(MUTA_AT,
+                Collections.singletonMap(base, AirHarassTargeting.EDGE_CORE_SIGHT_FRAMES)));
+        assertFalse(AirHarassTargeting.edgeTurretOpen(MUTA_AT,
+                Collections.singletonMap(base, AirHarassTargeting.EDGE_CORE_SIGHT_FRAMES + 1)));
+    }
+
+    @Test
+    void aTurretReadsTheNearestBasesSighting() {
+        Map<Position, Integer> ages = new HashMap<>();
+        ages.put(east(300), 5000);
+        ages.put(east(-100), 10);
+        assertTrue(AirHarassTargeting.edgeTurretOpen(MUTA_AT, ages));
+        ages.put(east(50), 5000);
+        assertFalse(AirHarassTargeting.edgeTurretOpen(MUTA_AT, ages));
     }
 }

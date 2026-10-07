@@ -25,7 +25,8 @@ public final class AirReinforcementRow {
         ACTIVE_COUNT,
         ROUTE,
         REFUSED,
-        JOIN
+        JOIN,
+        HOLD
     }
 
     private final int frame;
@@ -52,4 +53,12 @@ public final class AirReinforcementRow {
     private final int hatchFrame = -1;
     @Builder.Default
     private final double nearestSquadMateDistance = -1;
+    @Builder.Default
+    private final int zoneThreats = -1;
+    @Builder.Default
+    private final double detour = -1;
+    @Builder.Default
+    private final int inFlight = -1;
+    @Builder.Default
+    private final int linkFrames = -1;
 }
