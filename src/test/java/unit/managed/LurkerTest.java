@@ -302,6 +302,51 @@ class LurkerTest {
     }
 
     @Test
+    void aSecondRefusalNearTheFirstBreaksTheLoop() {
+        Position anchor = new Position(100, 100);
+
+        assertEquals(Lurker.RefusalStep.BREAK,
+                Lurker.refusalStep(anchor, 1000, new Position(105, 100), 1000 + Lurker.REFUSAL_LOOP_MIN_FRAMES));
+    }
+
+    @Test
+    void aSecondRefusalFarFromTheFirstReanchors() {
+        Position anchor = new Position(100, 100);
+
+        assertEquals(Lurker.RefusalStep.REANCHOR,
+                Lurker.refusalStep(anchor, 1000, new Position(100 + Lurker.REFUSAL_LOOP_DISTANCE, 100),
+                        1000 + Lurker.REFUSAL_LOOP_MIN_FRAMES));
+    }
+
+    @Test
+    void aStaleOrFirstRefusalReanchorsAndAnEarlyOneKeepsTheAnchor() {
+        Position anchor = new Position(100, 100);
+
+        assertEquals(Lurker.RefusalStep.REANCHOR,
+                Lurker.refusalStep(anchor, 1000, anchor, 1000 + Lurker.REFUSAL_LOOP_STALE_FRAMES + 1));
+        assertEquals(Lurker.RefusalStep.REANCHOR, Lurker.refusalStep(null, 0, anchor, 500));
+        assertEquals(Lurker.RefusalStep.KEEP,
+                Lurker.refusalStep(anchor, 1000, anchor, 1000 + Lurker.REFUSAL_LOOP_MIN_FRAMES - 1));
+    }
+
+    @Test
+    void aRecentlyBurrowedLurkerKeepsItsPointForANearMove() {
+        assertTrue(Lurker.keepsContainPoint(10, false, Lurker.CONTAIN_MOVE_DISTANCE - 1));
+    }
+
+    @Test
+    void aSubstantiallyMovedPointOrAnElapsedHoldReleasesTheLurker() {
+        assertFalse(Lurker.keepsContainPoint(10, false, Lurker.CONTAIN_MOVE_DISTANCE));
+        assertFalse(Lurker.keepsContainPoint(Lurker.CONTAIN_LOCK_FRAMES, false, 100));
+    }
+
+    @Test
+    void aLurkerLosingHitPointsHoldsItsPointLonger() {
+        assertTrue(Lurker.keepsContainPoint(Lurker.CONTAIN_LOCK_FRAMES, true, 100));
+        assertFalse(Lurker.keepsContainPoint(Lurker.CONTAIN_LOCK_FIRE_FRAMES, true, 100));
+    }
+
+    @Test
     void aFlippedBurrowCommandIsLogged() {
         assertTrue(Lurker.changesBurrowState(true, false));
         assertTrue(Lurker.changesBurrowState(false, true));
