@@ -36,6 +36,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 import java.util.stream.Collectors;
 
 public class UnitManager {
@@ -449,7 +450,7 @@ public class UnitManager {
             return;
         }
 
-        List<ManagedUnit> availableZerglings = spareZerglings(enemyMainBase);
+        List<ManagedUnit> availableZerglings = spareZerglings(enemyMainBase, scoutManager.mustFindEnemyMain());
         if (!scoutManager.mayCheckEnemyMain(enemyMainBase, !availableZerglings.isEmpty())) {
             return;
         }
@@ -474,7 +475,7 @@ public class UnitManager {
             return;
         }
 
-        List<ManagedUnit> lings = spareZerglings(base);
+        List<ManagedUnit> lings = spareZerglings(base, false);
         if (scoutManager.mayStartCheck(false) && lings.size() >= lingsNeeded) {
             for (int i = 0; i < lingsNeeded; i++) {
                 ManagedUnit zergling = lings.get(i);
@@ -501,53 +502,36 @@ public class UnitManager {
     }
 
     private boolean hasSpareZerglings(int needed) {
+        ToIntFunction<ManagedUnit> spare = squadManager::scoutLendSpare;
         return managedUnits.stream()
             .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
             .filter(mu -> !scoutManager.isBaseCheckScout(mu) && !scoutManager.hasPendingRecall(mu))
-            .filter(mu -> mayPullAsZerglingScout(mu.getRole(), squadCanLend(mu)))
+            .filter(mu -> mayPullAsZerglingScout(mu.getRole(), spare.applyAsInt(mu) > 0))
             .filter(mu -> !mu.isClosingOnTarget())
             .filter(this::isFitToScout)
-            .filter(squadSpareTracker())
+            .filter(squadSpareTracker(spare))
             .count() >= needed;
     }
 
-    private List<ManagedUnit> spareZerglings(Base base) {
+    private List<ManagedUnit> spareZerglings(Base base, boolean search) {
+        ToIntFunction<ManagedUnit> spare = search ? squadManager::searchLendSpare : squadManager::scoutLendSpare;
         return managedUnits.stream()
             .filter(mu -> mu.getUnitType() == UnitType.Zerg_Zergling)
             .filter(mu -> !scoutManager.isBaseCheckScout(mu) && !scoutManager.hasPendingRecall(mu))
-            .filter(mu -> mayPullAsZerglingScout(mu.getRole(), squadCanLend(mu)))
+            .filter(mu -> mayPullAsZerglingScout(mu.getRole(), spare.applyAsInt(mu) > 0))
             .filter(mu -> !mu.isClosingOnTarget())
             .filter(this::isFitToScout)
             .sorted(Comparator.comparingDouble(mu -> mu.getPosition().getDistance(base.getCenter())))
-            .filter(squadSpareTracker())
+            .filter(squadSpareTracker(spare))
             .collect(Collectors.toList());
     }
 
-    private boolean squadCanLend(ManagedUnit managedUnit) {
-        return squadCanLend(squadManager.fightSquadOf(managedUnit) != null, squadManager.scoutLendSpare(managedUnit));
-    }
-
-    /**
-     * Whether the squad a zergling is in can lend it to scout. A zergling in no fight squad, idle or disbanded,
-     * takes nothing from a fight and is always free; one in a fight squad needs the squad to have a ling to spare.
-     *
-     * @param inFightSquad whether the zergling is in a fight squad
-     * @param spare how many zerglings that squad can lend, see {@link SquadManager#scoutLendSpare(ManagedUnit)}
-     * @return true when the zergling may be lent
-     */
-    static boolean squadCanLend(boolean inFightSquad, int spare) {
-        return !inFightSquad || spare > 0;
-    }
-
-    private Predicate<ManagedUnit> squadSpareTracker() {
+    private Predicate<ManagedUnit> squadSpareTracker(ToIntFunction<ManagedUnit> spare) {
         Map<Squad, Integer> taken = new HashMap<>();
         return mu -> {
             Squad squad = squadManager.fightSquadOf(mu);
-            if (squad == null) {
-                return true;
-            }
             int already = taken.getOrDefault(squad, 0);
-            if (already >= squadManager.scoutLendSpare(mu)) {
+            if (already >= spare.applyAsInt(mu)) {
                 return false;
             }
             taken.put(squad, already + 1);
@@ -594,7 +578,7 @@ public class UnitManager {
     }
 
     /**
-     * Whether a zergling may be pulled to scout. Only one its squad can spare, or one in no squad: a ling in a squad
+     * Whether a zergling may be pulled to scout. Only one its squad can spare: a ling in a squad
      * that is fighting, containing, joining a containment or on a runby stays where it is, and so does one already
      * scouting. A ling between targets reads as IDLE inside a fighting squad, so the role alone proves nothing.
      *

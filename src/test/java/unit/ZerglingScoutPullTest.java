@@ -36,22 +36,4 @@ class ZerglingScoutPullTest {
         assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.RALLY, true));
         assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.IDLE, true));
     }
-
-    @Test
-    void aLingInNoFightSquadIsAlwaysFreeToScout() {
-        assertTrue(UnitManager.squadCanLend(false, 0));
-        assertTrue(UnitManager.mayPullAsZerglingScout(UnitRole.IDLE, UnitManager.squadCanLend(false, 0)));
-    }
-
-    @Test
-    void aLingInAFightSquadNeedsTheSquadToHaveOneToSpare() {
-        assertFalse(UnitManager.squadCanLend(true, 0));
-        assertTrue(UnitManager.squadCanLend(true, 1));
-    }
-
-    @Test
-    void aLingInNoSquadOnARunbyOrScoutingIsStillNotPulled() {
-        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.RUNBY, UnitManager.squadCanLend(false, 0)));
-        assertFalse(UnitManager.mayPullAsZerglingScout(UnitRole.SCOUT, UnitManager.squadCanLend(false, 0)));
-    }
 }

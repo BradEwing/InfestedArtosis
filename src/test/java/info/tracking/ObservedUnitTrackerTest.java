@@ -352,7 +352,7 @@ class ObservedUnitTrackerTest {
         barracks.setLastKnownLocation(new Position(GROUNDED.getX() - 1, GROUNDED.getY() - 43));
         barracks.recordLift(true);
 
-        assertTrue(barracks.blocksGroundAtAnchor());
+        assertTrue(barracks.blocksGroundAtAnchor(false));
         assertEquals(1, blockingFootprints(barracks).size());
         assertFootprintAt(GROUNDED, blockingFootprints(barracks));
     }
@@ -364,8 +364,18 @@ class ObservedUnitTrackerTest {
                 GROUNDED.getY()));
         barracks.recordLift(true);
 
-        assertFalse(barracks.blocksGroundAtAnchor());
+        assertFalse(barracks.blocksGroundAtAnchor(false));
         assertTrue(blockingFootprints(barracks).isEmpty());
+    }
+
+    @Test
+    void aLiftedBarracksWhoseSpotWeSeeEmptyNoLongerBlocksTheWalk() {
+        ObservedUnit barracks = groundedBarracks();
+        barracks.setLastKnownLocation(new Position(GROUNDED.getX() - 1, GROUNDED.getY() - 43));
+        barracks.recordLift(true);
+
+        assertTrue(barracks.blocksGroundAtAnchor(false));
+        assertFalse(barracks.blocksGroundAtAnchor(true));
     }
 
     @Test
@@ -385,7 +395,7 @@ class ObservedUnitTrackerTest {
                 DRONE_OBSERVED);
         barracks.recordLift(true);
 
-        assertFalse(barracks.blocksGroundAtAnchor());
+        assertFalse(barracks.blocksGroundAtAnchor(false));
     }
 
     @Test
@@ -458,7 +468,8 @@ class ObservedUnitTrackerTest {
     }
 
     private static List<TileFootprint> blockingFootprints(ObservedUnit observedUnit) {
-        return ObservedUnitFixture.trackerHolding(observedUnit).getBlockingFootprints(type -> true, WALL_CUTOFF);
+        return ObservedUnitFixture.trackerHolding(observedUnit).getBlockingFootprints(type -> true, WALL_CUTOFF,
+                position -> false);
     }
 
     private static TileFootprint barracksAt(int left, int top) {

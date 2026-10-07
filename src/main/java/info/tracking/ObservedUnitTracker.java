@@ -605,8 +605,10 @@ public class ObservedUnitTracker {
      * {@link ObservedUnit#blocksGroundAtAnchor()}: a lifted wall building opens no way a ground scout could take
      * on the strength of that sighting.
      */
-    public List<TileFootprint> getBlockingFootprints(Predicate<UnitType> typeFilter, Time firstObservedBy) {
-        return footprints(typeFilter, firstObservedBy, ObservedUnit::blocksGroundAtAnchor);
+    public List<TileFootprint> getBlockingFootprints(Predicate<UnitType> typeFilter, Time firstObservedBy,
+                                                     Predicate<Position> visible) {
+        return footprints(typeFilter, firstObservedBy, ou -> ou.blocksGroundAtAnchor(
+                ou.getGroundedAnchor() != null && visible.test(ou.getGroundedAnchor()) && !ou.getUnit().isVisible()));
     }
 
     private List<TileFootprint> footprints(Predicate<UnitType> typeFilter, Time firstObservedBy,

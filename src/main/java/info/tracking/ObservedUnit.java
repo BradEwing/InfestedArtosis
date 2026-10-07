@@ -90,13 +90,16 @@ public class ObservedUnit {
     /**
      * Whether the building still plugs the ground it first stood on: it was last seen grounded there, or last seen
      * lifted within {@link #LIFTED_BLOCK_RADIUS_PIXELS} of that spot, where a lifted wall building hovers over the
-     * gap it opened and lands back. One last seen lifted farther off, or landed on other tiles, does not.
+     * gap it opened and lands back. One last seen lifted farther off, or landed on other tiles, does not, and neither
+     * does one whose spot we now see empty.
+     *
+     * @param anchorSeenEmpty whether the spot it stood on is in sight with the building not in it
      */
-    public boolean blocksGroundAtAnchor() {
+    public boolean blocksGroundAtAnchor(boolean anchorSeenEmpty) {
         if (isGroundedAtAnchor()) {
             return true;
         }
-        return groundedAnchor != null && lastSeenLifted && lastKnownLocation != null
+        return groundedAnchor != null && lastSeenLifted && !anchorSeenEmpty && lastKnownLocation != null
                 && lastKnownLocation.getDistance(groundedAnchor) <= LIFTED_BLOCK_RADIUS_PIXELS;
     }
 

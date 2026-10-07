@@ -5771,14 +5771,37 @@ public class SquadManager {
      */
     static int scoutLendSpare(SquadStatus status, boolean ground, boolean joiningContain, boolean committed,
                               int lings) {
+        return scoutLendSpare(status, ground, joiningContain, committed, lings, SCOUT_LEND_FLOOR,
+                FIGHT_SCOUT_LEND_FLOOR);
+    }
+
+    /**
+     * Zerglings a rallying or fighting ground squad keeps when it lends one to the search for an enemy main never
+     * seen. The search takes a single zergling at a time, so the squad keeps all but that one it lends.
+     */
+    static final int SEARCH_LEND_FLOOR = 1;
+
+    /**
+     * As {@link #scoutLendSpare(SquadStatus, boolean, boolean, boolean, int)} for the search for an enemy main never
+     * seen: a rallying or fighting squad that is not committed, containing or joining a containment keeps only
+     * {@link #SEARCH_LEND_FLOOR}.
+     */
+    static int searchLendSpare(SquadStatus status, boolean ground, boolean joiningContain, boolean committed,
+                               int lings) {
+        return scoutLendSpare(status, ground, joiningContain, committed, lings, SEARCH_LEND_FLOOR,
+                SEARCH_LEND_FLOOR);
+    }
+
+    private static int scoutLendSpare(SquadStatus status, boolean ground, boolean joiningContain, boolean committed,
+                                      int lings, int rallyFloor, int fightFloor) {
         if (!ground || joiningContain || committed) {
             return 0;
         }
         if (status == SquadStatus.RALLY) {
-            return Math.max(0, lings - SCOUT_LEND_FLOOR);
+            return Math.max(0, lings - rallyFloor);
         }
         if (status == SquadStatus.FIGHT) {
-            return Math.max(0, lings - FIGHT_SCOUT_LEND_FLOOR);
+            return Math.max(0, lings - fightFloor);
         }
         return 0;
     }
@@ -5787,14 +5810,28 @@ public class SquadManager {
      * @return how many more zerglings the unit's fight squad can lend to scout, zero when it is in none
      */
     public int scoutLendSpare(ManagedUnit managedUnit) {
+        return lendSpare(managedUnit, false);
+    }
+
+    /**
+     * @return how many zerglings the unit's fight squad can lend to the search for an enemy main never seen, zero
+     *     when it is in none
+     */
+    public int searchLendSpare(ManagedUnit managedUnit) {
+        return lendSpare(managedUnit, true);
+    }
+
+    private int lendSpare(ManagedUnit managedUnit, boolean search) {
         int now = game.getFrameCount();
         for (Squad squad : fightSquads) {
             if (squad.containsManagedUnit(managedUnit)) {
                 boolean committed = wholeSquadCommitHolds(squad, now, false) || squad.getSwarmLock() != null
                         || squad.isCorneredFightHeld(now);
                 int lings = squad.getComposition().getOrDefault(UnitType.Zerg_Zergling, 0);
-                return scoutLendSpare(squad.getStatus(), squad.isGroundSquad(), containArcToJoin(squad) != null,
-                        committed, lings);
+                boolean joining = containArcToJoin(squad) != null;
+                return search
+                        ? searchLendSpare(squad.getStatus(), squad.isGroundSquad(), joining, committed, lings)
+                        : scoutLendSpare(squad.getStatus(), squad.isGroundSquad(), joining, committed, lings);
             }
         }
         return 0;

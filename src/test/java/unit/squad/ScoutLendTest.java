@@ -50,4 +50,20 @@ class ScoutLendTest {
     void anAirSquadLendsNothing() {
         assertEquals(0, SquadManager.scoutLendSpare(SquadStatus.RALLY, false, false, false, 40));
     }
+
+    @Test
+    void theSearchForAnUnseenMainTakesOneLingFromASmallRallyingOrFightingSquad() {
+        assertEquals(1, SquadManager.searchLendSpare(SquadStatus.RALLY, true, false, false, 2));
+        assertEquals(1, SquadManager.searchLendSpare(SquadStatus.FIGHT, true, false, false, 2));
+        assertEquals(0, SquadManager.searchLendSpare(SquadStatus.FIGHT, true, false, false, 1));
+        assertEquals(0, SquadManager.scoutLendSpare(SquadStatus.FIGHT, true, false, false, 2));
+    }
+
+    @Test
+    void theSearchNeverTakesFromACommittedContainingOrJoiningSquad() {
+        assertEquals(0, SquadManager.searchLendSpare(SquadStatus.FIGHT, true, false, true, 40));
+        assertEquals(0, SquadManager.searchLendSpare(SquadStatus.CONTAIN, true, false, false, 40));
+        assertEquals(0, SquadManager.searchLendSpare(SquadStatus.RALLY, true, true, false, 40));
+        assertEquals(0, SquadManager.searchLendSpare(SquadStatus.RALLY, false, false, false, 40));
+    }
 }

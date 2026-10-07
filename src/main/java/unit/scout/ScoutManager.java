@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 
 public class ScoutManager {
 
@@ -302,12 +303,26 @@ public class ScoutManager {
     }
 
     private Position staticDefenceVeto(Base base, List<Position> defences) {
-        if (defences.isEmpty()) {
+        if (!Config.baseChecks || defences.isEmpty()) {
             return null;
         }
+        return BaseCheckScheduler.staticDefenceOnRoute(routeWithBase(base), defences);
+    }
+
+    private List<Position> routeWithBase(Base base) {
         List<Position> route = routePositions(base);
         route.add(base.getCenter());
-        return BaseCheckScheduler.staticDefenceOnRoute(route, defences);
+        return route;
+    }
+
+    private boolean heldDefenceStillAhead(ManagedUnit scout, Base base) {
+        List<Position> defences = BaseCheckScheduler.staticDefencePositions(knownSightings());
+        for (Position defence : BaseCheckScheduler.defencesNearRoute(routeWithBase(base), defences)) {
+            if (BaseCheckScheduler.isSiteAhead(scout.getPosition(), base.getCenter(), defence)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private List<Position> deathSitesWithinMemory(int now) {
@@ -345,8 +360,11 @@ public class ScoutManager {
         if (openDistances == null) {
             openDistances = gameState.getGameMap().groundStepDistances(source, tile -> false);
         }
-        List<TileFootprint> footprints = gameState.getObservedUnitTracker()
-                .getBlockingFootprints(type -> type.isBuilding() && !type.isResourceDepot(), new Time(now));
+        Predicate<UnitType> wallTypes = type -> type.isBuilding() && !type.isResourceDepot();
+        List<TileFootprint> footprints = Config.baseChecks
+                ? gameState.getObservedUnitTracker().getBlockingFootprints(wallTypes, new Time(now),
+                        position -> game.isVisible(position.toTilePosition()))
+                : gameState.getObservedUnitTracker().getGroundedFootprints(wallTypes, new Time(now));
         wallDistances = gameState.getGameMap().groundStepDistances(source,
                 BaseReachability.blockedTiles(footprints)::contains);
         wallComputedFrame = now;
@@ -575,7 +593,7 @@ public class ScoutManager {
                 BaseChecks.skipped(now, check.base.getLocation(), BaseCheckSkip.WALLED, check.base.getCenter());
             }
             if (reason == BaseCheckScheduler.Release.NONE && scout.getUnitType() != UnitType.Zerg_Overlord
-                    && !mayScoutBase(check.base)) {
+                    && !mayScoutBase(check.base) && heldDefenceStillAhead(scout, check.base)) {
                 reason = BaseCheckScheduler.Release.THREAT;
                 recordBunkerSkip(check.base);
             }
