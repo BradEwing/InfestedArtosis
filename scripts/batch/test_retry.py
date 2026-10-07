@@ -1,11 +1,13 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import batchlib as bl
 import report
+import sitrep
 
 ROW = {"is_winner": "true"}
 
@@ -164,6 +166,17 @@ class FirstNonResultIndexTest(unittest.TestCase):
 
     def test_running_game_is_not_a_non_result(self):
         self.assertIsNone(report.first_non_result_index([result(0, None, "RUNNING")], "opp"))
+
+
+class SitrepFinalAttemptsTest(unittest.TestCase):
+    def test_counts_final_attempts_only(self):
+        manifest = {"games": [
+            {"index": 0, "game_name": "a", "opponent": "opp", "outcome": "CRASH", "retried": True},
+            {"index": 0, "game_name": "aR1", "opponent": "opp", "outcome": "WIN", "retry": 1},
+        ]}
+        with mock.patch.object(sitrep, "game_frames", return_value=5000),                 mock.patch.object(sitrep, "last_write_row", return_value=None):
+            outcomes = sitrep.collect(manifest)[0]
+        self.assertEqual({"WIN": 1}, dict(outcomes["opp"]))
 
 
 if __name__ == "__main__":
