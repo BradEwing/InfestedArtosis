@@ -71,4 +71,54 @@ class AirHarassStateTest {
         assertTrue(state.engageEdgeTurret(8));
         assertEquals(2, state.edgeTurretsEngaged());
     }
+
+    @Test
+    void aVolleyCommittedToATargetIsRecordedOnceAndResolvedWhenItDies() {
+        AirHarassState state = new AirHarassState(12000, 1080);
+
+        assertTrue(state.noteSnipe(7, bwapi.UnitType.Terran_SCV, 60, 72, 12010));
+        assertFalse(state.noteSnipe(7, bwapi.UnitType.Terran_SCV, 40, 72, 12020));
+
+        AirHarassState.Snipe snipe = state.resolveSnipe(7);
+        assertEquals(60, snipe.getHitPoints());
+        assertEquals(72, snipe.getAlpha());
+        assertEquals(12010, snipe.getFrame());
+        assertNull(state.resolveSnipe(7));
+    }
+
+    @Test
+    void aTargetStillStandingAWindowAfterItsVolleyWasCommittedCountsAsMissed() {
+        AirHarassState state = new AirHarassState(12000, 1080);
+        state.noteSnipe(1, bwapi.UnitType.Terran_SCV, 60, 72, 12000);
+        state.noteSnipe(2, bwapi.UnitType.Terran_Marine, 40, 72, 12100);
+
+        assertEquals(1, state.missedSnipes(12121, 120).size());
+        assertEquals(0, state.missedSnipes(12121, 120).size());
+        assertEquals(1, state.drainSnipes().size());
+        assertTrue(state.drainSnipes().isEmpty());
+    }
+
+    @Test
+    void aPricingIsNewOnlyWhenItsKeyChangesAndANewTargetForgetsIt() {
+        AirHarassState state = new AirHarassState(12000, 1080);
+
+        assertTrue(state.notePricing("ENTER/CLEAR"));
+        assertFalse(state.notePricing("ENTER/CLEAR"));
+        assertTrue(state.notePricing("REROUTE/DETOUR"));
+        state.target(null, new Position(400, 3700), 12100);
+        assertTrue(state.notePricing("REROUTE/DETOUR"));
+    }
+
+    @Test
+    void theApproachZonesAreACopyAndANewTargetClearsThem() {
+        AirHarassState state = new AirHarassState(12000, 1080);
+        AirHarassTargeting.AirThreat goliath = AirHarassTargeting.AirThreat.of(1, bwapi.UnitType.Terran_Goliath,
+                new Position(1000, 1000), 160);
+        state.setApproachZones(Collections.singletonList(goliath));
+
+        state.approachZones().clear();
+        assertEquals(1, state.approachZones().size());
+        state.targetExposed(group(new Position(2000, 2000)), 12100);
+        assertTrue(state.approachZones().isEmpty());
+    }
 }

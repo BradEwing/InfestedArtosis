@@ -1,6 +1,7 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.UnitType;
 import bwem.Base;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,6 +11,8 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -66,6 +69,117 @@ public class AirHarassState {
     private Position flockGoal;
     private int flockPointUntilFrame;
     private final Map<Integer, AntiAirSighting> knownAntiAir = new HashMap<>();
+    private final Map<Integer, Snipe> snipes = new LinkedHashMap<>();
+    private List<AirHarassTargeting.AirThreat> approachZones = new ArrayList<>();
+    private String lastApproachKey;
+
+    /**
+     * A target the flock committed a volley to: what it was, its hit points plus shields and the volley's alpha when
+     * the volley was assigned, and the frame it was.
+     */
+    @Getter
+    public static final class Snipe {
+        private final int id;
+        private final UnitType type;
+        private final int hitPoints;
+        private final int alpha;
+        private final int frame;
+
+        Snipe(int id, UnitType type, int hitPoints, int alpha, int frame) {
+            this.id = id;
+            this.type = type;
+            this.hitPoints = hitPoints;
+            this.alpha = alpha;
+            this.frame = frame;
+        }
+    }
+
+    /**
+     * Records a target the flock committed a volley to; a target already recorded keeps its first record.
+     *
+     * @param id enemy unit id
+     * @param type its type
+     * @param hitPoints its hit points plus shields
+     * @param alpha the volley's damage against it
+     * @param frame current frame
+     * @return true the first time this harass commits to that target
+     */
+    public boolean noteSnipe(int id, UnitType type, int hitPoints, int alpha, int frame) {
+        if (snipes.containsKey(id)) {
+            return false;
+        }
+        snipes.put(id, new Snipe(id, type, hitPoints, alpha, frame));
+        return true;
+    }
+
+    /**
+     * Takes a committed target out of the record once it is dead.
+     *
+     * @param id enemy unit id
+     * @return the record, or null when the harass committed no volley to it
+     */
+    public Snipe resolveSnipe(int id) {
+        return snipes.remove(id);
+    }
+
+    /**
+     * Takes out the committed targets that were assigned more than a window of frames ago and still stand.
+     *
+     * @param now current frame
+     * @param window frames after which a committed target counts as missed
+     * @return the records taken out, oldest first
+     */
+    public List<Snipe> missedSnipes(int now, int window) {
+        List<Snipe> missed = new ArrayList<>();
+        Iterator<Snipe> iterator = snipes.values().iterator();
+        while (iterator.hasNext()) {
+            Snipe snipe = iterator.next();
+            if (now - snipe.getFrame() > window) {
+                missed.add(snipe);
+                iterator.remove();
+            }
+        }
+        return missed;
+    }
+
+    /**
+     * Takes out every committed target still recorded.
+     *
+     * @return the records taken out, oldest first
+     */
+    public List<Snipe> drainSnipes() {
+        List<Snipe> rest = new ArrayList<>(snipes.values());
+        snipes.clear();
+        return rest;
+    }
+
+    /**
+     * Records how the approach was priced, and whether that differs from the last pricing this harass wrote.
+     *
+     * @param key the pricing's decision and reason, see {@link AirApproachPricing.Result#key}
+     * @return true when the key differs from the last one recorded
+     */
+    public boolean notePricing(String key) {
+        boolean changed = !key.equals(lastApproachKey);
+        lastApproachKey = key;
+        return changed;
+    }
+
+    /**
+     * Sets the mobile anti-air the flock flies around on this approach.
+     *
+     * @param zones the threats, none when the approach is flown straight
+     */
+    public void setApproachZones(List<AirHarassTargeting.AirThreat> zones) {
+        approachZones = new ArrayList<>(zones);
+    }
+
+    /**
+     * @return the mobile anti-air the flock flies around on this approach, a copy
+     */
+    public List<AirHarassTargeting.AirThreat> approachZones() {
+        return new ArrayList<>(approachZones);
+    }
 
     /**
      * @param startFrame frame the harass started
@@ -95,6 +209,8 @@ public class AirHarassState {
         this.arrivedFrame = -1;
         this.lastProgressFrame = frame;
         this.defendedAtTarget = false;
+        this.approachZones = new ArrayList<>();
+        this.lastApproachKey = null;
         if (base != null) {
             visitedBases.add(base);
         }
@@ -114,6 +230,8 @@ public class AirHarassState {
         this.phase = Phase.TRANSIT;
         this.arrivedFrame = -1;
         this.lastProgressFrame = frame;
+        this.approachZones = new ArrayList<>();
+        this.lastApproachKey = null;
     }
 
     /**

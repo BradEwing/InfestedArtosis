@@ -117,6 +117,25 @@ public class AirReinforcer {
     }
 
     /**
+     * Drops the route of a squad that stopped reinforcing without arriving. A squad that was flying to join a harass
+     * writes a DROP row, since its drop ends the hold on the harass entry, see {@link AirReinforcement.LinkHold}.
+     *
+     * @param squad the squad
+     * @param now current frame
+     */
+    public void drop(Squad squad, int now) {
+        Plan plan = plans.remove(squad.getId());
+        if (plan == null || !plan.joinsHarass) {
+            return;
+        }
+        AirReinforcementTelemetry.row(row(squad, AirReinforcementRow.Event.DROP, plan.target, now)
+                .zoneThreats(plan.zoneThreats)
+                .inFlight(inFlightTo(plan.target))
+                .linkFrames(now - plan.routedFrame)
+                .build());
+    }
+
+    /**
      * How many air squads are flying to a squad to reinforce it.
      *
      * @param target the squad they fly to

@@ -56,8 +56,19 @@ import java.util.Map;
  * aa_at_target, the members in zone_units and the zones now remembered in defense_zones. A ZONE_CLEAR row is written
  * for every zone dropped, at the zone's center, with the frames it was remembered in zone_age and why it went in
  * zone_cause (SEEN_CLEAR: its ground was in sight and its last member not known, MOVED: its last member was known far
- * from it, DEAD: its last member died, AGED: it passed the maximum age) and the zones left in defense_zones; it
- * carries no squad.
+ * from it, DEAD: its last member died, AGED: it passed the maximum age, LAPSED: the refusal of its base ran out) and
+ * the zones left in defense_zones; it carries no squad.
+ *
+ * <p>An APPROACH_PRICED row is written when a harass starts, and whenever the pricing of its approach to the strike
+ * point against the mobile anti-air that can reach the path or the target zone, see AirApproachPricing, changes its
+ * decision or reason, and for an entry the pricing refused when its decision changes. approach_decision is ENTER,
+ * REROUTE (fly around the mobile anti-air, or take another target) or ABORT, approach_reason CLEAR, DETOUR,
+ * TARGET_DEFENDED or NO_DETOUR, approach_mobile_aa the summed anti-air strength of the mobile units priced,
+ * approach_flock_strength the flock's own air-to-ground strength, approach_units how many mobile units were priced and
+ * tolerance the strength the flock accepts. A harass the pricing aborts in flight ends with exit_reason
+ * APPROACH_DEFENDED. A SNIPE row is written once for every target the flock committed a volley to: snipe_type, snipe_hp
+ * the target's hit points plus shields when committed, snipe_alpha the damage of the flock's volley against it, and
+ * snipe_killed 1 when the target died, 0 when it still stood a window after or the harass ended.
  *
  * <p>stalled is 1 when the squad's FIGHT and RETREAT crossings read as a stall, see AirStallDetector, and 0 when they
  * do not, on ENTRY_CHECK and ENTER rows; it is -1 while the IA_AIR_FLAP_ESCAPE switch is off, which leaves the stall
@@ -78,7 +89,9 @@ public class HarassLogger implements HarassSink {
             + "aa_known_cover,stalled,exposed_score,base_score,aa_seen_frame,aa_turn_frame,aa_hp_lost,"
             + "aa_trigger_type,aa_trigger_id,aa_at_target,edge_turrets,edge_turret_id,retarget_old_id,"
             + "retarget_old_type,retarget_new_id,retarget_new_type,retarget_old_distance,retarget_new_distance,"
-            + "retarget_old_tier,retarget_new_tier,defense_zones,zone_units,zone_age,zone_cause";
+            + "retarget_old_tier,retarget_new_tier,defense_zones,zone_units,zone_age,zone_cause,approach_decision,"
+            + "approach_reason,approach_mobile_aa,approach_flock_strength,approach_units,snipe_type,snipe_hp,"
+            + "snipe_alpha,snipe_killed";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -223,6 +236,15 @@ public class HarassLogger implements HarassSink {
         fields.add(String.valueOf(row.getZoneUnits()));
         fields.add(String.valueOf(row.getZoneAge()));
         fields.add(Csv.name(row.getZoneCause()));
+        fields.add(Csv.name(row.getApproachDecision()));
+        fields.add(Csv.name(row.getApproachReason()));
+        fields.add(Csv.format(row.getApproachMobileAa()));
+        fields.add(Csv.format(row.getApproachFlockStrength()));
+        fields.add(String.valueOf(row.getApproachUnits()));
+        fields.add(Csv.name(row.getSnipeType()));
+        fields.add(String.valueOf(row.getSnipeHitPoints()));
+        fields.add(String.valueOf(row.getSnipeAlpha()));
+        fields.add(String.valueOf(row.getSnipeKilled()));
         return String.join(",", fields);
     }
 

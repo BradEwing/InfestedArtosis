@@ -397,4 +397,38 @@ class HarassLoggerTest {
         assertEquals("EXIT", rows.get(4)[columnIndex("event")]);
         assertEquals("12600", rows.get(5)[columnIndex("frame")]);
     }
+
+    @Test
+    void approachAndSnipeRowsCarryTheirColumnsAfterTheZoneColumns() {
+        HarassRow priced = HarassRow.builder().frame(11500).squadId("squad-1").event(HarassRow.Event.APPROACH_PRICED)
+                .approachDecision(unit.squad.AirApproachPricing.Decision.REROUTE)
+                .approachReason(unit.squad.AirApproachPricing.Reason.DETOUR)
+                .approachMobileAa(41.5).approachFlockStrength(120).approachUnits(2).build();
+        HarassRow snipe = HarassRow.builder().frame(11600).squadId("squad-1").event(HarassRow.Event.SNIPE)
+                .snipeType(UnitType.Terran_SCV).snipeHitPoints(60).snipeAlpha(72).snipeKilled(1).build();
+        HarassRow tick = HarassRow.builder().frame(11700).squadId("squad-1").event(HarassRow.Event.TICK).build();
+
+        String[] pricedFields = HarassLogger.row("game-1", priced).split(",", -1);
+        String[] snipeFields = HarassLogger.row("game-1", snipe).split(",", -1);
+        String[] tickFields = HarassLogger.row("game-1", tick).split(",", -1);
+
+        int width = HarassLogger.HEADER.split(",", -1).length;
+        assertEquals(width, pricedFields.length);
+        assertEquals(width, snipeFields.length);
+        assertEquals("APPROACH_PRICED", pricedFields[columnIndex("event")]);
+        assertEquals("REROUTE", pricedFields[columnIndex("approach_decision")]);
+        assertEquals("DETOUR", pricedFields[columnIndex("approach_reason")]);
+        assertEquals(Csv.format(41.5), pricedFields[columnIndex("approach_mobile_aa")]);
+        assertEquals(Csv.format(120), pricedFields[columnIndex("approach_flock_strength")]);
+        assertEquals("2", pricedFields[columnIndex("approach_units")]);
+        assertEquals("SNIPE", snipeFields[columnIndex("event")]);
+        assertEquals("Terran_SCV", snipeFields[columnIndex("snipe_type")]);
+        assertEquals("60", snipeFields[columnIndex("snipe_hp")]);
+        assertEquals("72", snipeFields[columnIndex("snipe_alpha")]);
+        assertEquals("1", snipeFields[columnIndex("snipe_killed")]);
+        assertEquals("NONE", tickFields[columnIndex("approach_decision")]);
+        assertEquals("-1", tickFields[columnIndex("snipe_killed")]);
+        assertColumnsInOrder("zone_cause", "approach_decision", "approach_reason", "approach_mobile_aa",
+                "approach_flock_strength", "approach_units", "snipe_type", "snipe_hp", "snipe_alpha", "snipe_killed");
+    }
 }

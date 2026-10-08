@@ -219,10 +219,12 @@ class AirHarassScoutingTest {
     }
 
     @Test
-    void onlyNewAntiAirRefusesTheBase() {
+    void onlyNewAntiAirAndAPricedOutApproachRefuseTheBase() {
         assertTrue(AirHarassScouting.refusesBase(AirHarassEvaluator.ExitReason.NEW_AA));
+        assertTrue(AirHarassScouting.refusesBase(AirHarassEvaluator.ExitReason.APPROACH_DEFENDED));
         for (AirHarassEvaluator.ExitReason reason : AirHarassEvaluator.ExitReason.values()) {
-            if (reason != AirHarassEvaluator.ExitReason.NEW_AA) {
+            if (reason != AirHarassEvaluator.ExitReason.NEW_AA
+                    && reason != AirHarassEvaluator.ExitReason.APPROACH_DEFENDED) {
                 assertFalse(AirHarassScouting.refusesBase(reason), reason.name());
             }
         }
@@ -235,8 +237,10 @@ class AirHarassScoutingTest {
 
         assertEquals(AirHarassScouting.DEFENDED_REFUSAL_FRAMES, AirHarassScouting.holdFrames(newAa, true));
         assertEquals(AirHarassEvaluator.REENTRY_HOLD_FRAMES, AirHarassScouting.holdFrames(newAa, false));
+        assertEquals(AirHarassScouting.DEFENDED_REFUSAL_FRAMES, AirHarassScouting.holdFrames(
+                AirHarassEvaluator.ExitReason.APPROACH_DEFENDED, true));
         for (AirHarassEvaluator.ExitReason reason : AirHarassEvaluator.ExitReason.values()) {
-            if (reason != newAa) {
+            if (reason != newAa && reason != AirHarassEvaluator.ExitReason.APPROACH_DEFENDED) {
                 assertEquals(0, AirHarassScouting.holdFrames(reason, true), reason.name());
                 assertEquals(0, AirHarassScouting.holdFrames(reason, false), reason.name());
             }
@@ -333,7 +337,7 @@ class AirHarassScoutingTest {
     @Test
     void aReactionAtTheFlockNamesTheTriggerAndTheIdsOfTheDefenseThatEndedTheHarass() {
         AirHarassState state = new AirHarassState(NOW, 600);
-        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, FAR);
+        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Missile_Turret, FAR);
         double tolerance = goliath.getStrength() / 2;
 
         AirHarassScouting.Reaction reaction = AirHarassScouting.react(state, Collections.singletonList(goliath),
@@ -346,7 +350,7 @@ class AirHarassScoutingTest {
 
     @Test
     void anAntiAirUnitCarriedFromTheLastExitIsAcceptedByTheNextHarassSoItIsNeverNewAgain() {
-        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, FAR);
+        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Missile_Turret, FAR);
         double tolerance = goliath.getStrength() / 2;
         List<AirHarassTargeting.AirThreat> threats = Collections.singletonList(goliath);
         Map<Integer, Integer> carriedAt = new HashMap<>();
@@ -361,7 +365,7 @@ class AirHarassScoutingTest {
 
     @Test
     void aCarriedUnitOutOfSightWhenTheNextHarassStartsIsStillNotNewWhenItIsSeenAgain() {
-        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, FAR);
+        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Missile_Turret, FAR);
         double tolerance = goliath.getStrength() / 2;
         Map<Integer, Integer> carriedAt = new HashMap<>();
         carriedAt.put(301, NOW);
@@ -413,7 +417,7 @@ class AirHarassScoutingTest {
     @Test
     void aValkyrieAppearingAtTheStrikePointTurnsTheFlockOnTheFrameItIsSeen() {
         AirHarassState state = new AirHarassState(NOW, 600);
-        AirHarassTargeting.AirThreat valkyrie = threat(310, UnitType.Terran_Valkyrie, TURRET);
+        AirHarassTargeting.AirThreat valkyrie = threat(310, UnitType.Terran_Missile_Turret, TURRET);
         double tolerance = valkyrie.getStrength() / 2;
         List<AirHarassTargeting.AirThreat> none = Collections.emptyList();
 
@@ -432,8 +436,8 @@ class AirHarassScoutingTest {
     @Test
     void aGoliathSeenFarAwayFirstStillTurnsTheFlockWhenItArrivesAtTheTarget() {
         AirHarassState state = new AirHarassState(NOW, 600);
-        AirHarassTargeting.AirThreat away = threat(301, UnitType.Terran_Goliath, FAR);
-        AirHarassTargeting.AirThreat arrived = threat(301, UnitType.Terran_Goliath, TURRET);
+        AirHarassTargeting.AirThreat away = threat(301, UnitType.Terran_Missile_Turret, FAR);
+        AirHarassTargeting.AirThreat arrived = threat(301, UnitType.Terran_Missile_Turret, TURRET);
         double tolerance = away.getStrength() / 2;
 
         assertNull(AirHarassScouting.react(state, Collections.singletonList(away), BASE, STRIKE, tolerance, NOW, 600));
@@ -449,8 +453,8 @@ class AirHarassScoutingTest {
     @Test
     void aGoliathGroupMeasuresTheReactionFromTheFirstGoliathAndTheHitPointsLostSince() {
         AirHarassState state = new AirHarassState(NOW, 600);
-        AirHarassTargeting.AirThreat first = threat(301, UnitType.Terran_Goliath, TURRET);
-        AirHarassTargeting.AirThreat second = threat(302, UnitType.Terran_Goliath, new Position(2040, 3690));
+        AirHarassTargeting.AirThreat first = threat(301, UnitType.Terran_Missile_Turret, TURRET);
+        AirHarassTargeting.AirThreat second = threat(302, UnitType.Terran_Missile_Turret, new Position(2040, 3690));
         double tolerance = first.getStrength() * 1.5;
 
         assertNull(AirHarassScouting.react(state, Collections.singletonList(first), BASE, STRIKE, tolerance,
@@ -467,8 +471,8 @@ class AirHarassScoutingTest {
     @Test
     void antiAirAcceptedAtTheStartIsNeverNewAndNeverStartsAReactionWindow() {
         AirHarassState state = new AirHarassState(NOW, 600);
-        AirHarassTargeting.AirThreat known = threat(301, UnitType.Terran_Goliath, TURRET);
-        AirHarassTargeting.AirThreat arriving = threat(302, UnitType.Terran_Goliath, new Position(2040, 3690));
+        AirHarassTargeting.AirThreat known = threat(301, UnitType.Terran_Missile_Turret, TURRET);
+        AirHarassTargeting.AirThreat arriving = threat(302, UnitType.Terran_Missile_Turret, new Position(2040, 3690));
         double tolerance = known.getStrength() * 1.5;
         state.acceptAntiAir(AirHarassScouting.inReach(Collections.singletonList(known), BASE, STRIKE), NOW, 600);
 
@@ -493,6 +497,31 @@ class AirHarassScoutingTest {
 
         assertSame(turret, reaction.getTrigger());
         assertFalse(reaction.isAtTarget());
+    }
+
+    @Test
+    void aMobileUnitSeenFirstAtTheFlockOrTheTargetNeverEndsTheHarassButIsLearned() {
+        AirHarassState state = new AirHarassState(NOW, 600);
+        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, STRIKE);
+
+        assertNull(AirHarassScouting.react(state, Collections.singletonList(goliath), BASE, STRIKE, 0, NOW, 600));
+        assertTrue(state.getKnownAntiAir().containsKey(301));
+        assertNull(AirHarassScouting.react(state, Collections.singletonList(goliath), BASE, STRIKE, 0, NOW + 40,
+                600));
+    }
+
+    @Test
+    void aStructureArrivingBesideAMobileUnitStillEndsTheHarassOnTheCombinedDefense() {
+        AirHarassState state = new AirHarassState(NOW, 600);
+        AirHarassTargeting.AirThreat goliath = threat(301, UnitType.Terran_Goliath, TURRET);
+        AirHarassTargeting.AirThreat turret = threat(302, UnitType.Terran_Missile_Turret, new Position(2040, 3690));
+        double tolerance = goliath.getStrength() * 1.5;
+        state.acceptAntiAir(Collections.singletonList(goliath), NOW, 600);
+
+        AirHarassScouting.Reaction reaction = AirHarassScouting.react(state, Arrays.asList(goliath, turret), BASE,
+                STRIKE, tolerance, NOW + 5, 600);
+
+        assertSame(turret, reaction.getTrigger());
     }
 
     @Test

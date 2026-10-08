@@ -27,7 +27,8 @@ import java.util.function.Predicate;
  * <p>A member leaves its zone when its unit is reported dead, when it is known again at a position farther than the
  * zone's radius plus {@link #MEMBER_RADIUS} from the zone's center, or when the zone's center is in sight and the
  * unit is not among the anti-air known now. An empty zone is dropped, and so is one older than
- * {@link #MAX_AGE_FRAMES}, since a zone no one looks at again must not shut its ground for the rest of the game.
+ * {@link #MAX_AGE_FRAMES}, since a zone no one looks at again must not shut its ground for the rest of the game, and
+ * one priced past the frames it was recorded for, since a zone must not outlast the refusal of the base it stands at.
  */
 public final class AirHarassDefenseZones {
 
@@ -47,7 +48,8 @@ public final class AirHarassDefenseZones {
         SEEN_CLEAR,
         MOVED,
         DEAD,
-        AGED
+        AGED,
+        LAPSED
     }
 
     /**
@@ -74,6 +76,7 @@ public final class AirHarassDefenseZones {
         private final Position center;
         private int radius;
         private int recordedFrame;
+        private int pricedUntil;
         private Cause lastRemoval = Cause.SEEN_CLEAR;
         private final Map<Integer, AirHarassTargeting.AirThreat> members = new LinkedHashMap<>();
 
@@ -81,6 +84,7 @@ public final class AirHarassDefenseZones {
             this.center = center;
             this.radius = radius;
             this.recordedFrame = recordedFrame;
+            this.pricedUntil = recordedFrame;
         }
 
         /**
@@ -103,6 +107,23 @@ public final class AirHarassDefenseZones {
      */
     public Zone record(AirHarassTargeting.AirThreat trigger, Collection<AirHarassTargeting.AirThreat> threats,
                        int now) {
+        return record(trigger, threats, now, MAX_AGE_FRAMES);
+    }
+
+    /**
+     * Records the defense group a flock turned away from, as {@link #record(AirHarassTargeting.AirThreat, Collection,
+     * int)} does, and prices it for a number of frames: past them the zone is dropped with the cause LAPSED, so the
+     * unseen members of a defense stop closing a base once the refusal that kept the flock out of it has run out. A
+     * zone extended keeps the later of its pricing ends.
+     *
+     * @param trigger the anti-air unit whose sighting ended the harass
+     * @param threats every known anti-air threat
+     * @param now current frame
+     * @param pricedFrames frames the zone's members are priced from now
+     * @return the zone, recorded or extended
+     */
+    public Zone record(AirHarassTargeting.AirThreat trigger, Collection<AirHarassTargeting.AirThreat> threats,
+                       int now, int pricedFrames) {
         int radius = trigger.getReach() + PADDING;
         Zone zone = null;
         for (Zone existing : zones) {
@@ -117,6 +138,7 @@ public final class AirHarassDefenseZones {
         }
         zone.radius = Math.max(zone.radius, radius);
         zone.recordedFrame = now;
+        zone.pricedUntil = Math.max(zone.pricedUntil, now + pricedFrames);
         Set<Integer> covering = new HashSet<>(AirHarassScouting.contributors(trigger, threats));
         zone.members.put(trigger.getId(), trigger);
         for (AirHarassTargeting.AirThreat threat : threats) {
@@ -131,7 +153,8 @@ public final class AirHarassDefenseZones {
     /**
      * Steps every zone against the anti-air known now: a member known again is moved to where it stands, or leaves
      * the zone when that is out of the zone's reach; a member not known is dropped when the zone's center is in sight.
-     * Zones left empty, or older than {@link #MAX_AGE_FRAMES}, are dropped.
+     * Zones left empty, older than {@link #MAX_AGE_FRAMES} or priced past their pricing end, see
+     * {@link #record(AirHarassTargeting.AirThreat, Collection, int, int)}, are dropped.
      *
      * @param threats every known anti-air threat
      * @param visible whether a position is in sight now
@@ -165,9 +188,11 @@ public final class AirHarassDefenseZones {
                 }
             }
             boolean aged = now - zone.recordedFrame > MAX_AGE_FRAMES;
-            if (zone.members.isEmpty() || aged) {
+            boolean lapsed = now > zone.pricedUntil;
+            if (zone.members.isEmpty() || aged || lapsed) {
                 zoneIterator.remove();
-                dropped.add(new Drop(zone.center, now - zone.recordedFrame, aged ? Cause.AGED : zone.lastRemoval));
+                Cause cause = aged ? Cause.AGED : lapsed ? Cause.LAPSED : zone.lastRemoval;
+                dropped.add(new Drop(zone.center, now - zone.recordedFrame, cause));
             }
         }
         return dropped;

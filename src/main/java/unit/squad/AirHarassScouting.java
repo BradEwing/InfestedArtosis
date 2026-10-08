@@ -18,9 +18,10 @@ import java.util.function.Predicate;
  *
  * <p>A base's anti-air counts as sighted on a frame when any point of its core, the base center or the center of its
  * resources, is visible to us. The flock enters a base whole whatever its sighting age; the age is recorded with the
- * entry. Anti-air first seen while the flock harasses, a building or a mobile unit, ends the harass on the frame it
- * comes into view when the anti-air covering it exceeds what the flock tolerates, see {@link #antiAirReaction}. A base
- * the harass left for that reason is not entered for {@link #holdFrames}.
+ * entry. An anti-air structure first seen while the flock harasses ends the harass on the frame it comes into view
+ * when the anti-air covering it exceeds what the flock tolerates, see {@link #antiAirReaction}; mobile anti-air is
+ * priced against the approach instead, see {@link AirApproachPricing}. A base the harass left for either reason is
+ * not entered for {@link #holdFrames}.
  *
  * <p>Every decision is a static function over plain values; the constants are tuning values, not Brood War facts.
  */
@@ -80,14 +81,15 @@ public final class AirHarassScouting {
     }
 
     /**
-     * Whether an exit holds the harassed base out of the entry, see {@link #holdFrames}: only newly seen anti-air
-     * does.
+     * Whether an exit holds the harassed base out of the entry, see {@link #holdFrames}: newly seen anti-air does,
+     * and so does an approach the mobile anti-air prices out.
      *
      * @param reason why the harass ended
-     * @return true for NEW_AA
+     * @return true for NEW_AA and APPROACH_DEFENDED
      */
     public static boolean refusesBase(AirHarassEvaluator.ExitReason reason) {
-        return reason == AirHarassEvaluator.ExitReason.NEW_AA;
+        return reason == AirHarassEvaluator.ExitReason.NEW_AA
+                || reason == AirHarassEvaluator.ExitReason.APPROACH_DEFENDED;
     }
 
     /**
@@ -328,9 +330,11 @@ public final class AirHarassScouting {
 
     /**
      * One frame of the flock's reaction to anti-air. A threat is new to the harass the first frame it is within
-     * reach, see {@link #inReach}, however long it was known elsewhere; it ends the harass when the anti-air covering
-     * it exceeds the tolerance, see {@link #antiAirReaction}. Threats already in reach when the harass started or
-     * moved on are accepted, see {@link AirHarassState#acceptAntiAir}, and never new.
+     * reach, see {@link #inReach}, however long it was known elsewhere; a structure ends the harass when the anti-air
+     * covering it exceeds the tolerance, see {@link #antiAirReaction}. A mobile unit never ends it on its own sight:
+     * it is learned, and the approach is priced again against it, see {@link AirApproachPricing}. Threats already in
+     * reach when the harass started or moved on are accepted, see {@link AirHarassState#acceptAntiAir}, and never
+     * new.
      *
      * @param state the harass state
      * @param threats every known anti-air threat
@@ -346,7 +350,8 @@ public final class AirHarassScouting {
                                  int flockHitPoints) {
         List<AirHarassTargeting.AirThreat> fresh = state.learnAntiAir(inReach(threats, baseCenter, flockCenter), now,
                 flockHitPoints);
-        AirHarassTargeting.AirThreat trigger = antiAirReaction(fresh, threats, baseCenter, flockCenter, tolerance);
+        AirHarassTargeting.AirThreat trigger = antiAirReaction(AirApproachPricing.structures(fresh), threats,
+                baseCenter, flockCenter, tolerance);
         if (trigger == null) {
             return null;
         }

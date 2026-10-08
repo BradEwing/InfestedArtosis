@@ -4,6 +4,7 @@ import bwapi.Position;
 import bwapi.UnitType;
 import lombok.Builder;
 import lombok.Getter;
+import unit.squad.AirApproachPricing;
 import unit.squad.AirHarassDefenseZones;
 import unit.squad.AirHarassEvaluator;
 import unit.squad.AirHarassState;
@@ -11,7 +12,8 @@ import unit.squad.AirHarassTargeting;
 
 /**
  * One row of telemetry_harass.csv: an air squad's harass entry check, the start, a decision tick, a retarget, a
- * credited kill, a Mutalisk lost, the flock reacting to anti-air, or the end of a harass.
+ * credited kill, a Mutalisk lost, the flock reacting to anti-air, the approach priced against mobile anti-air, a
+ * volley committed to a target, or the end of a harass.
  *
  * <p>Counts and measures left at -1 were not evaluated for the row's event.
  */
@@ -34,7 +36,9 @@ public final class HarassRow {
         UNIT_RETARGET,
         EDGE_TURRET,
         ZONE_RECORD,
-        ZONE_CLEAR
+        ZONE_CLEAR,
+        APPROACH_PRICED,
+        SNIPE
     }
 
     private final int frame;
@@ -120,6 +124,21 @@ public final class HarassRow {
     @Builder.Default
     private final int zoneAge = -1;
     private final AirHarassDefenseZones.Cause zoneCause;
+    private final AirApproachPricing.Decision approachDecision;
+    private final AirApproachPricing.Reason approachReason;
+    @Builder.Default
+    private final double approachMobileAa = -1;
+    @Builder.Default
+    private final double approachFlockStrength = -1;
+    @Builder.Default
+    private final int approachUnits = -1;
+    private final UnitType snipeType;
+    @Builder.Default
+    private final int snipeHitPoints = -1;
+    @Builder.Default
+    private final int snipeAlpha = -1;
+    @Builder.Default
+    private final int snipeKilled = -1;
 
     /**
      * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.

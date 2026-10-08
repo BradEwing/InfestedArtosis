@@ -26,7 +26,8 @@ public final class AirReinforcementRow {
         ROUTE,
         REFUSED,
         JOIN,
-        HOLD
+        HOLD,
+        DROP
     }
 
     private final int frame;

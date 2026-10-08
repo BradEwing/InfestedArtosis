@@ -34,7 +34,8 @@ import java.util.function.IntPredicate;
  * remembered defense-zone units the path search priced beside the anti-air known now, detour_px the pixels the path
  * adds to the straight flight, and in_flight the air squads then flying to the same target. JOIN carries link_frames,
  * the frames from the route to the arrival. HOLD is written when the target squad's harass entry is held while
- * reinforcements fly to it, once per hold, with in_flight.
+ * reinforcements fly to it, once per hold, with in_flight. DROP is written when a squad flying to join a harass loses
+ * its route without arriving, with link_frames the frames from the route to the drop.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */

@@ -1668,7 +1668,7 @@ public class SquadManager {
         if (activeAirSquad && reinforceActiveAirSquad(squad, closeThreats)) {
             return;
         }
-        airReinforcer.forget(squad);
+        airReinforcer.drop(squad, game.getFrameCount());
 
         int strength = squadStrength(squad);
         int moveOutThreshold = AirReinforcement.launchThreshold(calculateMoveOutThreshold(squad), squadStatus,

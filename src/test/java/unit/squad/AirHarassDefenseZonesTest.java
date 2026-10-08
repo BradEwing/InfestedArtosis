@@ -187,9 +187,9 @@ class AirHarassDefenseZonesTest {
     @Test
     void aZoneMemberTheFlockSightsJustOutsideItsReachIsNoNewAntiAirOnceAcceptedButAStrangerStillIs() {
         Position flock = new Position(3500, 1000);
-        AirHarassTargeting.AirThreat member = threat(1, UnitType.Terran_Goliath,
+        AirHarassTargeting.AirThreat member = threat(1, UnitType.Terran_Missile_Turret,
                 new Position(flock.getX() + 231 + AirHarassScouting.EXIT_MARGIN - 25, flock.getY()));
-        AirHarassTargeting.AirThreat stranger = threat(2, UnitType.Terran_Goliath,
+        AirHarassTargeting.AirThreat stranger = threat(2, UnitType.Terran_Missile_Turret,
                 new Position(flock.getX(), flock.getY() + 231 + AirHarassScouting.EXIT_MARGIN - 25));
         double tolerance = member.getStrength() / 2;
         AirHarassDefenseZones zones = new AirHarassDefenseZones();
@@ -213,5 +213,34 @@ class AirHarassDefenseZonesTest {
         zones.record(trigger, list(trigger, interceptor), NOW);
 
         assertEquals(Collections.singletonList(1), ids(zones.remembered(none())));
+    }
+
+    @Test
+    void aZonePricedForAFixedNumberOfFramesLapsesWhenTheyRunOutWithoutBeingSeenClear() {
+        AirHarassTargeting.AirThreat trigger = goliath(1, 0, 0);
+        AirHarassDefenseZones zones = new AirHarassDefenseZones();
+        zones.record(trigger, list(trigger), NOW, AirHarassEvaluator.REENTRY_HOLD_FRAMES);
+
+        assertTrue(zones.refresh(none(), point -> false, NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES).isEmpty());
+        assertEquals(1, zones.size());
+        List<AirHarassDefenseZones.Drop> drops = zones.refresh(none(), point -> false,
+                NOW + AirHarassEvaluator.REENTRY_HOLD_FRAMES + 1);
+
+        assertEquals(1, drops.size());
+        assertEquals(AirHarassDefenseZones.Cause.LAPSED, drops.get(0).getCause());
+        assertEquals(0, zones.size());
+        assertTrue(zones.remembered(none()).isEmpty());
+        assertTrue(zones.memberIds().isEmpty());
+    }
+
+    @Test
+    void aZoneExtendedKeepsTheLaterPricingEnd() {
+        AirHarassTargeting.AirThreat trigger = goliath(1, 0, 0);
+        AirHarassDefenseZones zones = new AirHarassDefenseZones();
+        zones.record(trigger, list(trigger), NOW, AirHarassScouting.DEFENDED_REFUSAL_FRAMES);
+        zones.record(trigger, list(trigger), NOW + 100, AirHarassEvaluator.REENTRY_HOLD_FRAMES);
+
+        assertTrue(zones.refresh(none(), point -> false, NOW + AirHarassScouting.DEFENDED_REFUSAL_FRAMES).isEmpty());
+        assertEquals(1, zones.size());
     }
 }

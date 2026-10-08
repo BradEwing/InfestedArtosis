@@ -74,8 +74,9 @@ public final class AirHarassEvaluator {
      *
      * <p>STRIKE_DEFENDED means the target keeps no strike point within the tolerance, and FLOCK_DEFENDED means the
      * flock's own center stands in more anti-air than it tolerates. Either can be anti-air the flock already knew
-     * about. NEW_AA is anti-air seen for the first time at the harass zone or at the flock that the flock cannot
-     * answer, see {@link AirHarassScouting#antiAirReaction}.
+     * about. NEW_AA is an anti-air structure seen for the first time at the harass zone or at the flock that the
+     * flock cannot answer, see {@link AirHarassScouting#antiAirReaction}. APPROACH_DEFENDED is an approach to the
+     * target that the mobile anti-air on it prices out and no other target replaces, see {@link AirApproachPricing}.
      */
     public enum ExitReason {
         BASE_UNDER_ATTACK,
@@ -85,7 +86,8 @@ public final class AirHarassEvaluator {
         FLOCK_DEFENDED,
         NO_TARGET,
         WIPED_OUT,
-        NEW_AA
+        NEW_AA,
+        APPROACH_DEFENDED
     }
 
     /**

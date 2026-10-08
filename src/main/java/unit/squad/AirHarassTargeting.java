@@ -35,6 +35,9 @@ import java.util.function.ToIntFunction;
  * zones toward the flock's shared {@link #flockPoint}, or the strike point without one. Ranges, speeds, hit points
  * and damage are read from JBWAPI; the constants are tuning values.
  *
+ * <p>A Mutalisk the flock's volley plan assigned a target, see {@link AirSnipe}, fires on it ahead of the tiers while the
+ * target is a visible contact outside every other avoided zone; it still evades first.
+ *
  * <p>On an exposed target a Missile Turret whose zone the flock does not avoid is taken in the isolated anti-air tier
  * too, see {@link #turretTaken}.
  */
@@ -197,6 +200,8 @@ public final class AirHarassTargeting {
         private final boolean turretsTaken;
         @Builder.Default
         private final Set<Integer> edgeTurretIds = Collections.emptySet();
+        @Builder.Default
+        private final Map<Integer, Integer> snipeTargets = Collections.emptyMap();
     }
 
     /**
@@ -644,8 +649,15 @@ public final class AirHarassTargeting {
      * @return the decision
      */
     public static Decision choose(Muta muta, Situation situation, MutaMemory memory) {
-        Contact target = bestTarget(muta, situation, memory.targetId);
+        Contact target = snipeTarget(muta, situation);
         Tier tier = target == null ? null : tier(target, situation);
+        if (target != null && tier == null) {
+            tier = Tier.ISOLATED_AA;
+        }
+        if (target == null) {
+            target = bestTarget(muta, situation, memory.targetId);
+            tier = target == null ? null : tier(target, situation);
+        }
         int ignoredId = tier == Tier.ISOLATED_AA || tier == Tier.EDGE_TURRET ? target.getId() : NO_TARGET;
         List<AirThreat> zones = without(situation.getAvoided(), ignoredId);
         Position route = situation.getFlockPoint() != null ? situation.getFlockPoint() : situation.getSeekPoint();
@@ -695,6 +707,27 @@ public final class AirHarassTargeting {
             return left != UnitType.Terran_Missile_Turret;
         }
         return Filter.isWorkerType(taken) && !Filter.isWorkerType(left);
+    }
+
+    /**
+     * The target the volley plan assigned to a Mutalisk, see {@link AirSnipe}: the contact it names while it is still
+     * a visible contact and no other avoided zone covers it.
+     *
+     * @param muta the Mutalisk
+     * @param situation the frame's shared view
+     * @return the contact, or null with no assignment
+     */
+    static Contact snipeTarget(Muta muta, Situation situation) {
+        Integer id = situation.getSnipeTargets().get(muta.getId());
+        if (id == null) {
+            return null;
+        }
+        for (Contact contact : situation.getContacts()) {
+            if (contact.getId() == id) {
+                return covered(contact, situation.getAvoided()) ? null : contact;
+            }
+        }
+        return null;
     }
 
     /**
