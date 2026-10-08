@@ -109,10 +109,28 @@ public final class ContainmentGate {
      */
     static boolean compositionAllows(boolean versusTerran, boolean mechDetected, Map<UnitType, Integer> ours,
                                      Map<UnitType, Integer> enemy) {
+        return compositionAllows(versusTerran, mechDetected, false, ours, enemy);
+    }
+
+    /**
+     * Whether the squad's makeup lets it contain: as {@link #compositionAllows(boolean, boolean, Map, Map)}, with a
+     * Bunker held at the enemy natural or main, see BunkerNatural and BunkerMain, counted as an enemy that outranges
+     * melee. A squad that reaches {@link #MIN_RANGED_SHARE} of ranged supply still contains, so a melee squad stays
+     * out of a held Bunker and a squad with the ranged supply to answer it does not.
+     *
+     * @param versusTerran true when the opponent is Terran
+     * @param mechDetected true when the TerranMech strategy has been detected
+     * @param bunkerHeld true when BunkerNatural or BunkerMain holds
+     * @param ours the squad's unit counts
+     * @param enemy living enemy unit counts
+     * @return true when the squad may contain
+     */
+    static boolean compositionAllows(boolean versusTerran, boolean mechDetected, boolean bunkerHeld,
+                                     Map<UnitType, Integer> ours, Map<UnitType, Integer> enemy) {
         if (!versusTerran) {
             return true;
         }
-        if (!mechDetected && !enemyOutranges(MELEE_MAX_RANGE, enemy)) {
+        if (!mechDetected && !bunkerHeld && !enemyOutranges(MELEE_MAX_RANGE, enemy)) {
             return true;
         }
         return rangedShare(ours) >= MIN_RANGED_SHARE;
@@ -131,10 +149,27 @@ public final class ContainmentGate {
      */
     static boolean safeToHold(boolean versusTerran, boolean mechDetected, Map<UnitType, Integer> ours,
                               Map<UnitType, Integer> enemy) {
+        return safeToHold(versusTerran, mechDetected, false, ours, enemy);
+    }
+
+    /**
+     * Whether a squad the combat sim read as RETREAT may hold a contain arc instead: as
+     * {@link #safeToHold(boolean, boolean, Map, Map)}, with a held Bunker counted as in
+     * {@link #compositionAllows(boolean, boolean, boolean, Map, Map)}.
+     *
+     * @param versusTerran true when the opponent is Terran
+     * @param mechDetected true when the TerranMech strategy has been detected
+     * @param bunkerHeld true when BunkerNatural or BunkerMain holds
+     * @param ours the squad's unit counts
+     * @param enemy living enemy unit counts
+     * @return true when the squad may take the arc on a sim RETREAT
+     */
+    static boolean safeToHold(boolean versusTerran, boolean mechDetected, boolean bunkerHeld,
+                              Map<UnitType, Integer> ours, Map<UnitType, Integer> enemy) {
         if (!versusTerran) {
             return true;
         }
         return !mechDetected && !enemyOutranges(Math.max(MELEE_MAX_RANGE, longestRange(ours)), enemy)
-                && compositionAllows(true, false, ours, enemy);
+                && compositionAllows(true, false, bunkerHeld, ours, enemy);
     }
 }

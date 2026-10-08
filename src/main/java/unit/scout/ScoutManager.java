@@ -14,7 +14,9 @@ import info.ScoutData;
 import info.map.GameMap;
 import info.map.MapTile;
 import info.map.ScoutPath;
+import info.tracking.StrategyTracker;
 import telemetry.PerchAssignments;
+import telemetry.PlanEvents;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 
@@ -39,6 +41,8 @@ public class ScoutManager {
     private HashSet<ManagedUnit> zerglingScouts = new HashSet<>();
 
     private ScoutPath enemyMainScoutPath;
+
+    private boolean bunkerSkipRecorded;
 
     private List<ManagedUnit> recalledOverlords = new ArrayList<>();
 
@@ -264,7 +268,41 @@ public class ScoutManager {
             return true;
         }
 
+        if (!zerglingScouts.isEmpty() && gameState.getBaseData().knowEnemyMainBase() && !mayScoutEnemyMain()) {
+            recordBunkerSkip();
+            return true;
+        }
+
         return false;
+    }
+
+    /**
+     * Whether a ground scout may route to the enemy main: not while a detected Bunker holds the natural or the main,
+     * see {@link BunkerScoutGate}. Opening the route re-arms {@link #recordBunkerSkip}.
+     */
+    boolean mayScoutEnemyMain() {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        if (strategyTracker == null) {
+            return true;
+        }
+        boolean may = BunkerScoutGate.mayRoute(strategyTracker.isBunkerNaturalHeld(),
+                strategyTracker.isBunkerMainHeld(), BunkerScoutGate.Destination.ENEMY_MAIN);
+        if (may) {
+            bunkerSkipRecorded = false;
+        }
+        return may;
+    }
+
+    /**
+     * Writes a SCOUT_SKIPPED row for a ground scout withheld from, or recalled off, the enemy main by a held Bunker,
+     * once until the route opens again.
+     */
+    private void recordBunkerSkip() {
+        if (bunkerSkipRecorded) {
+            return;
+        }
+        bunkerSkipRecorded = true;
+        PlanEvents.scoutSkipped(BunkerScoutGate.skipLabel(BunkerScoutGate.Destination.ENEMY_MAIN));
     }
 
     private boolean isEnemyBaseLocated() {
@@ -285,6 +323,8 @@ public class ScoutManager {
             return 0;
         }
 
+        boolean mayScout = mayScoutEnemyMain();
+
         int framesSinceLastEnemy = currentFrame - lastEnemySeenFrame;
         if (framesSinceLastEnemy < 720) {
             return 0;
@@ -292,12 +332,21 @@ public class ScoutManager {
 
         int maxScouts = getMaxZerglingScouts();
         int currentScouts = zerglingScouts.size();
-        return Math.max(0, maxScouts - currentScouts);
+        int needed = Math.max(0, maxScouts - currentScouts);
+        if (needed > 0 && !mayScout) {
+            recordBunkerSkip();
+            return 0;
+        }
+        return needed;
     }
 
-    private TilePosition pollDroneScoutTarget() {
+    private TilePosition pollDroneScoutTarget(boolean bunkerGated) {
         BaseData baseData = gameState.getBaseData();
         if (baseData.knowEnemyMainBase()) {
+            if (bunkerGated && !mayScoutEnemyMain()) {
+                recordBunkerSkip();
+                return null;
+            }
             return scoutEnemyMain();
         }
         if (baseData.isEnemyMainBaseFound()) {
@@ -401,7 +450,7 @@ public class ScoutManager {
         TilePosition target = null;
         if (managedUnit.getUnitType() == UnitType.Zerg_Drone ||
             managedUnit.getUnitType() == UnitType.Zerg_Zergling) {
-            target = this.pollDroneScoutTarget();
+            target = this.pollDroneScoutTarget(managedUnit.getUnitType() == UnitType.Zerg_Zergling);
         } else {
             target = gameState.pollScoutTarget();
         }

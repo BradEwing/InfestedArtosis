@@ -118,6 +118,25 @@ class ContainmentGateTest {
     }
 
     @Test
+    void aHeldBunkerGatesAMeleeSquadWithNoRangedUnitSeen() {
+        assertTrue(compositionAllows(true, false, false, LINGS, Collections.emptyMap()));
+        assertFalse(compositionAllows(true, false, true, LINGS, Collections.emptyMap()));
+        assertFalse(safeToHold(true, false, true, LINGS, Collections.emptyMap()));
+    }
+
+    @Test
+    void aSquadWithEnoughRangedSupplyStillContainsAHeldBunker() {
+        assertTrue(compositionAllows(true, false, true, LINGS_AND_HYDRAS, Collections.emptyMap()));
+        assertTrue(safeToHold(true, false, true, LINGS_AND_HYDRAS, Collections.emptyMap()));
+    }
+
+    @Test
+    void aHeldBunkerNeverGatesAgainstOtherRaces() {
+        assertTrue(compositionAllows(false, false, true, LINGS, Collections.emptyMap()));
+        assertTrue(safeToHold(false, false, true, LINGS, Collections.emptyMap()));
+    }
+
+    @Test
     void aSquadWithHydrasIsOutrangedByVulturesAndGoliathsOnASimRetreat() {
         assertEquals(UnitType.Zerg_Hydralisk.groundWeapon().maxRange(), longestRange(LINGS_AND_HYDRAS));
         assertFalse(safeToHold(true, false, LINGS_AND_HYDRAS, VULTURES_AND_GOLIATHS));
