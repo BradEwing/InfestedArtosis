@@ -14,9 +14,12 @@ Supported opponent files, recognised by file name and shape:
 A row is joined by game id when a field of the row equals the game's name, otherwise by the nearest timestamp:
 the row whose time falls inside the game's launch-to-finish window, or within tolerance_s of it, and on the
 game's map when the row names one. Files in any other shape return None, as does a game with no usable
-timestamp. Row order is irrelevant: the join never takes the first or last row by position.
+timestamp. Two rows equally near the game return None rather than a guess. The join never takes the first or
+last row by position.
 
-Game timestamps are the manifest's launched_at and finished_at, local time, the same clock the opponents use.
+Game timestamps are the manifest's launched_at and finished_at in local time, and the opponents stamp rows with
+epoch time, so the join is correct only when it runs in the timezone of the machine that played the batch.
+PurpleWave stamps a row at game end and Microwave at game start; the launch-to-finish window covers both.
 """
 
 import argparse
@@ -28,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import batchlib as bl
 
-DEFAULT_TOLERANCE_S = 120.0
+DEFAULT_TOLERANCE_S = 60.0
 
 PURPLEWAVE_FORMAT = "purplewave_v4_history"
 MICROWAVE_FORMAT = "microwave_history"
@@ -107,7 +110,10 @@ def history_row(game, path, tolerance_s=DEFAULT_TOLERANCE_S):
     candidates = on_map or [r for r in candidates if not r[1] or not wanted_map]
     if not candidates:
         return None
-    return build(min(candidates, key=lambda r: distance_to_window(r[0], window)))
+    ranked = sorted(candidates, key=lambda r: distance_to_window(r[0], window))
+    if len(ranked) > 1 and distance_to_window(ranked[0][0], window) == distance_to_window(ranked[1][0], window):
+        return None
+    return build(ranked[0])
 
 
 def purplewave_strategy(row):

@@ -79,7 +79,9 @@ class WindowTest(unittest.TestCase):
     def test_draw_does_not_slide_later_indices(self):
         grim = self.rows(False)["GrimHammer"]
         self.assertEqual(grim["k"], 5)
-        self.assertEqual(grim["inc"], 1)
+        self.assertEqual(grim["inc_a"], 1)
+        self.assertEqual(grim["inc_b"], 0)
+        self.assertEqual(grim["miss"], 1)
         self.assertEqual(grim["wins_a"], 1)
         self.assertEqual(grim["wins_b"], 1)
 
@@ -90,11 +92,12 @@ class WindowTest(unittest.TestCase):
         self.assertEqual(grim["wins_b"], 1)
 
     def test_in_flight_index_is_left_out(self):
-        pairs = window.align(self.control, self.beta)["GrimHammer"]
-        self.assertNotIn(340, [index for index, _, _ in pairs])
+        pairs, missing, _ = window.align(self.control, self.beta)
+        self.assertNotIn(340, [index for index, _, _ in pairs["GrimHammer"]])
+        self.assertEqual(missing["GrimHammer"], 1)
 
     def test_replayed_index_uses_the_final_attempt(self):
-        pair = window.align(self.control, self.beta)["insanitybot"]
+        pair = window.align(self.control, self.beta)[0]["insanitybot"]
         self.assertEqual(len(pair), 1)
         _, game_a, game_b = pair[0]
         self.assertEqual(game_a["outcome"], "WIN")
@@ -105,7 +108,7 @@ class WindowTest(unittest.TestCase):
         self.beta["games"][-2]["outcome"] = "NO_RESULT"
         grim = self.rows(True)["GrimHammer"]
         self.assertEqual(grim["k"], 6)
-        self.assertEqual(grim["nr_b"], 1)
+        self.assertEqual(grim["inc_b"], 1)
         self.assertEqual(grim["wins_b"], 0)
 
     def test_maps_column_counts_matching_maps(self):
@@ -117,7 +120,18 @@ class WindowTest(unittest.TestCase):
         for game in self.beta["games"]:
             if game["index"] == 13:
                 game["opponent"] = "GrimHammer"
-        self.assertNotIn(13, [i for i, _, _ in window.align(self.control, self.beta).get("insanitybot", [])])
+        pairs, _, mismatched = window.align(self.control, self.beta)
+        self.assertNotIn(13, [i for i, _, _ in pairs.get("insanitybot", [])])
+        self.assertEqual(mismatched, [13])
+        self.assertTrue(any("different opponent" in w for w in window.warnings(self.control, self.beta)))
+
+    def test_isolated_run_against_a_full_batch_warns(self):
+        self.beta["opponents"] = ["GrimHammer"]
+        self.beta["games_per_opponent"] = 25
+        found = window.warnings(self.control, self.beta)
+        self.assertTrue(any("different opponents" in w for w in found))
+        self.assertTrue(any("games_per_opponent" in w for w in found))
+        self.assertEqual(window.warnings(self.control, self.control), [])
 
     def test_total_row_sums_opponents(self):
         rows = window.window(self.control, self.beta)
@@ -165,6 +179,18 @@ class LabelTest(GamesDirTestCase):
     def test_real_crash_is_jvm_died_on_the_exception_marker(self):
         make_game_dir(self.root, "DIED", None, None, 30000, LOG_JVM_DEATH)
         self.assertEqual(self.label({"game_name": "DIED", "outcome": "CRASH"}), bl.LABEL_JVM_DIED)
+
+    def test_opponent_crash_is_not_jvm_died(self):
+        gdir = make_game_dir(self.root, "THEIRS", RESULT_CRASHED, SCORES_CLEAN, 30000, LOG_UNFINISHED)
+        (gdir / "logs_1").mkdir()
+        (gdir / "logs_1" / "scores.json").write_text(json.dumps(SCORES_CRASHED), encoding="utf-8")
+        self.assertIsNone(self.label({"game_name": "THEIRS", "outcome": "CRASH"}))
+
+    def test_opponent_assert_is_not_jvm_died(self):
+        gdir = make_game_dir(self.root, "FROZE", RESULT_CRASHED, SCORES_CRASHED, 30000, LOG_UNFINISHED)
+        (gdir / "logs_1").mkdir()
+        (gdir / "logs_1" / "bot.log").write_text("Assertion failed\n", encoding="utf-8")
+        self.assertIsNone(self.label({"game_name": "FROZE", "outcome": "CRASH"}))
 
     def test_crash_with_a_clean_log_keeps_its_plain_outcome(self):
         make_game_dir(self.root, "CLEAN", RESULT_CRASHED, SCORES_CRASHED, 30000, LOG_FINISHED)
@@ -271,6 +297,12 @@ class HistoryRowTest(unittest.TestCase):
         path = self.write("_v4_history_Infested Artosis.csv", [near, right])
         row = opphistory.history_row(self.game("G", "2026-10-07T05:28:45", "2026-10-07T05:31:25"), path)
         self.assertEqual(row["fields"][9], "Right")
+
+    def test_two_equally_near_rows_return_none(self):
+        rows = [self.PURPLEWAVE.format(ms=int(self.epoch(iso) * 1000), plan="P")
+                for iso in ("2026-10-07T05:28:15", "2026-10-07T05:29:15")]
+        path = self.write("_v4_history_Infested Artosis.csv", rows)
+        self.assertIsNone(opphistory.history_row(self.game("G", "2026-10-07T05:28:45", "2026-10-07T05:28:45"), path))
 
     def test_unknown_format_returns_none(self):
         path = self.write("Infested Artosis.txt", ["(2)Benzene.scx|288,3120|Nuke|W"])
