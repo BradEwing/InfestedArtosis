@@ -1,6 +1,7 @@
 package telemetry;
 
 import bwapi.Game;
+import bwapi.Position;
 import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
@@ -195,11 +196,13 @@ public class BunkerLogger implements BunkerSink {
     private List<BunkerEngagements.BunkerSample> livingBunkers() {
         List<BunkerEngagements.BunkerSample> bunkers = new ArrayList<>();
         for (ObservedUnit ou : gameState.getObservedUnitTracker().getLivingObservedUnits()) {
-            if (ou.getUnitType() != UnitType.Terran_Bunker || !ou.isCompleted()) {
-                continue;
+            Position position = ou.getUnitType() == UnitType.Terran_Bunker && ou.isCompleted()
+                    ? ou.getCurrentOrLastKnownPosition()
+                    : null;
+            if (position != null) {
+                bunkers.add(new BunkerEngagements.BunkerSample(ou.getUnit().getID(), position,
+                        ou.getLastKnownHitPoints()));
             }
-            bunkers.add(new BunkerEngagements.BunkerSample(ou.getUnit().getID(),
-                    ou.getCurrentOrLastKnownPosition(), ou.getLastKnownHitPoints()));
         }
         return bunkers;
     }

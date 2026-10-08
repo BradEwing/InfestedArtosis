@@ -41,7 +41,8 @@ class BunkerAdvanceGateTest {
     private static BunkerAdvanceGate.Verdict evaluate(BunkerLossLedger ledger, List<BunkerAdvanceGate.Bunker> living,
                                                       double ownStrength, boolean melee, boolean simBreaks,
                                                       int frame) {
-        return BunkerAdvanceGate.evaluate(true, ledger, living, SQUAD, ownStrength, melee, simBreaks, frame);
+        return BunkerAdvanceGate.evaluate(true, ledger, living,
+                new BunkerAdvanceGate.Situation(SQUAD, ownStrength, melee, simBreaks, false), frame);
     }
 
     @Test
@@ -78,7 +79,7 @@ class BunkerAdvanceGateTest {
     @Test
     void aSquadWithNoBunkerInRangeIsNotConcerned() {
         BunkerAdvanceGate.Verdict verdict = BunkerAdvanceGate.evaluate(true, ledgerWithLoss(), living(FULL_HIT_POINTS),
-                new Position(5000, 5000), WEAK, true, false, LOSS_FRAME + 1);
+                new BunkerAdvanceGate.Situation(new Position(5000, 5000), WEAK, true, false, false), LOSS_FRAME + 1);
 
         assertFalse(verdict.isHeld());
         assertEquals(BunkerAdvanceReason.NO_BUNKER, verdict.getReason());
@@ -241,8 +242,8 @@ class BunkerAdvanceGateTest {
     void withTheBunkerGatesSwitchedOffNoAdvanceIsHeld() {
         BunkerLossLedger ledger = ledgerWithLoss();
 
-        BunkerAdvanceGate.Verdict verdict = BunkerAdvanceGate.evaluate(false, ledger, living(FULL_HIT_POINTS), SQUAD,
-                WEAK, true, false, LOSS_FRAME + 10);
+        BunkerAdvanceGate.Verdict verdict = BunkerAdvanceGate.evaluate(false, ledger, living(FULL_HIT_POINTS),
+                new BunkerAdvanceGate.Situation(SQUAD, WEAK, true, false, false), LOSS_FRAME + 10);
 
         assertFalse(verdict.isHeld());
         assertEquals(BunkerAdvanceReason.NO_BUNKER, verdict.getReason());
@@ -260,5 +261,43 @@ class BunkerAdvanceGateTest {
 
         lings.put(UnitType.Zerg_Hydralisk, 3);
         assertTrue(ContainmentGate.isMostlyMelee(lings));
+    }
+
+    @Test
+    void aSquadLatchedByAHoldStaysHeldOutsideTheRangeUntilARelease() {
+        BunkerLossLedger ledger = ledgerWithLoss();
+        Position beyondRange = new Position(1000 + (int) BunkerAdvanceGate.RELEVANT_RANGE + 200, 1000);
+
+        BunkerAdvanceGate.Verdict free = BunkerAdvanceGate.evaluate(true, ledger, living(FULL_HIT_POINTS),
+                new BunkerAdvanceGate.Situation(beyondRange, WEAK, true, false, false), LOSS_FRAME + 10);
+        BunkerAdvanceGate.Verdict latched = BunkerAdvanceGate.evaluate(true, ledger, living(FULL_HIT_POINTS),
+                new BunkerAdvanceGate.Situation(beyondRange, WEAK, true, false, true), LOSS_FRAME + 11);
+        BunkerAdvanceGate.Verdict released = BunkerAdvanceGate.evaluate(true, ledger, living(FULL_HIT_POINTS),
+                new BunkerAdvanceGate.Situation(beyondRange, STRONG, true, false, true), LOSS_FRAME + 12);
+
+        assertFalse(free.isHeld());
+        assertTrue(latched.isHeld());
+        assertEquals(BunkerAdvanceReason.RELEASED_STRENGTH, released.getReason());
+    }
+
+    @Test
+    void aBunkerRebuiltUnderAnotherIdIsNotTheOneTheLossWasRecordedAgainst() {
+        BunkerLossLedger ledger = ledgerWithLoss();
+        List<BunkerAdvanceGate.Bunker> rebuilt = Collections.singletonList(
+                new BunkerAdvanceGate.Bunker(BUNKER_ID + 5, BUNKER, FULL_HIT_POINTS));
+
+        BunkerAdvanceGate.Verdict verdict = evaluate(ledger, rebuilt, WEAK, true, false, LOSS_FRAME + 10);
+
+        assertEquals(BunkerAdvanceReason.RELEASED_DEAD, verdict.getReason());
+    }
+
+    @Test
+    void aBunkerAtOneOfOurOwnBasesIsNotAnEnemyStance() {
+        List<Position> ownBases = Collections.singletonList(new Position(500, 1000));
+
+        assertTrue(BunkerAdvanceGate.nearAny(new Position(500 + (int) BunkerAdvanceGate.HOME_RADIUS, 1000), ownBases));
+        assertFalse(BunkerAdvanceGate.nearAny(new Position(500 + (int) BunkerAdvanceGate.HOME_RADIUS + 1, 1000),
+                ownBases));
+        assertFalse(BunkerAdvanceGate.nearAny(BUNKER, Collections.emptyList()));
     }
 }

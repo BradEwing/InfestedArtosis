@@ -51,18 +51,18 @@ class BunkerStanceTest {
         });
     }
 
-    private static DroneRound.ContainHeld stance(boolean standing, int workers) {
+    private static DroneRound.ContainHeld stance(int stanceId, int workers) {
         return DroneRound.ContainHeld.builder()
                 .workers(workers)
                 .softCap(SOFT_CAP)
                 .hardCap(HARD_CAP)
-                .bunkerStance(standing)
+                .bunkerStanceId(stanceId)
                 .build();
     }
 
     private static DroneRound openRound() {
         DroneRound round = new DroneRound();
-        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(true, WORKERS));
+        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(1, WORKERS));
         return round;
     }
 
@@ -99,7 +99,7 @@ class BunkerStanceTest {
     void noRoundOpensWithoutAStance() {
         DroneRound round = new DroneRound();
 
-        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(false, WORKERS));
+        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(0, WORKERS));
 
         assertFalse(round.isActive());
     }
@@ -108,7 +108,7 @@ class BunkerStanceTest {
     void noRoundOpensUnderAThreat() {
         DroneRound round = new DroneRound();
 
-        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, THREAT, stance(true, WORKERS));
+        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, THREAT, stance(1, WORKERS));
 
         assertFalse(round.isActive());
     }
@@ -116,9 +116,9 @@ class BunkerStanceTest {
     @Test
     void theRoundIsCutToTheRoomUnderTheCapsAndNeverOpensAtThem() {
         DroneRound cut = new DroneRound();
-        cut.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(true, SOFT_CAP - 1));
+        cut.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(1, SOFT_CAP - 1));
         DroneRound full = new DroneRound();
-        full.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(true, SOFT_CAP));
+        full.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(1, SOFT_CAP));
 
         assertEquals(1, cut.getRoundSize());
         assertFalse(full.isActive());
@@ -128,7 +128,7 @@ class BunkerStanceTest {
     void theBuildsDroneCapDoesNotBoundTheRound() {
         DroneRound round = new DroneRound();
 
-        round.update(FRAME, NO_ARMY, DRONES, DRONES, WANTED, CALM, stance(true, WORKERS));
+        round.update(FRAME, NO_ARMY, DRONES, DRONES, WANTED, CALM, stance(1, WORKERS));
 
         assertTrue(round.isActive());
     }
@@ -137,7 +137,7 @@ class BunkerStanceTest {
     void theRoundClosesWhenTheStanceStopsStanding() {
         DroneRound round = openRound();
 
-        round.update(FRAME + 10, NO_ARMY, DRONES, 0, WANTED, CALM, stance(false, WORKERS));
+        round.update(FRAME + 10, NO_ARMY, DRONES, 0, WANTED, CALM, stance(0, WORKERS));
 
         assertFalse(round.isActive());
         assertEquals(DroneRound.CloseReason.BUNKER_STANCE_ENDED, round.getLastCloseReason());
@@ -146,31 +146,37 @@ class BunkerStanceTest {
     @Test
     void theRoundClosesOnItsSizeThreatAndTimeout() {
         DroneRound sized = openRound();
-        sized.update(FRAME + 10, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(true, WORKERS + 2));
+        sized.update(FRAME + 10, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(1, WORKERS + 2));
         assertEquals(DroneRound.CloseReason.SIZE, sized.getLastCloseReason());
 
         DroneRound threatened = openRound();
-        threatened.update(FRAME + 10, NO_ARMY, DRONES, 0, WANTED, THREAT, stance(true, WORKERS));
+        threatened.update(FRAME + 10, NO_ARMY, DRONES, 0, WANTED, THREAT, stance(1, WORKERS));
         assertEquals(DroneRound.CloseReason.THREAT, threatened.getLastCloseReason());
 
         DroneRound late = openRound();
-        late.update(FRAME + DroneRound.MAX_ROUND_FRAMES, NO_ARMY, DRONES, 0, WANTED, CALM, stance(true, WORKERS));
+        late.update(FRAME + DroneRound.MAX_ROUND_FRAMES, NO_ARMY, DRONES, 0, WANTED, CALM, stance(1, WORKERS));
         assertEquals(DroneRound.CloseReason.TIMEOUT, late.getLastCloseReason());
     }
 
     @Test
-    void theNextRoundWaitsForTheCooldown() {
+    void aStanceOpensOneRoundAndNoMoreHoweverLongItStands() {
         DroneRound round = openRound();
-        int closed = FRAME + 10;
-        round.update(closed, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(true, WORKERS + 2));
+        round.update(FRAME + 10, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(1, WORKERS + 2));
 
-        round.update(closed + DroneRound.BUNKER_STANCE_COOLDOWN_FRAMES - 1, NO_ARMY, DRONES + 2, 0, WANTED, CALM,
-                stance(true, WORKERS + 2));
+        round.update(FRAME + 100000, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(1, WORKERS + 2));
+
         assertFalse(round.isActive());
+    }
 
-        round.update(closed + DroneRound.BUNKER_STANCE_COOLDOWN_FRAMES, NO_ARMY, DRONES + 2, 0, WANTED, CALM,
-                stance(true, WORKERS + 2));
+    @Test
+    void aNewStanceOpensItsOwnRound() {
+        DroneRound round = openRound();
+        round.update(FRAME + 10, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(1, WORKERS + 2));
+
+        round.update(FRAME + 20, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(2, WORKERS + 2));
+
         assertTrue(round.isActive());
+        assertEquals(2, round.getLastBunkerStanceRoundId());
     }
 
     @Test
@@ -178,7 +184,7 @@ class BunkerStanceTest {
         DroneRound round = openRound();
         int milestone = round.getArmyMilestone();
 
-        round.update(FRAME + 10, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(true, WORKERS + 2));
+        round.update(FRAME + 10, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(1, WORKERS + 2));
 
         assertEquals(milestone, round.getArmyMilestone());
     }
@@ -190,12 +196,13 @@ class BunkerStanceTest {
         DroneRound round = new DroneRound();
 
         stance.setStatus(Status.ACTIVE);
-        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(stance.isWanted(), WORKERS));
+        assertEquals(1, stance.getStanceId());
+        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS));
         stance.record(FRAME, round, DRONES, WORKERS);
-        round.update(FRAME + 100, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(stance.isWanted(), WORKERS + 2));
+        round.update(FRAME + 100, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS + 2));
         stance.record(FRAME + 100, round, DRONES + 2, WORKERS + 2);
         stance.setStatus(Status.ATTACKING);
-        round.update(FRAME + 200, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(stance.isWanted(), WORKERS + 2));
+        round.update(FRAME + 200, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS + 2));
         stance.record(FRAME + 200, round, DRONES + 2, WORKERS + 2);
 
         assertEquals(4, events.size());

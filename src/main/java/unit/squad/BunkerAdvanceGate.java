@@ -40,7 +40,27 @@ public final class BunkerAdvanceGate {
      */
     static final double RELEVANT_RANGE = 1280;
 
+    /**
+     * The farthest, in pixels, from one of our own bases that a Bunker is taken for a Bunker rush at home rather than
+     * an enemy stance, which the gate does not record.
+     */
+    static final double HOME_RADIUS = 640;
+
     private BunkerAdvanceGate() {
+    }
+
+    /**
+     * @param position a position
+     * @param centres the centres of our bases
+     * @return whether the position lies within {@link #HOME_RADIUS} of any of them
+     */
+    public static boolean nearAny(Position position, Collection<Position> centres) {
+        for (Position centre : centres) {
+            if (position.getDistance(centre) <= HOME_RADIUS) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -122,26 +142,54 @@ public final class BunkerAdvanceGate {
     }
 
     /**
+     * A squad as the gate reads it.
+     */
+    public static final class Situation {
+        private final Position center;
+        private final double ownStrength;
+        private final boolean melee;
+        private final boolean simBreaks;
+        private final boolean latched;
+
+        /**
+         * @param center the squad's centre
+         * @param ownStrength the squad's priced strength
+         * @param melee whether the squad is mostly melee, see {@link ContainmentGate#isMostlyMelee}
+         * @param simBreaks whether the sim reads the squad as breaking the Bunker it faces
+         * @param latched whether the gate held the squad's last advance, so every record concerns it wherever it
+         *     stands until a release ends the record
+         */
+        public Situation(Position center, double ownStrength, boolean melee, boolean simBreaks, boolean latched) {
+            this.center = center;
+            this.ownStrength = ownStrength;
+            this.melee = melee;
+            this.simBreaks = simBreaks;
+            this.latched = latched;
+        }
+    }
+
+    /**
      * Decides whether a squad may advance, ending the records of the Bunkers it released. With the gate switched off
      * no advance is ever held and no record is read or ended.
      *
      * @param gateOn whether the Bunker gates are switched on, see Config.bunkerGate
      * @param ledger the losses on record
      * @param living the living observed Bunkers
-     * @param squadCenter the squad's centre
-     * @param ownStrength the squad's priced strength
-     * @param melee whether the squad is mostly melee, see {@link ContainmentGate#isMostlyMelee}
-     * @param simBreaks whether the sim reads the squad as breaking the Bunker it faces
+     * @param squad the squad
      * @param frame the current frame
      * @return the verdict
      */
     public static Verdict evaluate(boolean gateOn, BunkerLossLedger ledger, Collection<Bunker> living,
-                                   Position squadCenter, double ownStrength, boolean melee, boolean simBreaks,
-                                   int frame) {
+                                   Situation squad, int frame) {
         if (!gateOn) {
             return new Verdict(BunkerAdvanceReason.NO_BUNKER, null, 0, 0);
         }
-        List<BunkerLossLedger.Entry> relevant = ledger.near(squadCenter, RELEVANT_RANGE);
+        Position squadCenter = squad.center;
+        double ownStrength = squad.ownStrength;
+        boolean melee = squad.melee;
+        boolean simBreaks = squad.simBreaks;
+        List<BunkerLossLedger.Entry> relevant = ledger.near(squadCenter,
+                squad.latched ? Double.MAX_VALUE : RELEVANT_RANGE);
         Bunker nearestLiving = nearest(living, squadCenter);
         if (relevant.isEmpty()) {
             return nearestLiving == null
@@ -193,7 +241,7 @@ public final class BunkerAdvanceGate {
 
     private static Bunker find(Collection<Bunker> living, BunkerLossLedger.Entry entry) {
         for (Bunker bunker : living) {
-            if (bunker.getPosition().equals(entry.getPosition())) {
+            if (bunker.getId() == entry.getBunkerId() && bunker.getPosition().equals(entry.getPosition())) {
                 return bunker;
             }
         }

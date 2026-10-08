@@ -250,7 +250,7 @@ public abstract class BuildOrder {
                 .softCap(gameState.workerSoftCap())
                 .hardCap(gameState.workerHardCap())
                 .calmEconomyHeld(holdsCalmEconomyRound(gameState))
-                .bunkerStance(gameState.getBunkerStance().isWanted())
+                .bunkerStanceId(gameState.getBunkerStance().getStanceId())
                 .build();
     }
 

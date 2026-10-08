@@ -54,9 +54,9 @@ import unit.squad.ContainHeldTimer;
  * TIMEOUT, and never reads or moves the army milestone.
  *
  * <p>A {@link OpenReason#BUNKER_STANCE} round opens while an enemy Bunker stance stands, see {@link BunkerStance}, and
- * the workers are under both caps, no sooner than {@link #BUNKER_STANCE_COOLDOWN_FRAMES} after the last such round
- * closed. It adds {@link #BUNKER_STANCE_ROUND_SIZE} Drones, cut to the room under the caps, and the build's Drone cap
- * does not bound it. It closes on a threat, when the stance stops standing, when the workers reach either cap, once
+ * the workers are under both caps, at most once per stance. It adds {@link #BUNKER_STANCE_ROUND_SIZE} Drones, cut to
+ * the room under the caps, and the build's Drone cap does not bound it. It closes on a threat, when the stance stops
+ * standing, when the workers reach either cap, once
  * its Drones are hatched or in an egg, or after {@link #MAX_ROUND_FRAMES}, and never reads or moves the army
  * milestone.
  *
@@ -101,8 +101,6 @@ public class DroneRound {
     /** Drones a Bunker stance round adds, cut to the workers still under the lower of the two caps. Tuning constant. */
     public static final int BUNKER_STANCE_ROUND_SIZE = 2;
 
-    /** Frames after a Bunker stance round closes before another may open: one minute. Tuning constant. */
-    public static final int BUNKER_STANCE_COOLDOWN_FRAMES = 1440;
 
     private static final int NEVER = Integer.MIN_VALUE / 2;
 
@@ -171,8 +169,12 @@ public class DroneRound {
         /** Whether the build holds back a calm-economy round, such as while its first wave is still to come. */
         private final boolean calmEconomyHeld;
 
-        /** Whether an enemy Bunker stance stands, see {@link BunkerStance}. */
-        private final boolean bunkerStance;
+        /** The number of the enemy Bunker stance that stands, see {@link BunkerStance}, or 0 when none does. */
+        private final int bunkerStanceId;
+
+        boolean isBunkerStance() {
+            return bunkerStanceId > 0;
+        }
 
         boolean isHeld() {
             return chainStartFrame != ContainHeldTimer.NO_CHAIN && heldFrames >= ContainHeldTimer.HELD_FRAMES;
@@ -237,8 +239,9 @@ public class DroneRound {
     @Getter
     private int lastCalmEconomyCloseFrame = NEVER;
 
+    /** The number of the Bunker stance the last Bunker stance round opened for, or 0 before one has. */
     @Getter
-    private int lastBunkerStanceCloseFrame = NEVER;
+    private int lastBunkerStanceRoundId = 0;
 
     /** Why the last round closed, or null before one has. */
     @Getter
@@ -319,6 +322,7 @@ public class DroneRound {
             return;
         }
         if (opensBunkerStanceRound(frame, containHeld)) {
+            lastBunkerStanceRoundId = containHeld.getBunkerStanceId();
             open(frame, OpenReason.BUNKER_STANCE, drones + bunkerStanceRoundSize(containHeld), containHeld);
             return;
         }
@@ -360,7 +364,7 @@ public class DroneRound {
 
     private boolean opensBunkerStanceRound(int frame, ContainHeld containHeld) {
         return containHeld.isBunkerStance()
-                && frame - lastBunkerStanceCloseFrame >= BUNKER_STANCE_COOLDOWN_FRAMES
+                && containHeld.getBunkerStanceId() != lastBunkerStanceRoundId
                 && containHeld.underCaps();
     }
 
@@ -495,9 +499,7 @@ public class DroneRound {
             lastContainHeldCloseFrame = frame;
         } else if (kind == OpenReason.CALM_ECONOMY) {
             lastCalmEconomyCloseFrame = frame;
-        } else if (kind == OpenReason.BUNKER_STANCE) {
-            lastBunkerStanceCloseFrame = frame;
-        } else if (closeReason != CloseReason.THREAT) {
+        } else if (kind != OpenReason.BUNKER_STANCE && closeReason != CloseReason.THREAT) {
             armyMilestone = armyProduced + ARMY_UNITS_PER_ROUND;
         }
         PlanEvents.droneRoundClosed(new Report(kind, closeReason.name(), drones, roundSize, containHeld));

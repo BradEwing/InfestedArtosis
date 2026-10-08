@@ -86,6 +86,18 @@ class BunkerEngagementsTest {
     }
 
     @Test
+    void aLivingBunkerWithNoKnownPositionIsLeftOutAndBreaksNothing() {
+        BunkerEngagements engagements = new BunkerEngagements();
+        List<BunkerSample> samples = new ArrayList<>();
+        samples.add(new BunkerSample(8, null, 350));
+        samples.add(new BunkerSample(BUNKER_ID, BUNKER_AT, 350));
+
+        engagements.onSample(100, samples, units(BunkerEngagements.MIN_UNITS, NEAR));
+
+        assertEquals(1, engagements.finish(200).size());
+    }
+
+    @Test
     void deathsFarFromTheBunkerAreNotCounted() {
         BunkerEngagements engagements = new BunkerEngagements();
         engagements.onSample(100, bunker(350), units(BunkerEngagements.MIN_UNITS, NEAR));

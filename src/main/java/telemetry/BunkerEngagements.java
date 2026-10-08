@@ -175,9 +175,11 @@ public final class BunkerEngagements {
         List<Closed> closed = new ArrayList<>();
         Map<Integer, BunkerSample> byId = new LinkedHashMap<>();
         for (BunkerSample sample : living) {
-            byId.put(sample.id, sample);
+            if (sample.position != null) {
+                byId.put(sample.id, sample);
+            }
         }
-        for (BunkerSample sample : living) {
+        for (BunkerSample sample : byId.values()) {
             int near = 0;
             for (OurUnit unit : ours) {
                 if (unit.position.getDistance(sample.position) <= RADIUS) {

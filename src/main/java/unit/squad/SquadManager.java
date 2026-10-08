@@ -86,6 +86,7 @@ public class SquadManager {
 
     private BWMirrorAgentFactory agentFactory;
     private final BunkerLossLedger bunkerLosses = new BunkerLossLedger();
+    private final Set<String> bunkerHeldSquads = new HashSet<>();
     private ContainmentEvaluator containmentEvaluator;
     private final ContainmentEscalation containmentEscalation = new ContainmentEscalation();
 
@@ -752,7 +753,7 @@ public class SquadManager {
 
     /**
      * @param squads the fight squads
-     * @return true when any ground squad is in CONTAIN
+     * @return true when any ground squad is in FIGHT
      */
     static boolean anyGroundSquadAttacking(Collection<Squad> squads) {
         for (Squad squad : squads) {
@@ -763,6 +764,10 @@ public class SquadManager {
         return false;
     }
 
+    /**
+     * @param squads the fight squads
+     * @return true when any ground squad is in CONTAIN
+     */
     static boolean anyGroundSquadContaining(Collection<Squad> squads) {
         for (Squad squad : squads) {
             if (squad.isGroundSquad() && squad.getStatus() == SquadStatus.CONTAIN) {
@@ -2515,9 +2520,6 @@ public class SquadManager {
             squad.setHarassExitEngageTarget(squad.getHarassExitTarget());
             retreatLocked = false;
         }
-        BunkerAdvanceGate.Verdict bunkerVerdict = bunkerAdvanceVerdict(squad, snapshot, result, now);
-        boolean bunkerAdvanceHeld = bunkerVerdict != null && bunkerVerdict.isHeld()
-                && result == CombatSimulator.CombatResult.ADVANCE;
         SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
         SquadDecisions.pathTaken(squad, exitLockBroken
                 ? DecisionPath.HARASS_EXIT_ENGAGE
@@ -2553,8 +2555,7 @@ public class SquadManager {
                 return;
             }
         }
-        if (!bunkerAdvanceHeld
-                && fightHeld(squad, now, fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
+        if (fightHeld(squad, now, fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
@@ -2581,10 +2582,15 @@ public class SquadManager {
                 if (!baseThreatened && joinActiveContain(squad)) {
                     break;
                 }
-                if (!baseThreatened && bunkerAdvanceHeld) {
-                    holdSquad(squad, managedFighters);
-                    SquadDecisions.pathTaken(squad, DecisionPath.BUNKER_ADVANCE_HOLD);
-                    break;
+                if (bunkerGateReads(squad.getStatus(), baseThreatened)) {
+                    BunkerAdvanceGate.Verdict bunkerVerdict = bunkerAdvanceVerdict(squad, snapshot, false, now);
+                    if (bunkerVerdict != null && bunkerVerdict.isHeld()) {
+                        bunkerHeldSquads.add(squad.getId());
+                        holdSquad(squad, managedFighters);
+                        SquadDecisions.pathTaken(squad, DecisionPath.BUNKER_ADVANCE_HOLD);
+                        break;
+                    }
+                    bunkerHeldSquads.remove(squad.getId());
                 }
                 if (blindAdvanceHeld(squad.getStatus(), enemyMeasured, threatBeyondRadius, baseThreatened)) {
                     holdSquad(squad, managedFighters);
@@ -2621,6 +2627,9 @@ public class SquadManager {
                 break;
 
             case ENGAGE:
+                if (snapshot != null && snapshot.isEnemyMeasured() && !snapshot.getPricedBunkers().isEmpty()) {
+                    bunkerAdvanceVerdict(squad, snapshot, true, now);
+                }
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
                 updateFightLock(squad, result, retreatLocked, now);
@@ -2668,8 +2677,13 @@ public class SquadManager {
             return;
         }
         double releaseRatio = snapshot.getEngageThreshold() + BunkerAdvanceGate.RELEASE_HYSTERESIS;
+        List<Position> ownBases = new ArrayList<>();
+        for (Base base : gameState.getBaseData().getMyBases()) {
+            ownBases.add(base.getCenter());
+        }
         for (BunkerAdvanceGate.Bunker bunker : livingBunkers()) {
-            if (snapshot.getPricedBunkers().contains(bunker.getPosition())) {
+            if (snapshot.getPricedBunkers().contains(bunker.getPosition())
+                    && !BunkerAdvanceGate.nearAny(bunker.getPosition(), ownBases)) {
                 bunkerLosses.record(bunker.getPosition(), bunker.getId(), now, bunker.getHitPoints(),
                         snapshot.getEnemyTotal(), releaseRatio);
             }
@@ -2677,28 +2691,40 @@ public class SquadManager {
     }
 
     /**
-     * Decides whether the repeat-advance gate holds a ground squad's advance on a Bunker, and reports the decision.
-     * The gate reads sim ADVANCE and ENGAGE verdicts only; an ENGAGE that measured a priced Bunker is the sim saying
-     * the squad breaks it.
+     * Whether the repeat-advance gate reads a squad's sim ADVANCE: only a squad that is not already in FIGHT, which
+     * is mid-approach and keeps going so the sim can measure the enemy, and only while none of our bases is
+     * threatened.
+     *
+     * @param status the squad's status entering this tick
+     * @param baseThreatened whether a mobile ground combat unit is on one of our bases
+     * @return true when the gate decides the advance
+     */
+    static boolean bunkerGateReads(SquadStatus status, boolean baseThreatened) {
+        return status != SquadStatus.FIGHT && !baseThreatened;
+    }
+
+    /**
+     * Decides whether the repeat-advance gate holds a ground squad's advance on a Bunker, and reports the decision
+     * that was applied. A held squad stays latched to the records until a release ends them, so it does not walk back
+     * in as it crosses the edge of the gate's range. An ENGAGE that measured a priced Bunker is the sim saying the
+     * squad breaks it, and is reported without being held.
      *
      * @param squad the squad
      * @param snapshot the sim's snapshot for the squad, or null
-     * @param result this frame's verdict
+     * @param simBreaks whether the sim measured a priced Bunker and read ENGAGE
      * @param now current frame
      * @return the verdict, or null when the gate does not apply to the squad this frame
      */
     private BunkerAdvanceGate.Verdict bunkerAdvanceVerdict(Squad squad, HorizonCombatSimulator.DebugSnapshot snapshot,
-                                                          CombatSimulator.CombatResult result, int now) {
-        boolean advancing = result == CombatSimulator.CombatResult.ADVANCE
-                || result == CombatSimulator.CombatResult.ENGAGE;
-        if (snapshot == null || !squad.isGroundSquad() || !advancing) {
+                                                          boolean simBreaks, int now) {
+        if (snapshot == null || !squad.isGroundSquad()) {
             return null;
         }
-        boolean simBreaks = result == CombatSimulator.CombatResult.ENGAGE && snapshot.isEnemyMeasured()
-                && !snapshot.getPricedBunkers().isEmpty();
-        BunkerAdvanceGate.Verdict verdict = BunkerAdvanceGate.evaluate(Config.bunkerGate, bunkerLosses, livingBunkers(),
-                squad.getCenter(), snapshot.getFriendlyTotal(), ContainmentGate.isMostlyMelee(squad.getComposition()),
-                simBreaks, now);
+        BunkerAdvanceGate.Situation situation = new BunkerAdvanceGate.Situation(squad.getCenter(),
+                snapshot.getFriendlyTotal(), ContainmentGate.isMostlyMelee(squad.getComposition()), simBreaks,
+                bunkerHeldSquads.contains(squad.getId()));
+        BunkerAdvanceGate.Verdict verdict = BunkerAdvanceGate.evaluate(Config.bunkerGate, bunkerLosses,
+                livingBunkers(), situation, now);
         if (verdict.getReason() != BunkerAdvanceReason.NO_BUNKER) {
             BunkerAdvanceGate.Bunker bunker = verdict.getBunker();
             BunkerAdvanceEvent.Bunker reported = bunker == null

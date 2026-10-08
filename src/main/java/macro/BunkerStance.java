@@ -82,7 +82,17 @@ public final class BunkerStance {
      * @param status the reading, see {@link #evaluate}
      */
     public void setStatus(Status status) {
+        if (status == Status.ACTIVE && !isWanted()) {
+            stanceId++;
+        }
         this.status = status;
+    }
+
+    /**
+     * @return the number of the stance that stands, or 0 when none does
+     */
+    public int getStanceId() {
+        return isWanted() ? stanceId : 0;
     }
 
     /**
@@ -97,7 +107,6 @@ public final class BunkerStance {
     public void record(int frame, DroneRound round, int drones, int workers) {
         if (isWanted() && !active) {
             active = true;
-            stanceId++;
             extraPlanned = 0;
             extraMade = 0;
             BunkerTelemetry.stance(new BunkerStanceEvent(frame, "STANCE_START", Status.ACTIVE.name(), stanceId, drones,
