@@ -16,9 +16,14 @@ import java.util.List;
  * BURROW_REFUSED_UNDER_FIRE rows, command BURROW, are burrows the Lurker did not issue because it stood inside
  * enemy fire it cannot answer. BURROW_UNDER_FIRE_ALLOWED_ENEMY_IN_RANGE and BURROW_UNDER_FIRE_ALLOWED_LOSING_HP rows,
  * command BURROW, are burrows it issued inside that fire because a ground enemy was in its weapon range with only a
- * hit mark covering it, or because it was losing hit points with the safe point beyond 64 px. Refusal rows and allowed rows are each
- * written at most once per 96 frames per Lurker, and none changes the burrow state last commanded. A Lurker that died with no
- * attack started can be classified by the last row of its unit id.
+ * hit mark covering it, or because it was losing hit points with the safe point beyond 64 px. BURROW_LOOP_BREAK rows,
+ * command BURROW, are burrows issued inside that fire because two refusals 24 to 192 frames apart found the Lurker
+ * less than 16 px from where it stood before; they are not throttled and follow the BURROW state row.
+ * CONTAIN_POINT_MOVE_SUPPRESSED rows, command BURROW, are unburrows a burrowed Lurker did not issue while its hold
+ * point was under 192 px away, no withdrawal held and it had burrowed within 240 frames, or within 480 frames when it
+ * lost hit points in the last 32; the contain point need not have moved. Refusal rows, allowed rows and suppressed
+ * rows are each written at most once per 96 frames per Lurker, and none changes the burrow state last commanded. A
+ * Lurker that died with no attack started can be classified by the last row of its unit id.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
