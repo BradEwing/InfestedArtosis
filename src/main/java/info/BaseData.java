@@ -305,6 +305,13 @@ public class BaseData {
         return availableBases.keySet();
     }
 
+    /**
+     * @return true when the base is one of the map's start locations
+     */
+    public boolean isStartingBase(Base base) {
+        return mains.contains(base);
+    }
+
     public boolean canReserveExtractor() { 
         return availableGeysers.size() > 0; 
     }

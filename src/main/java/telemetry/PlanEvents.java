@@ -213,6 +213,14 @@ public final class PlanEvents {
         current.onBuildOrderTransition(transitionLabel);
     }
 
+    public static void scoutSkipped(String skipLabel) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onScoutSkipped(skipLabel);
+    }
+
     public static void techSiteMiss(UnitType building, TilePosition siteBase) {
         PlanEventSink current = sink;
         if (current == null) {

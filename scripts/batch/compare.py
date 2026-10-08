@@ -42,7 +42,7 @@ def load_arm(spec):
     for run_id in run_ids:
         manifest = bl.load_manifest(run_id)
         manifests.append(manifest)
-        for game in manifest.get("games", []):
+        for game in bl.final_attempts(manifest.get("games", [])):
             games.append({
                 "run_id": run_id,
                 "opponent": game["opponent"],

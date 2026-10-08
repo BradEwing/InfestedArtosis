@@ -52,6 +52,30 @@ public class ScoutData {
     private final HashMap<Base, Time> enemyMainScoutedFrames = new HashMap<>();
     private final HashMap<Base, Time> enemyNaturalSeenFrames = new HashMap<>();
 
+    /**
+     * Last-seen frame of a base that has never been in our vision.
+     */
+    public static final int NEVER_SEEN = -1;
+
+    private final HashMap<TilePosition, Integer> baseLastSeenFrames = new HashMap<>();
+
+    /**
+     * Records that the base standing at this location is in our vision on this frame.
+     *
+     * @param baseLocation the base's town hall location
+     * @param frame the current frame
+     */
+    public void recordBaseSeen(TilePosition baseLocation, int frame) {
+        baseLastSeenFrames.put(baseLocation, frame);
+    }
+
+    /**
+     * @return the last frame the base at this location was in our vision, or {@link #NEVER_SEEN}
+     */
+    public int getBaseLastSeenFrame(TilePosition baseLocation) {
+        return baseLastSeenFrames.getOrDefault(baseLocation, NEVER_SEEN);
+    }
+
     public void addScoutTarget(TilePosition tp) {
         scoutTargets.add(tp);
     }

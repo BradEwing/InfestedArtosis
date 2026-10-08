@@ -5749,6 +5749,116 @@ public class SquadManager {
         overlords.addUnit(overlord);
     }
 
+    /**
+     * Zerglings a rallying ground squad keeps when it lends scouts, so a squad never scouts itself away.
+     */
+    static final int SCOUT_LEND_FLOOR = 4;
+
+    /**
+     * Zerglings a fighting ground squad keeps when it lends scouts.
+     */
+    static final int FIGHT_SCOUT_LEND_FLOOR = 8;
+
+    /**
+     * How many zerglings a ground squad can lend to scout: it is rallying or fighting rather than containing, on a
+     * runby or harassing, is not on its way to join a containment, and keeps {@link #SCOUT_LEND_FLOOR} lings
+     * after the loan, or {@link #FIGHT_SCOUT_LEND_FLOOR} while fighting.
+     *
+     * @param status the squad's status
+     * @param ground whether it is a ground squad
+     * @param joiningContain whether it is heading to join another squad's containment arc
+     * @param committed whether the squad is held in a fight it must see through: a fight lock, collapse, swarm
+     *     lock or cornered hold
+     * @param lings zerglings in the squad
+     * @return how many zerglings the squad can lend
+     */
+    static int scoutLendSpare(SquadStatus status, boolean ground, boolean joiningContain, boolean committed,
+                              int lings) {
+        return scoutLendSpare(status, ground, joiningContain, committed, lings, SCOUT_LEND_FLOOR,
+                FIGHT_SCOUT_LEND_FLOOR);
+    }
+
+    /**
+     * Zerglings a rallying or fighting ground squad keeps when it lends one to the search for an enemy main never
+     * seen. The search takes a single zergling at a time, so the squad keeps all but that one it lends.
+     */
+    static final int SEARCH_LEND_FLOOR = 1;
+
+    /**
+     * As {@link #scoutLendSpare(SquadStatus, boolean, boolean, boolean, int)} for the search for an enemy main never
+     * seen: a rallying or fighting squad that is not committed, containing or joining a containment keeps only
+     * {@link #SEARCH_LEND_FLOOR}.
+     */
+    static int searchLendSpare(SquadStatus status, boolean ground, boolean joiningContain, boolean committed,
+                               int lings) {
+        return scoutLendSpare(status, ground, joiningContain, committed, lings, SEARCH_LEND_FLOOR,
+                SEARCH_LEND_FLOOR);
+    }
+
+    private static int scoutLendSpare(SquadStatus status, boolean ground, boolean joiningContain, boolean committed,
+                                      int lings, int rallyFloor, int fightFloor) {
+        if (!ground || joiningContain || committed) {
+            return 0;
+        }
+        if (status == SquadStatus.RALLY) {
+            return Math.max(0, lings - rallyFloor);
+        }
+        if (status == SquadStatus.FIGHT) {
+            return Math.max(0, lings - fightFloor);
+        }
+        return 0;
+    }
+
+    /**
+     * @return how many more zerglings the unit's fight squad can lend to scout, zero when it is in none
+     */
+    public int scoutLendSpare(ManagedUnit managedUnit) {
+        return lendSpare(managedUnit, false);
+    }
+
+    /**
+     * @return how many zerglings the unit's fight squad can lend to the search for an enemy main never seen, zero
+     *     when it is in none
+     */
+    public int searchLendSpare(ManagedUnit managedUnit) {
+        return lendSpare(managedUnit, true);
+    }
+
+    private int lendSpare(ManagedUnit managedUnit, boolean search) {
+        int now = game.getFrameCount();
+        for (Squad squad : fightSquads) {
+            if (squad.containsManagedUnit(managedUnit)) {
+                boolean committed = wholeSquadCommitHolds(squad, now, false) || squad.getSwarmLock() != null
+                        || squad.isCorneredFightHeld(now);
+                int lings = squad.getComposition().getOrDefault(UnitType.Zerg_Zergling, 0);
+                boolean joining = containArcToJoin(squad) != null;
+                return search
+                        ? searchLendSpare(squad.getStatus(), squad.isGroundSquad(), joining, committed, lings)
+                        : scoutLendSpare(squad.getStatus(), squad.isGroundSquad(), joining, committed, lings);
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * @return the fight squad holding the unit, or null
+     */
+    public Squad fightSquadOf(ManagedUnit managedUnit) {
+        for (Squad squad : fightSquads) {
+            if (squad.containsManagedUnit(managedUnit)) {
+                return squad;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @return true when the overlord is parked in the overlord squad rather than serving a fight squad
+     */
+    public boolean isParkedOverlord(ManagedUnit overlord) {
+        return overlords.containsManagedUnit(overlord);
+    }
+
     public void removeManagedUnit(ManagedUnit managedUnit) {
         irradiatedUnits.remove(managedUnit);
         UnitType unitType = managedUnit.getUnitType();

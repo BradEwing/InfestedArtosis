@@ -40,6 +40,18 @@ public class Lurker extends ManagedUnit {
     static final int HURT_FRAMES = 32;
     /** Pixels from a Lurker within which a safe point is near enough to walk to under fire. */
     public static final int SAFE_POINT_NEAR_DISTANCE = 64;
+    /** Pixels within which two burrow refusals are the same spot, a Lurker that did not walk toward its safe point. */
+    static final int REFUSAL_LOOP_DISTANCE = 16;
+    /** Frames a refusal must follow the one it is compared with, so the Lurker has had time to walk. */
+    static final int REFUSAL_LOOP_MIN_FRAMES = 24;
+    /** Frames after which a refusal is no longer compared with the one before it. */
+    static final int REFUSAL_LOOP_STALE_FRAMES = 192;
+    /** Pixels a contain point must move from where a burrowed Lurker holds before the Lurker leaves its burrow. */
+    static final int CONTAIN_MOVE_DISTANCE = 192;
+    /** Frames after burrowing during which a contain Lurker keeps its point. */
+    static final int CONTAIN_LOCK_FRAMES = 240;
+    /** Frames the lock lasts while the Lurker is losing hit points. */
+    static final int CONTAIN_LOCK_FIRE_FRAMES = 480;
 
     private List<StaticDefenseZone> fixedFireView = Collections.emptyList();
     private List<StaticDefenseZone> fixedFireZones = Collections.emptyList();
@@ -55,6 +67,10 @@ public class Lurker extends ManagedUnit {
     private int refusalLoggedFrame = -REFUSAL_LOG_FRAMES;
     private int allowedLoggedFrame = -REFUSAL_LOG_FRAMES;
     private Boolean commandedBurrow;
+    private Position refusalAnchor;
+    private int refusalAnchorFrame;
+    private int burrowedFrame = -CONTAIN_LOCK_FIRE_FRAMES;
+    private int suppressedLoggedFrame = -REFUSAL_LOG_FRAMES;
 
     /**
      * Pixels from its hold point within which a Lurker counts as arrived and burrows, the same tolerance
@@ -304,6 +320,16 @@ public class Lurker extends ManagedUnit {
         if (unit.isBurrowed()) {
             if (staysBurrowed(distance, isInFixedFire(hold), isInFixedFire(unit.getPosition()))) {
                 setUnready(11);
+                return;
+            }
+            int now = game.getFrameCount();
+            if (Config.lurkerFireAware && withdrawPoint == null
+                    && keepsContainPoint(now - burrowedFrame, wasHitSince(now - HURT_FRAMES), distance)) {
+                setUnready(11);
+                if (logsRefusal(suppressedLoggedFrame, now)) {
+                    suppressedLoggedFrame = now;
+                    logUnderFire(BurrowReason.CONTAIN_POINT_MOVE_SUPPRESSED, now);
+                }
                 return;
             }
             setUnready(6);
@@ -611,6 +637,49 @@ public class Lurker extends ManagedUnit {
         return now - lastLoggedFrame >= REFUSAL_LOG_FRAMES;
     }
 
+    /**
+     * Whether a burrowed containing Lurker keeps the point it holds when its contain point moves: it burrowed within
+     * {@link #CONTAIN_LOCK_FRAMES}, or within {@link #CONTAIN_LOCK_FIRE_FRAMES} while losing hit points, and the new
+     * point lies less than {@link #CONTAIN_MOVE_DISTANCE} away.
+     *
+     * @param framesSinceBurrow frames since the Lurker burrowed
+     * @param losingHitPoints true when it lost hit points within {@link #HURT_FRAMES}
+     * @param distanceToPoint pixels from the Lurker to its new contain point
+     * @return true when it stays on its point
+     */
+    static boolean keepsContainPoint(int framesSinceBurrow, boolean losingHitPoints, double distanceToPoint) {
+        int lock = losingHitPoints ? CONTAIN_LOCK_FIRE_FRAMES : CONTAIN_LOCK_FRAMES;
+        return framesSinceBurrow < lock && distanceToPoint < CONTAIN_MOVE_DISTANCE;
+    }
+
+    /**
+     * What a burrow refusal does given the refusal before it.
+     *
+     * @param anchor where the Lurker stood at the earlier refusal, or null for none
+     * @param anchorFrame frame of the earlier refusal
+     * @param position where it stands now
+     * @param now current frame
+     * @return KEEP while the earlier refusal is too recent to compare, BREAK when the Lurker has not moved
+     *         {@link #REFUSAL_LOOP_DISTANCE} since a refusal at least {@link #REFUSAL_LOOP_MIN_FRAMES} and at most
+     *         {@link #REFUSAL_LOOP_STALE_FRAMES} ago, else REANCHOR
+     */
+    static RefusalStep refusalStep(Position anchor, int anchorFrame, Position position, int now) {
+        if (anchor == null || now - anchorFrame > REFUSAL_LOOP_STALE_FRAMES) {
+            return RefusalStep.REANCHOR;
+        }
+        if (now - anchorFrame < REFUSAL_LOOP_MIN_FRAMES) {
+            return RefusalStep.KEEP;
+        }
+        double moved = Math.hypot(anchor.getX() - position.getX(), anchor.getY() - position.getY());
+        return moved < REFUSAL_LOOP_DISTANCE ? RefusalStep.BREAK : RefusalStep.REANCHOR;
+    }
+
+    enum RefusalStep {
+        KEEP,
+        BREAK,
+        REANCHOR
+    }
+
     private boolean inFire(Position point) {
         for (StaticDefenseZone zone : fireZones) {
             if (zone.covers(point, firePadding)) {
@@ -650,6 +719,19 @@ public class Lurker extends ManagedUnit {
                 safeFromHere != null, enemyInRange, wasHitSince(now - HURT_FRAMES),
                 safeFromHere == null ? 0 : unit.getDistance(safeFromHere));
         if (call == BurrowCall.REFUSE) {
+            RefusalStep step = refusalStep(refusalAnchor, refusalAnchorFrame, unit.getPosition(), now);
+            if (step == RefusalStep.BREAK) {
+                refusalAnchor = null;
+                burrowedFrame = now;
+                unit.burrow();
+                log(true, reason);
+                logUnderFire(BurrowReason.BURROW_LOOP_BREAK, now);
+                return;
+            }
+            if (step == RefusalStep.REANCHOR) {
+                refusalAnchor = unit.getPosition();
+                refusalAnchorFrame = now;
+            }
             unit.move(safeFromHere);
             if (logsRefusal(refusalLoggedFrame, now)) {
                 refusalLoggedFrame = now;
@@ -657,6 +739,8 @@ public class Lurker extends ManagedUnit {
             }
             return;
         }
+        refusalAnchor = null;
+        burrowedFrame = now;
         if ((call == BurrowCall.BURROW_ENEMY_IN_RANGE || call == BurrowCall.BURROW_LOSING_HP)
                 && logsRefusal(allowedLoggedFrame, now)) {
             allowedLoggedFrame = now;

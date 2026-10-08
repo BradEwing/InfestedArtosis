@@ -3,6 +3,10 @@
 Usage:
   py scripts/batch/run.py <opponent> [<opponent>...] [-n 100] [--jobs 1] [--frozen]
 
+A game that leaves no learning row (crash, no result, frame cap) is replayed on the same map index before the
+opponent's next index, up to --max-retries times, so the k-th recorded game stays on the k-th map. Retries
+default to 2 in accumulate mode and 0 with --frozen.
+
 Default mode accumulates learning (--read_overwrite) and runs at most one
 concurrent game per opponent, because parallel games vs the same opponent
 overwrite each other's learning CSV. --frozen disables --read_overwrite so
@@ -44,6 +48,9 @@ def parse_args():
     p.add_argument("-n", "--games", type=int, default=100, help="games per opponent (default 100)")
     p.add_argument("--jobs", type=positive_int, default=1, help="concurrent games (default 1)")
     p.add_argument("--frozen", action="store_true", help="do not write learning back (omit --read_overwrite)")
+    p.add_argument("--max-retries", type=int, default=None,
+                   help="replays of a game index that left no learning row, on the same map "
+                        "(default 2 in accumulate mode, 0 with --frozen)")
     p.add_argument("--maps", default=str(bl.DEFAULT_MAPS_FILE), help="map list file")
     p.add_argument("--timeout", type=int, default=2400, help="wall-clock seconds per game")
     p.add_argument("--no-report", action="store_true", help="skip report at end")
@@ -185,19 +192,42 @@ def play_one(game, args, manifest, total, log_file):
         log_file.write(proc.stdout)
         log_file.write(proc.stderr)
         log_file.flush()
-    outcome, game_time, _ = bl.classify(game)
+    classified = bl.classify(game)
+    outcome, game_time, _ = classified
     with manifest_lock:
         game["scbw_exit_code"] = proc.returncode
         game["outcome"] = outcome
         game["finished_at"] = datetime.now().isoformat(timespec="seconds")
         bl.save_manifest(manifest)
     elapsed = int(time.time() - started)
+    retry_note = f", retry {game['retry']}" if game.get("retry") else ""
     print(f"[{game['index'] + 1}/{total}] vs {game['opponent']} on {game['map']} -> {outcome} "
-          f"(game {bl.fmt_game_time(game_time)}, wall {elapsed}s)", flush=True)
+          f"(game {bl.fmt_game_time(game_time)}, wall {elapsed}s{retry_note})", flush=True)
     if outcome == "NO_RESULT":
         tail = "\n".join(proc.stderr.strip().splitlines()[-3:])
         print(f"    scbw.play exit {proc.returncode}:\n    {tail}", flush=True)
-    return outcome
+    return classified
+
+
+def play_safely(game, args, manifest, total, log_file):
+    try:
+        return play_one(game, args, manifest, total, log_file)
+    except Exception as e:
+        print(f"[{game['index'] + 1}/{total}] vs {game['opponent']} -> ERROR {e}", flush=True)
+        classified = bl.classify(game)
+        with manifest_lock:
+            game["outcome"] = classified[0]
+            game["error"] = str(e)
+            game["finished_at"] = datetime.now().isoformat(timespec="seconds")
+            bl.save_manifest(manifest)
+        return classified
+
+
+def mark_retried_locked(game, manifest):
+    with manifest_lock:
+        bl.mark_retried(game)
+        manifest["retries"] += 1
+        bl.save_manifest(manifest)
 
 
 def worker(q, sem, args, manifest, total, log_file):
@@ -207,18 +237,14 @@ def worker(q, sem, args, manifest, total, log_file):
                 game = q.get_nowait()
             except queue.Empty:
                 return
-            try:
-                outcome = play_one(game, args, manifest, total, log_file)
-            except Exception as e:
-                print(f"[{game['index'] + 1}/{total}] vs {game['opponent']} -> ERROR {e}", flush=True)
-                outcome = "NO_RESULT"
-                with manifest_lock:
-                    game["outcome"] = outcome
-                    game["error"] = str(e)
-                    game["finished_at"] = datetime.now().isoformat(timespec="seconds")
-                    bl.save_manifest(manifest)
+            attempts = bl.play_index(
+                game,
+                lambda g: play_safely(g, args, manifest, total, log_file),
+                manifest["max_retries"],
+                stop_requested.is_set,
+                lambda g: mark_retried_locked(g, manifest))
             with manifest_lock:
-                launch_failures[0] = launch_failures[0] + 1 if outcome == "NO_RESULT" else 0
+                launch_failures[0] = bl.next_failure_count(launch_failures[0], attempts)
                 if launch_failures[0] >= MAX_CONSECUTIVE_LAUNCH_FAILURES and not stop_requested.is_set():
                     print(f"{MAX_CONSECUTIVE_LAUNCH_FAILURES} consecutive launch failures; aborting batch", flush=True)
                     stop_requested.set()
@@ -272,6 +298,9 @@ def main():
     jar_ver, jar_sha = preflight(args, opponents, maps)
     run_id = bl.now_id()
     games = build_games(run_id, opponents, args.games, maps)
+    max_retries = args.max_retries if args.max_retries is not None else (0 if args.frozen else 2)
+    if max_retries < 0:
+        raise SystemExit("--max-retries must not be negative")
     java_opts = bl.deployed_java_opts()
     manifest = {
         "run_id": run_id,
@@ -281,6 +310,8 @@ def main():
         "games_per_opponent": args.games,
         "jobs": args.jobs,
         "frozen": args.frozen,
+        "max_retries": max_retries,
+        "retries": 0,
         "timeout": args.timeout,
         "jar_version": jar_ver,
         "jar_sha256": jar_sha,
@@ -301,14 +332,17 @@ def main():
     with open(bl.log_path(run_id), "a", encoding="utf-8") as log_file:
         run_games(games, opponents, args, manifest, log_file)
     manifest["finished_at"] = datetime.now().isoformat(timespec="seconds")
-    failed_games = [g for g in manifest["games"] if bl.classify(g)[0] == "NO_RESULT"]
-    unlaunched = len(games) - len(manifest["games"])
+    finals = bl.final_attempts(manifest["games"])
+    failed_games = [g for g in finals if bl.classify(g)[0] == "NO_RESULT"]
+    unlaunched = len(games) - len(finals)
+    manifest["retries"] = bl.retry_count(manifest["games"])
     manifest["status"] = "failed" if failed_games or unlaunched else "completed"
     with manifest_lock:
         bl.save_manifest(manifest)
     print(f"\nBatch {run_id} {manifest['status']} "
-          f"({len(manifest['games'])}/{len(games)} launched, "
-          f"{len(manifest['games']) - len(failed_games)}/{len(games)} produced results)")
+          f"({len(finals)}/{len(games)} launched, "
+          f"{len(finals) - len(failed_games)}/{len(games)} produced results) "
+          f"retries={manifest['retries']}")
     if not args.no_report:
         print()
         report.report(run_id, tail=10, archive_mode="none")

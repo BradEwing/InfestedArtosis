@@ -65,17 +65,41 @@ public class GameMap {
         return mapTiles[x][y];
     }
 
+    /** Scout importance a start location gains each frame while it has never been in our vision. */
+    public static final int UNSCOUTED_START_WEIGHT = 6;
+
+    /** Scout importance a start location gains each frame once it has been seen. */
+    public static final int START_WEIGHT = 3;
+
+    /** Scout importance an expansion location gains each frame. */
+    public static final int EXPANSION_WEIGHT = 2;
+
+    /** Scout importance any other tile gains each frame. */
+    public static final int NORMAL_WEIGHT = 1;
+
+    /**
+     * @param type what kind of tile it is
+     * @param scouted whether the tile has ever been in our vision
+     * @return the scout importance the tile gains each frame; a start location never seen gains the most, so an
+     *     unseen start location overtakes a seen one that has gone unseen for as long
+     */
+    public static int scoutWeight(MapTileType type, boolean scouted) {
+        if (type == MapTileType.BASE_START) {
+            return scouted ? START_WEIGHT : UNSCOUTED_START_WEIGHT;
+        }
+        if (type == MapTileType.BASE_EXPANSION) {
+            return EXPANSION_WEIGHT;
+        }
+        return NORMAL_WEIGHT;
+    }
+
+    /**
+     * Adds each tile's {@link #scoutWeight} to its scout importance and re-sorts the heat map, hottest first.
+     */
     public void ageHeatMap() {
-        int weight = 1;
         for (MapTile mapTile : heatMap) {
-            if (mapTile.getType() == MapTileType.BASE_START) {
-                weight = 3;
-            } else if (mapTile.getType() == MapTileType.BASE_EXPANSION) {
-                weight = 2;
-            } else if (mapTile.getType() == MapTileType.NORMAL) {
-                weight = 1;
-            }
-            mapTile.setScoutImportance(mapTile.getScoutImportance() + weight);
+            mapTile.setScoutImportance(mapTile.getScoutImportance()
+                    + scoutWeight(mapTile.getType(), mapTile.isScouted()));
         }
         Collections.sort(heatMap, new MapTileScoutImportanceComparator());
     }
