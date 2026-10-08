@@ -26,6 +26,9 @@ import lombok.Getter;
 import org.bk.ass.sim.Agent;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import telemetry.BunkerAdvanceEvent;
+import telemetry.BunkerAdvanceReason;
+import telemetry.BunkerTelemetry;
 import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.FixedFireTelemetry;
@@ -82,6 +85,7 @@ public class SquadManager {
     private GameState gameState;
 
     private BWMirrorAgentFactory agentFactory;
+    private final BunkerLossLedger bunkerLosses = new BunkerLossLedger();
     private ContainmentEvaluator containmentEvaluator;
     private final ContainmentEscalation containmentEscalation = new ContainmentEscalation();
 
@@ -284,6 +288,7 @@ public class SquadManager {
         holdLurkersOutOfFire(now);
         recordFlockSamples(now);
         gameState.getContainHeldTimer().update(now, anyGroundSquadContaining(fightSquads));
+        gameState.setArmyAttacking(anyGroundSquadAttacking(fightSquads));
     }
 
     /**
@@ -749,6 +754,15 @@ public class SquadManager {
      * @param squads the fight squads
      * @return true when any ground squad is in CONTAIN
      */
+    static boolean anyGroundSquadAttacking(Collection<Squad> squads) {
+        for (Squad squad : squads) {
+            if (squad.isGroundSquad() && squad.getStatus() == SquadStatus.FIGHT) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     static boolean anyGroundSquadContaining(Collection<Squad> squads) {
         for (Squad squad : squads) {
             if (squad.isGroundSquad() && squad.getStatus() == SquadStatus.CONTAIN) {
@@ -2501,6 +2515,9 @@ public class SquadManager {
             squad.setHarassExitEngageTarget(squad.getHarassExitTarget());
             retreatLocked = false;
         }
+        BunkerAdvanceGate.Verdict bunkerVerdict = bunkerAdvanceVerdict(squad, snapshot, result, now);
+        boolean bunkerAdvanceHeld = bunkerVerdict != null && bunkerVerdict.isHeld()
+                && result == CombatSimulator.CombatResult.ADVANCE;
         SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
         SquadDecisions.pathTaken(squad, exitLockBroken
                 ? DecisionPath.HARASS_EXIT_ENGAGE
@@ -2536,7 +2553,8 @@ public class SquadManager {
                 return;
             }
         }
-        if (fightHeld(squad, now, fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
+        if (!bunkerAdvanceHeld
+                && fightHeld(squad, now, fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
@@ -2563,6 +2581,11 @@ public class SquadManager {
                 if (!baseThreatened && joinActiveContain(squad)) {
                     break;
                 }
+                if (!baseThreatened && bunkerAdvanceHeld) {
+                    holdSquad(squad, managedFighters);
+                    SquadDecisions.pathTaken(squad, DecisionPath.BUNKER_ADVANCE_HOLD);
+                    break;
+                }
                 if (blindAdvanceHeld(squad.getStatus(), enemyMeasured, threatBeyondRadius, baseThreatened)) {
                     holdSquad(squad, managedFighters);
                     SquadDecisions.pathTaken(squad, snapshot != null && snapshot.isBunkerMemoryHeld()
@@ -2583,11 +2606,12 @@ public class SquadManager {
             case RETREAT:
                 boolean safeToHold = containmentEvaluator.safeToHold(squad);
                 if (!safeToHold) {
-                    SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_GATED);
+                    SquadDecisions.pathTaken(squad, containGatedPath(squad));
                 }
                 boolean enteredContain = safeToHold && tryEnterContainment(squad);
                 if (snapshot != null) {
                     squad.getBunkerRetreatMemory().recordRetreat(snapshot.getPricedBunkers(), squad.getMembers(), now);
+                    recordBunkerLoss(squad, snapshot, now);
                 }
                 if (!enteredContain) {
                     squad.setStatus(SquadStatus.RETREAT);
@@ -2608,6 +2632,84 @@ public class SquadManager {
             default:
                 break;
         }
+    }
+
+    private DecisionPath containGatedPath(Squad squad) {
+        return containmentEvaluator.bunkerAloneRefuses(squad)
+                ? DecisionPath.CONTAIN_GATED_BUNKER
+                : DecisionPath.CONTAIN_GATED;
+    }
+
+    private List<BunkerAdvanceGate.Bunker> livingBunkers() {
+        List<BunkerAdvanceGate.Bunker> bunkers = new ArrayList<>();
+        for (ObservedUnit ou : gameState.getObservedUnitTracker().getLivingObservedUnits()) {
+            if (ou.getUnitType() != UnitType.Terran_Bunker) {
+                continue;
+            }
+            Position position = ou.getCurrentOrLastKnownPosition();
+            if (position != null) {
+                bunkers.add(new BunkerAdvanceGate.Bunker(ou.getUnit().getID(), position, ou.getLastKnownHitPoints()));
+            }
+        }
+        return bunkers;
+    }
+
+    /**
+     * Records a retreat of a mostly melee ground squad from the Bunkers the sim priced, as a loss the repeat-advance
+     * gate holds against, see {@link BunkerAdvanceGate}.
+     *
+     * @param squad the retreating squad
+     * @param snapshot the sim's snapshot for the squad
+     * @param now current frame
+     */
+    private void recordBunkerLoss(Squad squad, HorizonCombatSimulator.DebugSnapshot snapshot, int now) {
+        if (!Config.bunkerGate || !squad.isGroundSquad() || snapshot.getPricedBunkers().isEmpty()
+                || !ContainmentGate.isMostlyMelee(squad.getComposition())) {
+            return;
+        }
+        double releaseRatio = snapshot.getEngageThreshold() + BunkerAdvanceGate.RELEASE_HYSTERESIS;
+        for (BunkerAdvanceGate.Bunker bunker : livingBunkers()) {
+            if (snapshot.getPricedBunkers().contains(bunker.getPosition())) {
+                bunkerLosses.record(bunker.getPosition(), bunker.getId(), now, bunker.getHitPoints(),
+                        snapshot.getEnemyTotal(), releaseRatio);
+            }
+        }
+    }
+
+    /**
+     * Decides whether the repeat-advance gate holds a ground squad's advance on a Bunker, and reports the decision.
+     * The gate reads sim ADVANCE and ENGAGE verdicts only; an ENGAGE that measured a priced Bunker is the sim saying
+     * the squad breaks it.
+     *
+     * @param squad the squad
+     * @param snapshot the sim's snapshot for the squad, or null
+     * @param result this frame's verdict
+     * @param now current frame
+     * @return the verdict, or null when the gate does not apply to the squad this frame
+     */
+    private BunkerAdvanceGate.Verdict bunkerAdvanceVerdict(Squad squad, HorizonCombatSimulator.DebugSnapshot snapshot,
+                                                          CombatSimulator.CombatResult result, int now) {
+        boolean advancing = result == CombatSimulator.CombatResult.ADVANCE
+                || result == CombatSimulator.CombatResult.ENGAGE;
+        if (snapshot == null || !squad.isGroundSquad() || !advancing) {
+            return null;
+        }
+        boolean simBreaks = result == CombatSimulator.CombatResult.ENGAGE && snapshot.isEnemyMeasured()
+                && !snapshot.getPricedBunkers().isEmpty();
+        BunkerAdvanceGate.Verdict verdict = BunkerAdvanceGate.evaluate(Config.bunkerGate, bunkerLosses, livingBunkers(),
+                squad.getCenter(), snapshot.getFriendlyTotal(), ContainmentGate.isMostlyMelee(squad.getComposition()),
+                simBreaks, now);
+        if (verdict.getReason() != BunkerAdvanceReason.NO_BUNKER) {
+            BunkerAdvanceGate.Bunker bunker = verdict.getBunker();
+            BunkerAdvanceEvent.Bunker reported = bunker == null
+                    ? BunkerAdvanceEvent.Bunker.NONE
+                    : new BunkerAdvanceEvent.Bunker(bunker.getId(), bunker.getPosition().getX(),
+                            bunker.getPosition().getY(), bunker.getHitPoints());
+            BunkerTelemetry.advance(new BunkerAdvanceEvent(now, squad.getId(), verdict.getReason(),
+                    snapshot.getFriendlyTotal(), verdict.getPrice(), verdict.getReleaseRatio(),
+                    squad.getCountOf(UnitType.Zerg_Zergling), reported));
+        }
+        return verdict;
     }
 
     /**
@@ -3064,7 +3166,7 @@ public class SquadManager {
         if (cooling) {
             SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_COOLDOWN);
         } else if (!containmentEvaluator.compositionAllows(squad)) {
-            SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_GATED);
+            SquadDecisions.pathTaken(squad, containGatedPath(squad));
         }
         SquadDecisions.containmentEvaluated(squad, shouldContain, canBreak, entered);
         return entered;

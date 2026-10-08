@@ -30,6 +30,7 @@ import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
+import macro.BunkerStance;
 import macro.DroneRound;
 import macro.ExtractorTrick;
 import macro.HatcheryCapacity;
@@ -127,6 +128,8 @@ public class GameState {
     private DroneRound droneRound = new DroneRound();
     private final ExtractorTrick extractorTrick = new ExtractorTrick();
     private final ContainHeldTimer containHeldTimer = new ContainHeldTimer();
+    private final BunkerStance bunkerStance = new BunkerStance();
+    private boolean armyAttacking = false;
     private final EndgameHunt endgameHunt = new EndgameHunt();
     private final ContainmentStalemate containmentStalemate = new ContainmentStalemate();
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();

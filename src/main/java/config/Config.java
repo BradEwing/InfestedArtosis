@@ -24,6 +24,15 @@ public final class Config {
      * points out of live hit marks. Off unless IA_LURKER_FIRE_AWARE is set to true.
      */
     public static boolean lurkerFireAware = false;
+    /**
+     * Whether any Bunker gate runs: ground scouts kept off a held route, melee contain squads kept out of a held
+     * Bunker, and the repeat-advance gate on a Bunker priced as a loss. On unless IA_BUNKER_GATE is set to false.
+     */
+    public static boolean bunkerGate = true;
+    /**
+     * Whether Drones are added while an enemy Bunker stance stands. On unless IA_BUNKER_ECON is set to false.
+     */
+    public static boolean bunkerEcon = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -114,6 +123,8 @@ public final class Config {
         baseChecks = !"false".equalsIgnoreCase(setting(dotenv, "IA_BASE_CHECKS"));
         String lurkerFireAwareSetting = setting(dotenv, "IA_LURKER_FIRE_AWARE");
         lurkerFireAware = Boolean.parseBoolean(lurkerFireAwareSetting);
+        bunkerGate = !"false".equalsIgnoreCase(setting(dotenv, "IA_BUNKER_GATE"));
+        bunkerEcon = !"false".equalsIgnoreCase(setting(dotenv, "IA_BUNKER_ECON"));
     }
 
     /**

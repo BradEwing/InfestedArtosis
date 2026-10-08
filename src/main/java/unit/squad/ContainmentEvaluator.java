@@ -4,10 +4,12 @@ import bwapi.Position;
 import bwapi.Race;
 import bwapi.UnitType;
 import bwem.Base;
+import config.Config;
 import info.GameState;
 import info.tracking.BunkerGarrison;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.StrategyTracker;
 import info.tracking.terran.TerranMech;
 import unit.managed.ManagedUnit;
 
@@ -180,7 +182,28 @@ public class ContainmentEvaluator {
     }
 
     private boolean bunkerHeld() {
-        return gameState.getStrategyTracker() != null && gameState.getStrategyTracker().isBunkerHeld();
+        return bunkerHeld(Config.bunkerGate, gameState.getStrategyTracker());
+    }
+
+    /**
+     * @param gateOn whether the Bunker gates are switched on, see Config.bunkerGate
+     * @param strategyTracker the strategy tracker, or null before one exists
+     * @return whether a Bunker hold counts against a squad's makeup: never with the gates off
+     */
+    static boolean bunkerHeld(boolean gateOn, StrategyTracker strategyTracker) {
+        return gateOn && strategyTracker != null && strategyTracker.isBunkerHeld();
+    }
+
+    /**
+     * Whether a held Bunker alone is why the squad is refused a contain arc, see
+     * {@link ContainmentGate#bunkerAloneRefuses}.
+     *
+     * @param squad the squad offered an arc
+     * @return true when the squad would contain were no Bunker held
+     */
+    public boolean bunkerAloneRefuses(Squad squad) {
+        return ContainmentGate.bunkerAloneRefuses(versusTerran(), mechDetected(), bunkerHeld(),
+                squad.getComposition(), enemyGroundArmyCounts());
     }
 
     private Map<UnitType, Integer> enemyGroundArmyCounts() {

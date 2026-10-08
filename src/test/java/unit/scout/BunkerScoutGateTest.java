@@ -52,6 +52,13 @@ class BunkerScoutGateTest {
     }
 
     @Test
+    void withTheBunkerGatesSwitchedOffEveryRouteIsOpen() {
+        assertFalse(BunkerScoutGate.mayRouteToBase(true, true, true, MAIN, MAIN, NATURAL));
+        assertTrue(BunkerScoutGate.mayRouteToBase(false, true, true, MAIN, MAIN, NATURAL));
+        assertTrue(BunkerScoutGate.mayRouteToBase(false, true, false, NATURAL, MAIN, NATURAL));
+    }
+
+    @Test
     void theSkipLabelNamesTheReasonAndTheDestination() {
         assertEquals("BUNKER:ENEMY_MAIN", BunkerScoutGate.skipLabel(Destination.ENEMY_MAIN));
     }

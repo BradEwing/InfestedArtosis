@@ -7,6 +7,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwem.Base;
+import config.Config;
 import info.BaseData;
 import info.GameState;
 import info.Readiness;
@@ -14,8 +15,10 @@ import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
+import info.tracking.StrategyTracker;
 import lombok.Getter;
 import macro.AdvancedUnitEligibility;
+import macro.BunkerStance;
 import macro.DroneRound;
 import macro.HatcheryCapacity;
 import macro.Reactions;
@@ -208,8 +211,31 @@ public abstract class BuildOrder {
                 + gameState.visibleEnemyAirCombatUnitsAtOurBases();
         boolean threatened = DroneRound.isThreatened(rushed, gameState.isAllIn(), enemiesAtBases);
         int frame = gameState.getGameTime().getFrames();
+        BunkerStance bunkerStance = gameState.getBunkerStance();
+        bunkerStance.setStatus(bunkerStanceStatus(gameState));
         gameState.getDroneRound().update(frame, livingArmy, drones, droneRoundDroneCap(gameState),
                 gameState.workersWanted(), threatened, containHeld(gameState, frame));
+        bunkerStance.record(frame, gameState.getDroneRound(), drones, gameState.numWorkers());
+    }
+
+    private BunkerStance.Status bunkerStanceStatus(GameState gameState) {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        return BunkerStance.evaluate(Config.bunkerEcon,
+                strategyTracker != null && strategyTracker.isBunkerHeld(),
+                strategyTracker != null && strategyTracker.isBunkerBroken(),
+                gameState.isArmyAttacking(),
+                allowsBunkerEcon(gameState));
+    }
+
+    /**
+     * Whether this build takes Drones while an enemy Bunker stance stands, see {@link BunkerStance}. A build that is
+     * an all-in by design keeps its economy where it is.
+     *
+     * @param gameState current game state
+     * @return true unless the build overrides it
+     */
+    public boolean allowsBunkerEcon(GameState gameState) {
+        return true;
     }
 
     private DroneRound.ContainHeld containHeld(GameState gameState, int frame) {
@@ -224,6 +250,7 @@ public abstract class BuildOrder {
                 .softCap(gameState.workerSoftCap())
                 .hardCap(gameState.workerHardCap())
                 .calmEconomyHeld(holdsCalmEconomyRound(gameState))
+                .bunkerStance(gameState.getBunkerStance().isWanted())
                 .build();
     }
 

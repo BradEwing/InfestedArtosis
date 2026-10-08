@@ -141,4 +141,22 @@ class ContainmentGateTest {
         assertEquals(UnitType.Zerg_Hydralisk.groundWeapon().maxRange(), longestRange(LINGS_AND_HYDRAS));
         assertFalse(safeToHold(true, false, LINGS_AND_HYDRAS, VULTURES_AND_GOLIATHS));
     }
+
+    @Test
+    void aHeldBunkerAloneRefusesAMeleeSquadThatWouldOtherwiseContain() {
+        assertTrue(ContainmentGate.bunkerAloneRefuses(true, false, true, LINGS, Collections.emptyMap()));
+    }
+
+    @Test
+    void aBunkerIsNotWhyASquadIsRefusedWhenNoneIsHeldOrTheSquadHasTheRangedSupply() {
+        assertFalse(ContainmentGate.bunkerAloneRefuses(true, false, false, LINGS, Collections.emptyMap()));
+        assertFalse(ContainmentGate.bunkerAloneRefuses(true, false, true, LINGS_AND_HYDRAS, Collections.emptyMap()));
+        assertFalse(ContainmentGate.bunkerAloneRefuses(false, false, true, LINGS, Collections.emptyMap()));
+    }
+
+    @Test
+    void aBunkerIsNotWhyASquadIsRefusedWhenMechOrAnOutrangingEnemyRefusesItAnyway() {
+        assertFalse(ContainmentGate.bunkerAloneRefuses(true, true, true, LINGS, Collections.emptyMap()));
+        assertFalse(ContainmentGate.bunkerAloneRefuses(true, false, true, LINGS, VULTURES_AND_GOLIATHS));
+    }
 }
