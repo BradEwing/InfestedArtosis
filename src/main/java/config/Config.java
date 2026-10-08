@@ -111,7 +111,7 @@ public final class Config {
         this.telemetryCombat = Boolean.parseBoolean(setting(dotenv, "IA_TELEMETRY_COMBAT"));
         String airFlapEscapeSetting = setting(dotenv, "IA_AIR_FLAP_ESCAPE");
         airFlapEscape = Boolean.parseBoolean(airFlapEscapeSetting);
-        baseChecks = !"false".equalsIgnoreCase(setting(dotenv, "IA_BASE_CHECKS"));
+        baseChecks = enabledUnlessFalse(setting(dotenv, "IA_BASE_CHECKS"));
         lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
     }
 

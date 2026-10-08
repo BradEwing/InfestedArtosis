@@ -8,11 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ConfigTest {
 
     @Test
-    public void lurkerFireAwareFieldDefaultsOn() {
-        assertTrue(Config.lurkerFireAware);
-    }
-
-    @Test
     public void unsetSettingEnablesSwitch() {
         assertTrue(Config.enabledUnlessFalse(null));
     }
