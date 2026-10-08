@@ -651,10 +651,7 @@ public final class AirHarassTargeting {
     public static Decision choose(Muta muta, Situation situation, MutaMemory memory) {
         Contact target = snipeTarget(muta, situation);
         Tier tier = target == null ? null : tier(target, situation);
-        if (target != null && tier == null) {
-            tier = Tier.ISOLATED_AA;
-        }
-        if (target == null) {
+        if (tier == null) {
             target = bestTarget(muta, situation, memory.targetId);
             tier = target == null ? null : tier(target, situation);
         }

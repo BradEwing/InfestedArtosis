@@ -21,7 +21,7 @@ import java.util.function.Predicate;
  * <p>Mobile anti-air is every known threat that is not a structure, Interceptors left out; static defense is read by
  * the defense zones and the entry refusal. The anti-air that counts is the mobile threats whose zone, grown by a
  * Mutalisk's padding, covers a point of the straight line from the flock to the strike point, and those within
- * {@link AirHarassScouting#NEW_AA_ZONE} of the strike point or covering it. Its summed strength is held against the
+ * covering the strike point once its zone is grown by {@link AirHarassEvaluator#STRIKE_RADIUS}. Its summed strength is held against the
  * flock's tolerance, see {@link AirHarassEvaluator#tolerance}, the anti-air strength the flock engages rather than
  * avoids: within it the flock enters, ENTER. Above it, anti-air that alone out-trades the flock at the target
  * ABORTs the approach, and anti-air on the path alone is flown around when a clear hop around its zones exists,
@@ -51,6 +51,9 @@ public final class AirApproachPricing {
         NO_DETOUR,
         OTHER_TARGET
     }
+
+    /** Tuning value: hops a detour around mobile anti-air may take before it counts as no detour. */
+    static final int MAX_DETOUR_HOPS = 10;
 
     private AirApproachPricing() {
     }
@@ -83,6 +86,27 @@ public final class AirApproachPricing {
         public Result toOtherTarget() {
             return new Result(Decision.REROUTE, Reason.OTHER_TARGET, mobileStrength, flockStrength, involved,
                     Collections.emptyList());
+        }
+
+        /**
+         * @return this pricing's reading with the decision ABORT for want of a way around
+         */
+        public Result toNoDetour() {
+            return new Result(Decision.ABORT, Reason.NO_DETOUR, mobileStrength, flockStrength, involved,
+                    Collections.emptyList());
+        }
+
+        /**
+         * @return the priced mobile unit with the highest strength, or null when none was priced
+         */
+        public AirHarassTargeting.AirThreat strongest() {
+            AirHarassTargeting.AirThreat strongest = null;
+            for (AirHarassTargeting.AirThreat threat : involved) {
+                if (strongest == null || threat.getStrength() > strongest.getStrength()) {
+                    strongest = threat;
+                }
+            }
+            return strongest;
         }
 
         /**
@@ -184,8 +208,8 @@ public final class AirApproachPricing {
     }
 
     /**
-     * The mobile threats at a strike point: within {@link AirHarassScouting#NEW_AA_ZONE} of it, or with a zone,
-     * grown by {@link AirHarassEvaluator#STRIKE_RADIUS}, that covers it.
+     * The mobile threats at a strike point: those with a zone, grown by {@link AirHarassEvaluator#STRIKE_RADIUS},
+     * that covers it, the measure the strike point itself is chosen by.
      *
      * @param mobile the mobile threats
      * @param strike the strike point
@@ -195,8 +219,7 @@ public final class AirApproachPricing {
                                                        Position strike) {
         List<AirHarassTargeting.AirThreat> atTarget = new ArrayList<>();
         for (AirHarassTargeting.AirThreat threat : mobile) {
-            if (threat.getPosition().getDistance(strike) <= AirHarassScouting.NEW_AA_ZONE
-                    || threat.covers(strike, AirHarassEvaluator.STRIKE_RADIUS)) {
+            if (threat.covers(strike, AirHarassEvaluator.STRIKE_RADIUS)) {
                 atTarget.add(threat);
             }
         }
@@ -248,12 +271,36 @@ public final class AirApproachPricing {
                 around.add(threat);
             }
         }
-        Position hop = AirHarassTargeting.edgePoint(from, around, strike, allowed, true);
-        if (hop != null && AirHarassTargeting.minMargin(hop, around) > 0) {
+        if (detours(from, strike, around, allowed)) {
             return new Result(Decision.REROUTE, Reason.DETOUR, mobileStrength, flockStrength, involved, around);
         }
         return new Result(Decision.ABORT, Reason.NO_DETOUR, mobileStrength, flockStrength, involved,
                 Collections.emptyList());
+    }
+
+    /**
+     * Whether the flock reaches the strike point by hops around the zones: up to {@link #MAX_DETOUR_HOPS} hops, each
+     * to an allowed point outside every zone that a clear straight hop reaches, ending in a clear straight line to the
+     * strike point. A hop back to a point already taken ends the search.
+     */
+    private static boolean detours(Position from, Position strike, Collection<AirHarassTargeting.AirThreat> zones,
+                                   Predicate<Position> allowed) {
+        Set<Position> taken = new HashSet<>();
+        Position at = from;
+        for (int hop = 0; hop < MAX_DETOUR_HOPS; hop++) {
+            Position next = AirHarassTargeting.edgePoint(at, zones, strike, allowed, true);
+            if (next == null) {
+                return false;
+            }
+            if (next.equals(strike)) {
+                return true;
+            }
+            if (AirHarassTargeting.minMargin(next, zones) <= 0 || !taken.add(next)) {
+                return false;
+            }
+            at = next;
+        }
+        return false;
     }
 
     /**

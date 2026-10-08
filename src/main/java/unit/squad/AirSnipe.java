@@ -163,28 +163,41 @@ public final class AirSnipe {
     }
 
     /**
-     * Gives each planned target the Mutalisks nearest it that no earlier target took.
+     * Gives each planned target the Mutalisks that already fire on it, up to the number it needs, then the
+     * Mutalisks nearest it that no earlier target took, so a stacked flock does not swap targets as it jostles.
      *
      * @param plan the volley plan, see {@link #plan}
      * @param mutas positions of the Mutalisks that fire, by unit id
+     * @param previous the target id each Mutalisk was assigned last time, by Mutalisk id
      * @return the target id each assigned Mutalisk fires on, by Mutalisk id
      */
-    public static Map<Integer, Integer> assign(List<Assignment> plan, Map<Integer, Position> mutas) {
+    public static Map<Integer, Integer> assign(List<Assignment> plan, Map<Integer, Position> mutas,
+                                               Map<Integer, Integer> previous) {
         Map<Integer, Integer> targets = new HashMap<>();
         Set<Integer> taken = new HashSet<>();
         for (Assignment assignment : plan) {
+            Position at = assignment.getTarget().getPosition();
+            int targetId = assignment.getTarget().getId();
+            Comparator<Integer> nearest = Comparator.<Integer>comparingDouble(id -> mutas.get(id).getDistance(at))
+                    .thenComparingInt(id -> id);
+            List<Integer> keeping = new ArrayList<>();
             List<Integer> free = new ArrayList<>();
             for (Integer id : mutas.keySet()) {
-                if (!taken.contains(id)) {
+                if (taken.contains(id)) {
+                    continue;
+                }
+                if (Integer.valueOf(targetId).equals(previous.get(id))) {
+                    keeping.add(id);
+                } else {
                     free.add(id);
                 }
             }
-            Position at = assignment.getTarget().getPosition();
-            free.sort(Comparator.<Integer>comparingDouble(id -> mutas.get(id).getDistance(at))
-                    .thenComparingInt(id -> id));
-            for (int i = 0; i < assignment.getMutas() && i < free.size(); i++) {
-                targets.put(free.get(i), assignment.getTarget().getId());
-                taken.add(free.get(i));
+            keeping.sort(nearest);
+            free.sort(nearest);
+            keeping.addAll(free);
+            for (int i = 0; i < assignment.getMutas() && i < keeping.size(); i++) {
+                targets.put(keeping.get(i), targetId);
+                taken.add(keeping.get(i));
             }
         }
         return targets;

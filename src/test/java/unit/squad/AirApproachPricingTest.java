@@ -169,4 +169,49 @@ class AirApproachPricingTest {
         assertTrue(swapped.routeAround().isEmpty());
         assertEquals("REROUTE/OTHER_TARGET", swapped.key());
     }
+
+    @Test
+    void aWallOfMobileAntiAirAcrossTheOnlyLaneLeavesNoDetourEvenWhenTheFirstHopIsClear() {
+        List<AirHarassTargeting.AirThreat> wall = new java.util.ArrayList<>();
+        for (int i = 0; i < 24; i++) {
+            wall.add(threat(100 + i, UnitType.Terran_Goliath, new Position(1500, 800 + i * 100)));
+        }
+
+        AirApproachPricing.Result result = price(wall, goliath() * 2);
+
+        assertEquals(AirApproachPricing.Decision.ABORT, result.getDecision());
+        assertEquals(AirApproachPricing.Reason.NO_DETOUR, result.getReason());
+    }
+
+    @Test
+    void aUnitNearTheStrikePointWhoseReachDoesNotCoverItDoesNotDefendTheTarget() {
+        Position away = null;
+        for (int distance = 200; distance <= AirHarassScouting.NEW_AA_ZONE; distance += 10) {
+            AirHarassTargeting.AirThreat probe = threat(1, UnitType.Terran_Goliath,
+                    new Position(STRIKE.getX(), STRIKE.getY() + distance));
+            if (!probe.covers(STRIKE, AirHarassEvaluator.STRIKE_RADIUS)) {
+                away = probe.getPosition();
+                break;
+            }
+        }
+        assertTrue(away != null);
+        AirHarassTargeting.AirThreat goliath = threat(1, UnitType.Terran_Goliath, away);
+
+        AirApproachPricing.Result result = price(Collections.singletonList(goliath), goliath() / 2);
+
+        assertEquals(AirApproachPricing.Decision.ENTER, result.getDecision());
+        assertEquals(0, result.units());
+    }
+
+    @Test
+    void theStrongestPricedUnitIsNamedAndAStalledFlightReadsAsNoDetour() {
+        AirHarassTargeting.AirThreat goliath = threat(1, UnitType.Terran_Goliath, onPath(1500));
+        AirHarassTargeting.AirThreat marine = threat(2, UnitType.Terran_Marine, onPath(1600));
+
+        AirApproachPricing.Result result = price(Arrays.asList(marine, goliath), 0);
+
+        assertSame(goliath.getStrength() >= marine.getStrength() ? goliath : marine, result.strongest());
+        assertEquals(AirApproachPricing.Reason.NO_DETOUR, result.toNoDetour().getReason());
+        assertFalse(result.toNoDetour().flies());
+    }
 }

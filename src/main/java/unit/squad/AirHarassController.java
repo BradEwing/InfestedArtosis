@@ -70,6 +70,8 @@ public class AirHarassController {
     private final Map<Integer, Integer> carriedAntiAir = new HashMap<>();
     private final Map<String, String> refusedPricing = new HashMap<>();
     private final AirHarassDefenseZones defenseZones = new AirHarassDefenseZones();
+    /** Tuning value: pixels the flight to the strike point must close by to count as progress. */
+    static final int TRANSIT_GAIN = 64;
     /** Tuning value: frames after a volley was committed to a target within which the target must die to count. */
     static final int SNIPE_WINDOW_FRAMES = 120;
 
@@ -582,18 +584,8 @@ public class AirHarassController {
             return false;
         }
         state.setDefendedAtTarget(reaction.isAtTarget());
-        Base targetBase = state.getTargetBase();
-        int zoneUnits = defenseZones.record(reaction.getTrigger(), view.threats, now,
-                AirHarassScouting.holdFrames(AirHarassEvaluator.ExitReason.NEW_AA, reaction.isAtTarget(),
-                        targetBase == null ? null : flockSideExitAt.get(targetBase), now)).size();
-        HarassTelemetry.row(row(squad, state, HarassRow.Event.ZONE_RECORD, now)
-                .center(reaction.getTrigger().getPosition())
-                .aaTriggerType(reaction.getTrigger().getType())
-                .aaTriggerId(reaction.getTrigger().getId())
-                .aaAtTarget(reaction.isAtTarget() ? 1 : 0)
-                .defenseZones(defenseZones.size())
-                .zoneUnits(zoneUnits)
-                .build());
+        int zoneUnits = recordZone(squad, state, view, reaction.getTrigger(), AirHarassEvaluator.ExitReason.NEW_AA,
+                reaction.isAtTarget(), now);
         for (int id : reaction.getContributorIds()) {
             carriedAntiAir.put(id, now);
         }
@@ -614,6 +606,28 @@ public class AirHarassController {
                 .zoneUnits(zoneUnits)
                 .build());
         return true;
+    }
+
+    /**
+     * Records the defense group a harass ends on as a zone priced for the refusal the exit sets, see
+     * {@link AirHarassScouting#holdFrames}, and writes its ZONE_RECORD row.
+     *
+     * @return the members the zone holds
+     */
+    private int recordZone(Squad squad, AirHarassState state, View view, AirHarassTargeting.AirThreat trigger,
+                           AirHarassEvaluator.ExitReason reason, boolean atTarget, int now) {
+        Base targetBase = state.getTargetBase();
+        int zoneUnits = defenseZones.record(trigger, view.threats, now, AirHarassScouting.holdFrames(reason, atTarget,
+                targetBase == null ? null : flockSideExitAt.get(targetBase), now)).size();
+        HarassTelemetry.row(row(squad, state, HarassRow.Event.ZONE_RECORD, now)
+                .center(trigger.getPosition())
+                .aaTriggerType(trigger.getType())
+                .aaTriggerId(trigger.getId())
+                .aaAtTarget(atTarget ? 1 : 0)
+                .defenseZones(defenseZones.size())
+                .zoneUnits(zoneUnits)
+                .build());
+        return zoneUnits;
     }
 
     /**
@@ -644,16 +658,16 @@ public class AirHarassController {
         view.price(flock.mutas, squad.size() == 0 ? null : squad.getCenter(),
                 state == null ? Collections.emptySet() : state.getEngagedEdgeTurrets());
         List<AirHarassTargeting.AirThreat> threats = view.priced;
-        HarassTelemetry.row(exitRow(squad.getId(), state, reason, now,
-                squad.size() == 0 ? null : squad.getCenter(), flock.hitPoints, threats)
-                .mutas(flock.mutas)
-                .healthyMutas(flock.healthy)
-                .build());
         if (state != null) {
             for (AirHarassState.Snipe snipe : state.drainSnipes()) {
                 logSnipe(squad, state, snipe, false, now);
             }
         }
+        HarassTelemetry.row(exitRow(squad.getId(), state, reason, now,
+                squad.size() == 0 ? null : squad.getCenter(), flock.hitPoints, threats)
+                .mutas(flock.mutas)
+                .healthyMutas(flock.healthy)
+                .build());
         for (ManagedUnit member : squad.getMembers()) {
             member.setHarassDestination(null);
             member.setFightTarget(null);
@@ -856,18 +870,28 @@ public class AirHarassController {
         if (!state.hasArrived() && AirHarassEvaluator.arrived(squad.getCenter(), state.getStrikePoint())) {
             state.arrive(now);
         }
+        boolean stalled = !state.hasArrived() && state.getStrikePoint() != null && state.transitStalled(
+                squad.getCenter().getDistance(state.getStrikePoint()), now, AirHarassEvaluator.NO_TARGET_FRAMES,
+                TRANSIT_GAIN);
+        AirApproachPricing.Result blocked = pricedOut ? pricing : stalled ? pricing.toNoDetour() : null;
         boolean retargets = AirHarassEvaluator.shouldRetarget(targetGone, heated, state.hasArrived(), now,
                 state.getLastProgressFrame());
-        if ((retargets || pricedOut) && !retarget(squad, state, view, flock.mutas, tolerance, containPoints, now)) {
-            if (!pricedOut) {
+        if ((retargets || blocked != null)
+                && !retarget(squad, state, view, flock.mutas, tolerance, containPoints, now)) {
+            if (blocked == null) {
                 return AirHarassEvaluator.ExitReason.NO_TARGET;
             }
-            state.setDefendedAtTarget(pricing.getReason() == AirApproachPricing.Reason.TARGET_DEFENDED);
-            logPricing(squad, state, pricing, flock, tolerance, now);
+            state.setDefendedAtTarget(blocked.getReason() == AirApproachPricing.Reason.TARGET_DEFENDED);
+            logPricing(squad, state, blocked, flock, tolerance, now);
+            AirHarassTargeting.AirThreat strongest = blocked.strongest();
+            if (strongest != null) {
+                recordZone(squad, state, view, strongest, AirHarassEvaluator.ExitReason.APPROACH_DEFENDED,
+                        state.isDefendedAtTarget(), now);
+            }
             return AirHarassEvaluator.ExitReason.APPROACH_DEFENDED;
         }
-        if (pricedOut) {
-            logPricing(squad, state, pricing.toOtherTarget(), flock, tolerance, now);
+        if (blocked != null) {
+            logPricing(squad, state, blocked.toOtherTarget(), flock, tolerance, now);
         }
         HarassTelemetry.row(row(squad, state, HarassRow.Event.TICK, now)
                 .flockDefense(flockDefense)
@@ -1099,7 +1123,7 @@ public class AirHarassController {
                 .turretsTaken(state.targetsExposed())
                 .pointAllowed(pointAllowed)
                 .edgeTurretIds(view.edgeTurrets)
-                .snipeTargets(snipeTargets(state, view, avoided, firing(positions, stragglers), anchor,
+                .snipeTargets(snipeTargets(state, view, avoided, firing(squad, positions, stragglers), anchor,
                         point -> point.getDistance(baseCenter) <= baseRadius, now))
                 .now(now)
                 .build();
@@ -1144,17 +1168,27 @@ public class AirHarassController {
     }
 
     /**
+     * The Mutalisks of the squad that fly with the flock: not the escorting Overlords, and not the stragglers.
+     */
+    private static Map<Integer, Position> firing(Squad squad, Map<Integer, Position> positions,
+                                                 Set<Integer> stragglers) {
+        Map<Integer, Position> firing = new HashMap<>();
+        for (ManagedUnit member : squad.getMembers()) {
+            int id = member.getUnitID();
+            if (member.getUnitType() == UnitType.Zerg_Mutalisk && positions.containsKey(id)
+                    && !stragglers.contains(id)) {
+                firing.put(id, positions.get(id));
+            }
+        }
+        return firing;
+    }
+
+    /**
      * Plans the volley of the Mutalisks that fly with the flock, see {@link AirSnipe}: the visible contacts a volley
      * kills, outside every avoided zone and within the target area or {@link AirHarassTargeting#OPPORTUNITY_RADIUS}
      * of the flock's anchor, each with the damage a hit deals it from our upgrades and its armor. The target of
      * every Mutalisk the plan assigns is returned, and each target the harass first commits to is recorded.
      */
-    private static Map<Integer, Position> firing(Map<Integer, Position> positions, Set<Integer> stragglers) {
-        Map<Integer, Position> firing = new HashMap<>(positions);
-        firing.keySet().removeAll(stragglers);
-        return firing;
-    }
-
     private Map<Integer, Integer> snipeTargets(AirHarassState state, View view,
                                                List<AirHarassTargeting.AirThreat> avoided,
                                                Map<Integer, Position> firing, Position anchor,
@@ -1163,7 +1197,7 @@ public class AirHarassController {
             return Collections.emptyMap();
         }
         WeaponType glave = UnitType.Zerg_Mutalisk.groundWeapon();
-        int damage = game.self().damage(glave);
+        int damage = game.self().damage(glave) / Math.max(1, glave.damageFactor());
         List<AirSnipe.Candidate> candidates = new ArrayList<>();
         for (AirHarassTargeting.Contact contact : view.contacts) {
             Unit unit = view.units.get(contact.getId());
@@ -1185,9 +1219,11 @@ public class AirHarassController {
         for (AirSnipe.Assignment assignment : plan) {
             AirSnipe.Candidate target = assignment.getTarget();
             state.noteSnipe(target.getId(), target.getType(), target.getHitPoints(),
-                    AirSnipe.alpha(firing.size(), glave.damageFactor(), target.getPerHit()), now);
+                    AirSnipe.alpha(assignment.getMutas(), glave.damageFactor(), target.getPerHit()), now);
         }
-        return AirSnipe.assign(plan, firing);
+        Map<Integer, Integer> assigned = AirSnipe.assign(plan, firing, state.getSnipeAssignment());
+        state.setSnipeAssignment(assigned);
+        return assigned;
     }
 
     /**

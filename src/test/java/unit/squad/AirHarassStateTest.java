@@ -121,4 +121,42 @@ class AirHarassStateTest {
         state.targetExposed(group(new Position(2000, 2000)), 12100);
         assertTrue(state.approachZones().isEmpty());
     }
+
+    @Test
+    void aTargetSettledByAKillOrAMissIsNeverRecordedAgainInTheSameHarass() {
+        AirHarassState state = new AirHarassState(12000, 1080);
+        state.noteSnipe(1, bwapi.UnitType.Terran_SCV, 60, 72, 12000);
+        state.noteSnipe(2, bwapi.UnitType.Terran_SCV, 60, 72, 12000);
+        state.noteSnipe(3, bwapi.UnitType.Terran_SCV, 60, 72, 12000);
+
+        state.resolveSnipe(1);
+        state.missedSnipes(12200, 120);
+        assertTrue(state.drainSnipes().isEmpty());
+
+        assertFalse(state.noteSnipe(1, bwapi.UnitType.Terran_SCV, 60, 72, 12300));
+        assertFalse(state.noteSnipe(2, bwapi.UnitType.Terran_SCV, 60, 72, 12300));
+        assertFalse(state.noteSnipe(3, bwapi.UnitType.Terran_SCV, 60, 72, 12300));
+    }
+
+    @Test
+    void aFlightThatClosesNoDistanceForAWindowIsStalled() {
+        AirHarassState state = new AirHarassState(12000, 1080);
+        state.target(null, new Position(400, 3700), 12000);
+
+        assertFalse(state.transitStalled(3000, 12010, 480, 64));
+        assertFalse(state.transitStalled(2900, 12400, 480, 64));
+        assertFalse(state.transitStalled(2890, 12800, 480, 64));
+        assertTrue(state.transitStalled(2880, 12880, 480, 64));
+    }
+
+    @Test
+    void aNewTargetRestartsTheStallCount() {
+        AirHarassState state = new AirHarassState(12000, 1080);
+        state.target(null, new Position(400, 3700), 12000);
+        state.transitStalled(3000, 12010, 480, 64);
+
+        state.target(null, new Position(900, 3700), 12700);
+
+        assertFalse(state.transitStalled(3000, 12710, 480, 64));
+    }
 }

@@ -126,7 +126,7 @@ class AirSnipeTest {
         mutas.put(6, new Position(3000, 1000));
         List<AirSnipe.Assignment> plan = AirSnipe.plan(Collections.singletonList(target), 6, FACTOR);
 
-        Map<Integer, Integer> assigned = AirSnipe.assign(plan, mutas);
+        Map<Integer, Integer> assigned = AirSnipe.assign(plan, mutas, Collections.emptyMap());
 
         assertEquals(5, assigned.size());
         assertFalse(assigned.containsKey(6));
@@ -148,9 +148,32 @@ class AirSnipeTest {
         mutas.put(4, new Position(1000, 1015));
 
         Map<Integer, Integer> assigned = AirSnipe.assign(AirSnipe.plan(Arrays.asList(first, second), 4, FACTOR),
-                mutas);
+                mutas, Collections.emptyMap());
 
         assertEquals(4, assigned.size());
         assertEquals(2, new java.util.HashSet<>(assigned.values()).size());
+    }
+
+    @Test
+    void aMutalisksKeepsItsTargetWhileThePlanStillNeedsItEvenWhenAnotherIsNowNearer() {
+        AirSnipe.Candidate first = new AirSnipe.Candidate(1, UnitType.Terran_Marine, new Position(1000, 1000), 18,
+                AirSnipe.perHit(DAMAGE, 0, GLAVE, UnitSizeType.Small));
+        AirSnipe.Candidate second = new AirSnipe.Candidate(2, UnitType.Terran_Marine, new Position(1000, 1010), 18,
+                AirSnipe.perHit(DAMAGE, 0, GLAVE, UnitSizeType.Small));
+        Map<Integer, Position> mutas = new HashMap<>();
+        mutas.put(1, new Position(1000, 1000));
+        mutas.put(2, new Position(1000, 1004));
+        mutas.put(3, new Position(1000, 1006));
+        mutas.put(4, new Position(1000, 1010));
+        List<AirSnipe.Assignment> plan = AirSnipe.plan(Arrays.asList(first, second), 4, FACTOR);
+        Map<Integer, Integer> before = AirSnipe.assign(plan, mutas, Collections.emptyMap());
+
+        Map<Integer, Position> jostled = new HashMap<>();
+        jostled.put(1, new Position(1000, 1005));
+        jostled.put(2, new Position(1000, 1001));
+        jostled.put(3, new Position(1000, 1009));
+        jostled.put(4, new Position(1000, 1007));
+
+        assertEquals(before, AirSnipe.assign(plan, jostled, before));
     }
 }

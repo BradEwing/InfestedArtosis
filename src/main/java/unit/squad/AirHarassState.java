@@ -70,6 +70,10 @@ public class AirHarassState {
     private int flockPointUntilFrame;
     private final Map<Integer, AntiAirSighting> knownAntiAir = new HashMap<>();
     private final Map<Integer, Snipe> snipes = new LinkedHashMap<>();
+    private final Set<Integer> settledSnipes = new HashSet<>();
+    private Map<Integer, Integer> snipeAssignment = new HashMap<>();
+    private double bestTransitDistance = Double.POSITIVE_INFINITY;
+    private int bestTransitFrame;
     private List<AirHarassTargeting.AirThreat> approachZones = new ArrayList<>();
     private String lastApproachKey;
 
@@ -105,7 +109,7 @@ public class AirHarassState {
      * @return true the first time this harass commits to that target
      */
     public boolean noteSnipe(int id, UnitType type, int hitPoints, int alpha, int frame) {
-        if (snipes.containsKey(id)) {
+        if (snipes.containsKey(id) || settledSnipes.contains(id)) {
             return false;
         }
         snipes.put(id, new Snipe(id, type, hitPoints, alpha, frame));
@@ -119,7 +123,11 @@ public class AirHarassState {
      * @return the record, or null when the harass committed no volley to it
      */
     public Snipe resolveSnipe(int id) {
-        return snipes.remove(id);
+        Snipe snipe = snipes.remove(id);
+        if (snipe != null) {
+            settledSnipes.add(id);
+        }
+        return snipe;
     }
 
     /**
@@ -136,6 +144,7 @@ public class AirHarassState {
             Snipe snipe = iterator.next();
             if (now - snipe.getFrame() > window) {
                 missed.add(snipe);
+                settledSnipes.add(snipe.getId());
                 iterator.remove();
             }
         }
@@ -149,8 +158,27 @@ public class AirHarassState {
      */
     public List<Snipe> drainSnipes() {
         List<Snipe> rest = new ArrayList<>(snipes.values());
+        settledSnipes.addAll(snipes.keySet());
         snipes.clear();
         return rest;
+    }
+
+    /**
+     * Whether the flight to the strike point has made no progress: the distance has not closed by more than a gain
+     * within a window of frames, counted from the target being set or the last frame it did close by that gain.
+     *
+     * @param distance pixels from the flock to the strike point now
+     * @param now current frame
+     * @param window frames without progress after which the flight counts as stalled
+     * @param gain pixels the distance must close by to count as progress
+     * @return true when stalled
+     */
+    public boolean transitStalled(double distance, int now, int window, double gain) {
+        if (distance < bestTransitDistance - gain) {
+            bestTransitDistance = distance;
+            bestTransitFrame = now;
+        }
+        return now - bestTransitFrame >= window;
     }
 
     /**
@@ -191,6 +219,7 @@ public class AirHarassState {
         this.startHitPoints = startHitPoints;
         this.lastTickFrame = startFrame;
         this.lastProgressFrame = startFrame;
+        this.bestTransitFrame = startFrame;
     }
 
     /**
@@ -211,6 +240,8 @@ public class AirHarassState {
         this.defendedAtTarget = false;
         this.approachZones = new ArrayList<>();
         this.lastApproachKey = null;
+        this.bestTransitDistance = Double.POSITIVE_INFINITY;
+        this.bestTransitFrame = frame;
         if (base != null) {
             visitedBases.add(base);
         }
@@ -232,6 +263,8 @@ public class AirHarassState {
         this.lastProgressFrame = frame;
         this.approachZones = new ArrayList<>();
         this.lastApproachKey = null;
+        this.bestTransitDistance = Double.POSITIVE_INFINITY;
+        this.bestTransitFrame = frame;
     }
 
     /**
