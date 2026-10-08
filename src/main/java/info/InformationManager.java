@@ -87,6 +87,7 @@ public class InformationManager {
         trackEnemyBuildings();
         checkEnemyBases();
         recordEnemyMainVision();
+        recordBaseVision();
         recordEnemyNaturalVision();
         checkEnemyBuildingPositions();
         debugEnemyTargets();
@@ -653,6 +654,26 @@ public class InformationManager {
     }
 
     /**
+     * Stamps the current frame on every base whose town hall location is in our vision, or where an enemy town
+     * hall is in sight, so ScoutData holds when each base was last seen.
+     */
+    private void recordBaseVision() {
+        ScoutData scoutData = gameState.getScoutData();
+        int frame = game.getFrameCount();
+        Set<TilePosition> townHalls = new HashSet<>();
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            if (enemy.getType().isResourceDepot()) {
+                townHalls.add(enemy.getTilePosition());
+            }
+        }
+        for (Base base : bwem.getMap().getBases()) {
+            if (game.isVisible(base.getLocation()) || townHalls.contains(base.getLocation())) {
+                scoutData.recordBaseSeen(base.getLocation(), frame);
+            }
+        }
+    }
+
+    /**
      * Records the frame the inferred enemy natural's depot site is in our vision, so a natural seen without a
      * depot can be told from one never looked at.
      */
@@ -851,6 +872,7 @@ public class InformationManager {
         for (MapTile mapTile : gameMap.getHeatMap()) {
             final TilePosition mapTp = mapTile.getTile();
             if (game.isVisible(mapTp)) {
+                mapTile.setScouted(true);
                 mapTile.setScoutImportance(0);
                 scoutData.removeScoutTarget(mapTp);
             }

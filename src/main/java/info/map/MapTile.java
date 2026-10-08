@@ -10,6 +10,7 @@ public class MapTile {
     @NonNull
     private TilePosition tile;
     private int scoutImportance;
+    private boolean scouted;
     private boolean isBuildable;
     private boolean isWalkable;
     @NonNull

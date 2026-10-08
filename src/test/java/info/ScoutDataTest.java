@@ -32,6 +32,22 @@ class ScoutDataTest {
     }
 
     @Test
+    void aBaseNeverSeenHasNoLastSeenFrame() {
+        ScoutData scoutData = new ScoutData();
+        assertEquals(ScoutData.NEVER_SEEN, scoutData.getBaseLastSeenFrame(new TilePosition(10, 20)));
+    }
+
+    @Test
+    void theLedgerKeepsTheLatestFramePerBase() {
+        ScoutData scoutData = new ScoutData();
+        scoutData.recordBaseSeen(new TilePosition(10, 20), 100);
+        scoutData.recordBaseSeen(new TilePosition(10, 20), 300);
+        scoutData.recordBaseSeen(new TilePosition(40, 50), 200);
+        assertEquals(300, scoutData.getBaseLastSeenFrame(new TilePosition(10, 20)));
+        assertEquals(200, scoutData.getBaseLastSeenFrame(new TilePosition(40, 50)));
+    }
+
+    @Test
     void terranStopsOnMarine() {
         ScoutData scoutData = new ScoutData();
         assertFalse(scoutData.shouldOverlordsContinueScouting(Race.Terran, of(UnitType.Terran_Marine)));
