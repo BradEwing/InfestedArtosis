@@ -1,0 +1,100 @@
+{
+ "run_id": "20261007-012752",
+ "opponents": [
+  "insanitybot",
+  "GrimHammer"
+ ],
+ "games_per_opponent": 50,
+ "games": [
+  {
+   "index": 13,
+   "game_name": "MJ3IG00D",
+   "opponent": "insanitybot",
+   "map": "(4)Roadrunner.scx",
+   "launched_at": "2026-10-07T02:53:05",
+   "scbw_exit_code": 1,
+   "outcome": "CRASH",
+   "finished_at": "2026-10-07T03:07:10",
+   "retried": true
+  },
+  {
+   "index": 13,
+   "game_name": "MJ3IG00DR1",
+   "opponent": "insanitybot",
+   "map": "(4)Roadrunner.scx",
+   "retry_of": "MJ3IG00D",
+   "retry": 1,
+   "launched_at": "2026-10-07T03:07:10",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-07T03:11:46"
+  },
+  {
+   "index": 331,
+   "game_name": "MJ3IG097",
+   "opponent": "GrimHammer",
+   "map": "(4)Icarus.scm",
+   "launched_at": "2026-10-07T04:53:33",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-07T04:58:40"
+  },
+  {
+   "index": 332,
+   "game_name": "MJ3IG098",
+   "opponent": "GrimHammer",
+   "map": "(4)Jade.scx",
+   "launched_at": "2026-10-07T04:58:40",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-07T05:04:21"
+  },
+  {
+   "index": 333,
+   "game_name": "MJ3IG099",
+   "opponent": "GrimHammer",
+   "map": "(4)LaMancha1.1.scx",
+   "launched_at": "2026-10-07T05:04:21",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-07T05:14:19"
+  },
+  {
+   "index": 334,
+   "game_name": "MJ3IG09A",
+   "opponent": "GrimHammer",
+   "map": "(4)Python.scx",
+   "launched_at": "2026-10-07T05:14:19",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-07T05:17:05"
+  },
+  {
+   "index": 335,
+   "game_name": "MJ3IG09B",
+   "opponent": "GrimHammer",
+   "map": "(4)Roadrunner.scx",
+   "launched_at": "2026-10-07T05:17:05",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-07T05:21:13"
+  },
+  {
+   "index": 339,
+   "game_name": "MJ3IG09F",
+   "opponent": "GrimHammer",
+   "map": "(3)NeoMoonGlaive.scx",
+   "launched_at": "2026-10-07T05:30:14",
+   "scbw_exit_code": 0,
+   "outcome": "WIN",
+   "finished_at": "2026-10-07T05:34:52"
+  },
+  {
+   "index": 340,
+   "game_name": "MJ3IG09G",
+   "opponent": "GrimHammer",
+   "map": "(3)TauCross.scx",
+   "launched_at": "2026-10-07T05:34:52"
+  }
+ ]
+}
