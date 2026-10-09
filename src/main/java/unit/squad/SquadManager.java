@@ -32,6 +32,7 @@ import telemetry.FixedFireTelemetry;
 import telemetry.FlockLogger;
 import telemetry.FlockRow;
 import telemetry.FlockTelemetry;
+import telemetry.OverlordParks;
 import telemetry.RallyReason;
 import telemetry.RallyRelease;
 import telemetry.RetreatRoute;
@@ -86,6 +87,7 @@ public class SquadManager {
     private final ContainmentEscalation containmentEscalation = new ContainmentEscalation();
 
     private Squad overlords = new Squad();
+    private final Map<Integer, Position> overlordAnchors = new HashMap<>();
 
     public HashSet<Squad> fightSquads = new HashSet<>();
 
@@ -1011,21 +1013,63 @@ public class SquadManager {
         return accessible.isEmpty() || accessible.contains(new WalkPosition(point));
     }
 
+    /**
+     * Parks each Overlord of the Overlord squad at the center of the nearest completed Spore Colony we own,
+     * measured from the Overlord, or at the main base position when there is none.
+     */
     public void updateOverlordSquad() {
-        TilePosition mainBaseLocation = gameState.getBaseData().mainBasePosition();
+        Position main = gameState.getBaseData().mainBasePosition().toPosition();
         if (overlords.getRallyPoint() == null) {
-            overlords.setRallyPoint(mainBaseLocation.toPosition());
+            overlords.setRallyPoint(main);
         }
 
+        List<Position> spores = completedSporePositions();
+        int now = game.getFrameCount();
+        Set<Integer> parked = new HashSet<>();
         for (ManagedUnit managedUnit: overlords.getMembers()) {
-            if (managedUnit.getUnit().getDistance(mainBaseLocation.toPosition()) < 16) {
+            Unit overlord = managedUnit.getUnit();
+            parked.add(overlord.getID());
+            Position anchor = OverlordParking.pickAnchor(overlord.getPosition(), spores, main);
+            Position previous = overlordAnchors.put(overlord.getID(), anchor);
+            if (!anchor.equals(previous)) {
+                OverlordParks.anchorChanged(now, overlord.getID(), overlord.getPosition(), previous, anchor,
+                        OverlordParking.reason(previous, spores, main));
+            }
+
+            if (overlord.getDistance(anchor) < 16) {
                 managedUnit.setRole(UnitRole.IDLE);
                 continue;
             }
 
             managedUnit.setRole(UnitRole.RALLY);
-            managedUnit.setRallyPoint(mainBaseLocation.toPosition());
+            managedUnit.setRallyPoint(anchor);
         }
+        overlordAnchors.keySet().retainAll(parked);
+    }
+
+    private List<Position> completedSporePositions() {
+        List<Position> spores = new ArrayList<>();
+        for (Unit unit : game.self().getUnits()) {
+            if (unit.getType() == UnitType.Zerg_Spore_Colony && unit.isCompleted()) {
+                spores.add(unit.getPosition());
+            }
+        }
+        return spores;
+    }
+
+    /**
+     * Writes the telemetry row for one of our Overlords that died.
+     *
+     * @param overlord the dead Overlord, still in its squad
+     */
+    public void recordOverlordDeath(ManagedUnit overlord) {
+        if (!OverlordParks.enabled()) {
+            return;
+        }
+        Unit unit = overlord.getUnit();
+        double sporeDistance = OverlordParking.nearestSporeDistance(unit.getPosition(), completedSporePositions());
+        OverlordParks.died(game.getFrameCount(), unit.getID(), unit.getPosition(), overlord.getRole(),
+                sporeDistance, overlords.containsManagedUnit(overlord));
     }
 
 

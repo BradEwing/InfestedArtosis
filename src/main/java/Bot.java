@@ -20,6 +20,8 @@ import telemetry.FixedFireLogger;
 import telemetry.FixedFireTelemetry;
 import telemetry.FlockLogger;
 import telemetry.FlockTelemetry;
+import telemetry.OverlordParkLogger;
+import telemetry.OverlordParks;
 import telemetry.PerchAssignmentLogger;
 import telemetry.PerchAssignments;
 import telemetry.PlanEventLogger;
@@ -77,6 +79,7 @@ public class Bot extends DefaultBWListener {
     private FlockLogger flockLogger;
     private ReachLogger reachLogger;
     private BurrowLogger burrowLogger;
+    private OverlordParkLogger overlordParkLogger;
     private FixedFireLogger fixedFireLogger;
 
     @Override
@@ -116,6 +119,7 @@ public class Bot extends DefaultBWListener {
         startFlockLogging();
         startReachLogging();
         startBurrowLogging();
+        startOverlordParkLogging();
         startFixedFireLogging();
         startPlanEventLogging(decisions.getOpener());
     }
@@ -183,6 +187,15 @@ public class Bot extends DefaultBWListener {
         airReinforcementLogger = new AirReinforcementLogger(game, unitManager.getSquadManager(),
                 combatTelemetry.getGameId());
         AirReinforcementTelemetry.register(airReinforcementLogger);
+    }
+
+    private void startOverlordParkLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        overlordParkLogger = new OverlordParkLogger(game, combatTelemetry.getGameId());
+        OverlordParks.register(overlordParkLogger);
     }
 
     private void startFlockLogging() {
@@ -273,6 +286,9 @@ public class Bot extends DefaultBWListener {
         }
         if (burrowLogger != null) {
             burrowLogger.onFrame();
+        }
+        if (overlordParkLogger != null) {
+            overlordParkLogger.onFrame();
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onFrame();
@@ -372,6 +388,9 @@ public class Bot extends DefaultBWListener {
         }
         if (burrowLogger != null) {
             burrowLogger.onEnd();
+        }
+        if (overlordParkLogger != null) {
+            overlordParkLogger.onEnd();
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onEnd();
