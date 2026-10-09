@@ -184,10 +184,31 @@ final class RacePrior {
      */
     Report seedIfNew(boolean enabled, int historyGames, OpponentRecord opponentRecord,
                      LearningRecordAccumulator accumulator, String race) {
-        if (!enabled || historyGames >= HISTORY_HORIZON_GAMES) {
+        if (!isActive(enabled, historyGames)) {
             return new Report(false, race, 0, 0);
         }
         return seed(opponentRecord, accumulator, race);
+    }
+
+    /**
+     * Returns whether the prior seeds this game: the switch is on and the history is shorter than
+     * {@link #HISTORY_HORIZON_GAMES}.
+     */
+    static boolean isActive(boolean enabled, int historyGames) {
+        return enabled && historyGames < HISTORY_HORIZON_GAMES;
+    }
+
+    /**
+     * Seeds one build order's pseudo-games onto its record, for a record created after the constructor seeded.
+     * Returns whether the race's prior holds a row for the build and the record took it.
+     */
+    boolean seedBuild(String race, String build, OpponentRecord opponentRecord, LearningRecordAccumulator accumulator) {
+        for (Arm arm : arms(race, KIND_BUILD)) {
+            if (arm.name().equals(build)) {
+                return accumulator.applyPrior(opponentRecord, false, build, arm.wins(), arm.games());
+            }
+        }
+        return false;
     }
 
     private Report seed(OpponentRecord opponentRecord, LearningRecordAccumulator accumulator, String race) {

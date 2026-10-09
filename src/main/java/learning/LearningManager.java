@@ -13,6 +13,7 @@ import telemetry.PlanEvents;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,6 +84,8 @@ public class LearningManager {
     private String lastGameOpener = "";
     private int historyGames = Integer.MAX_VALUE;
     private RacePrior.Report racePriorReport = new RacePrior.Report(false, RacePrior.raceKey(Race.Unknown), 0, 0);
+    private final RacePrior racePrior = RacePrior.load();
+    private int lazilySeededBuilds;
 
     private BuildOrderFactory buildOrderFactory;
     private LearningHistoryRepository historyRepository;
@@ -125,7 +128,7 @@ public class LearningManager {
     }
 
     private void seedRacePrior() {
-        racePriorReport = RacePrior.load().seedIfNew(Config.racePrior, historyGames, opponentRecord,
+        racePriorReport = racePrior.seedIfNew(Config.racePrior, historyGames, opponentRecord,
                 recordAccumulator, RacePrior.raceKey(opponentRace));
     }
 
@@ -213,13 +216,42 @@ public class LearningManager {
         }
     }
 
+    /**
+     * Creates a record for every named build order the opponent record lacks, and seeds each new record from the
+     * race's prior when the prior is active, so a record is seeded exactly once. Returns how many it seeded.
+     */
+    static int ensureBuildRecords(Collection<String> names,
+                                  OpponentRecord opponentRecord,
+                                  RacePrior prior,
+                                  LearningRecordAccumulator accumulator,
+                                  boolean priorActive,
+                                  String race) {
+        int seeded = 0;
+        Map<String, Record> records = opponentRecord.getBuildOrderRecord();
+        for (String name : names) {
+            if (records.containsKey(name)) {
+                continue;
+            }
+            records.put(name, Record.builder()
+                    .opener(name)
+                    .wins(0)
+                    .losses(0)
+                    .build());
+            if (priorActive && prior.seedBuild(race, name, opponentRecord, accumulator)) {
+                seeded++;
+            }
+        }
+        return seeded;
+    }
+
     private void reportBuildPick(String buildOrderName) {
-        if (!racePriorReport.applied()) {
+        if (!racePriorReport.applied() && lazilySeededBuilds == 0) {
             return;
         }
         Record record = opponentRecord.getBuildOrderRecord().get(buildOrderName);
         PlanEvents.racePrior("build=" + buildOrderName + ";prior_only="
-                + (record != null && record.isPriorOnly() ? "y" : "n"));
+                + (record != null && record.isPriorOnly() ? "y" : "n")
+                + ";builds_seeded=" + (racePriorReport.builds() + lazilySeededBuilds));
     }
 
     private BuildOrder determineOpener() {
@@ -524,15 +556,9 @@ public class LearningManager {
             return null;
         }
 
-        for (BuildOrder candidate : candidates) {
-            if (!opponentRecord.getBuildOrderRecord().containsKey(candidate.getName())) {
-                opponentRecord.getBuildOrderRecord().put(candidate.getName(), Record.builder()
-                    .opener(candidate.getName())
-                    .wins(0)
-                    .losses(0)
-                    .build());
-            }
-        }
+        lazilySeededBuilds += ensureBuildRecords(candidates.stream().map(BuildOrder::getName).collect(Collectors.toList()),
+                opponentRecord, racePrior, recordAccumulator, RacePrior.isActive(Config.racePrior, historyGames),
+                RacePrior.raceKey(opponentRace));
 
         if (config.strategyOverride != null) {
             BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);

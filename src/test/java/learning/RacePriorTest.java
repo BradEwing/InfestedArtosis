@@ -236,6 +236,57 @@ class RacePriorTest {
     }
 
     @Test
+    void lazilyCreatedBuildRecordsAreSeededOnceFromARecordWithNoBuilds() throws IOException {
+        OpponentRecord record = freshRecord(Arrays.asList("9Hatch", "12Pool"), Arrays.asList());
+        LearningRecordAccumulator accumulator = new LearningRecordAccumulator("Opponent", Race.Terran);
+        RacePrior prior = parse(PRIOR_CSV);
+        List<String> candidates = Arrays.asList("3HatchLurker", "2HatchMuta", "SpeedlingT");
+
+        prior.seedIfNew(true, 0, record, accumulator, "Terran");
+        int seeded = LearningManager.ensureBuildRecords(candidates, record, prior, accumulator, true, "Terran");
+        int again = LearningManager.ensureBuildRecords(candidates, record, prior, accumulator, true, "Terran");
+
+        assertEquals(2, seeded);
+        assertEquals(0, again);
+        assertEquals(3.0, record.getBuildOrderRecord().get("3HatchLurker").getPriorGames(), 1e-9);
+        assertEquals(2.0, record.getBuildOrderRecord().get("3HatchLurker").getPriorWins(), 1e-9);
+        assertTrue(record.getBuildOrderRecord().get("SpeedlingT").isPriorOnly());
+        assertEquals(0.0, record.getBuildOrderRecord().get("2HatchMuta").getPriorGames(), 1e-9);
+        assertFalse(record.getBuildOrderRecord().get("2HatchMuta").isPriorOnly());
+        assertTrue(record.getMapSpecificBuildOrderRecord().isEmpty());
+        assertTrue(record.getGameTimestamps().isEmpty());
+    }
+
+    @Test
+    void inactivePriorCreatesBuildRecordsUnseeded() throws IOException {
+        OpponentRecord record = freshRecord(Arrays.asList("9Hatch"), Arrays.asList());
+
+        int seeded = LearningManager.ensureBuildRecords(Arrays.asList("3HatchLurker"), record, parse(PRIOR_CSV),
+                new LearningRecordAccumulator("Opponent", Race.Terran), false, "Terran");
+
+        assertEquals(0, seeded);
+        assertTrue(record.getBuildOrderRecord().containsKey("3HatchLurker"));
+        assertFalse(record.getBuildOrderRecord().get("3HatchLurker").isPriorOnly());
+    }
+
+    @Test
+    void safetyNetSeesBuildsSeededLazily() throws IOException {
+        OpponentRecord record = freshRecord(Arrays.asList("9Hatch"), Arrays.asList());
+        LearningRecordAccumulator accumulator = new LearningRecordAccumulator("Opponent", Race.Terran);
+        List<String> candidates = Arrays.asList("3HatchLurker", "2HatchMuta", "SpeedlingT");
+        LearningManager.ensureBuildRecords(candidates, record, parse(PRIOR_CSV), accumulator, true, "Terran");
+        for (int i = 0; i < 8; i++) {
+            accumulator.apply(record, GameRecord.builder().timestamp(1_000L + i).mapName("MapA").opener("9Hatch")
+                    .buildOrder("9Hatch;2HatchMuta").isWinner(false).build());
+        }
+
+        String picked = LearningManager.selectBuildOrderName(candidates, record, "MapA", "9Hatch");
+
+        assertEquals("3HatchLurker", picked);
+        assertTrue(record.getBuildOrderRecord().get(picked).isPriorOnly());
+    }
+
+    @Test
     void safetyNetPicksTheHighestPriorMeanAmongPriorOnlyArms() throws IOException {
         OpponentRecord record = freshRecord(Arrays.asList("9Hatch", "12Pool", "4Pool"), Arrays.asList());
         LearningRecordAccumulator accumulator = new LearningRecordAccumulator("Opponent", Race.Terran);
