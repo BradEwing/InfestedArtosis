@@ -60,6 +60,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -1025,26 +1026,31 @@ public class SquadManager {
 
         List<Position> spores = completedSporePositions();
         int now = game.getFrameCount();
-        Set<Integer> parked = new HashSet<>();
+        Map<Integer, Position> positions = new LinkedHashMap<>();
+        Map<Integer, ManagedUnit> byId = new HashMap<>();
         for (ManagedUnit managedUnit: overlords.getMembers()) {
             Unit overlord = managedUnit.getUnit();
-            parked.add(overlord.getID());
-            Position anchor = OverlordParking.pickAnchor(overlord.getPosition(), spores, main);
-            Position previous = overlordAnchors.put(overlord.getID(), anchor);
-            if (!anchor.equals(previous)) {
-                OverlordParks.anchorChanged(now, overlord.getID(), overlord.getPosition(), previous, anchor,
-                        OverlordParking.reason(previous, spores, main));
+            positions.put(overlord.getID(), overlord.getPosition());
+            byId.put(overlord.getID(), managedUnit);
+        }
+
+        List<OverlordParking.Decision> decisions = OverlordParking.plan(positions, overlordAnchors, spores, main,
+                (id, anchor) -> byId.get(id).getUnit().getDistance(anchor));
+        for (OverlordParking.Decision decision: decisions) {
+            ManagedUnit managedUnit = byId.get(decision.unitId);
+            if (decision.changed()) {
+                OverlordParks.anchorChanged(now, decision.unitId, decision.position, decision.previous,
+                        decision.anchor, decision.reason);
             }
 
-            if (overlord.getDistance(anchor) < 16) {
+            if (decision.idle) {
                 managedUnit.setRole(UnitRole.IDLE);
                 continue;
             }
 
             managedUnit.setRole(UnitRole.RALLY);
-            managedUnit.setRallyPoint(anchor);
+            managedUnit.setRallyPoint(decision.anchor);
         }
-        overlordAnchors.keySet().retainAll(parked);
     }
 
     private List<Position> completedSporePositions() {
