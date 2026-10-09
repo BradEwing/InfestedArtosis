@@ -103,7 +103,7 @@ public class DroneRound {
     /**
      * Why a round closed. BUILD_CAP is the build's own Drone cap, which army milestone and calm-economy rounds read.
      * INELIGIBLE is a contain-held round whose matchup or build no longer allows it, such as a switch to a
-     * build that runs none or too few Zerglings left alive for SpeedlingAllIn.
+     * build that runs none or too few Zerglings left alive for Speedling.
      */
     public enum CloseReason {
         SIZE,

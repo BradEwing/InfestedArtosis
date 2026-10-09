@@ -37,6 +37,10 @@ public class Time {
         return this.frames <= t2.frames;
     }
 
+    public boolean lessThan(Time t2) {
+        return frames < t2.frames;
+    }
+
     public boolean greaterThan(Time t2) {
         return this.frames > t2.frames;
     }

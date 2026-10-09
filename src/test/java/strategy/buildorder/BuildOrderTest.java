@@ -504,14 +504,14 @@ class BuildOrderTest {
 
     @Test
     void theHashDoesNotDependOnTheClassObjectIdentity() {
-        BuildOrder order = new SpeedlingAllIn();
-        assertEquals(java.util.Objects.hash(SpeedlingAllIn.class.getName(), order.getName()), order.hashCode());
+        BuildOrder order = new SpeedlingZ();
+        assertEquals(java.util.Objects.hash(SpeedlingZ.class.getName(), order.getName()), order.hashCode());
     }
 
     @Test
     void twoInstancesOfOneBuildOrderAgreeOnHashAndEquality() {
-        BuildOrder first = new SpeedlingAllIn();
-        BuildOrder second = new SpeedlingAllIn();
+        BuildOrder first = new SpeedlingZ();
+        BuildOrder second = new SpeedlingZ();
         assertEquals(first, second);
         assertEquals(first.hashCode(), second.hashCode());
     }

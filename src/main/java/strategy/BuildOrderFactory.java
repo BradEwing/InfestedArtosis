@@ -2,7 +2,10 @@ package strategy;
 
 import bwapi.Race;
 import strategy.buildorder.BuildOrder;
-import strategy.buildorder.SpeedlingAllIn;
+import strategy.buildorder.SpeedlingP;
+import strategy.buildorder.SpeedlingR;
+import strategy.buildorder.SpeedlingT;
+import strategy.buildorder.SpeedlingZ;
 import strategy.buildorder.opener.FourPool;
 import strategy.buildorder.opener.NineHatch;
 import strategy.buildorder.opener.NinePoolGasHatchSpeed8D;
@@ -99,7 +102,10 @@ public class BuildOrderFactory {
         // Zerg
         allBuildOrders.add(new OneHatchSpire());
 
-        allBuildOrders.add(new SpeedlingAllIn());
+        allBuildOrders.add(new SpeedlingT());
+        allBuildOrders.add(new SpeedlingP());
+        allBuildOrders.add(new SpeedlingZ());
+        allBuildOrders.add(new SpeedlingR());
     }
 
     private void initOpeners(int numStartingLocations) {

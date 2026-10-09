@@ -5,7 +5,11 @@ import config.Config;
 import info.GameState;
 import info.tracking.StrategyTracker;
 import strategy.buildorder.BuildOrder;
-import strategy.buildorder.SpeedlingAllIn;
+import info.tracking.terran.BunkerMain;
+import strategy.buildorder.SpeedlingP;
+import strategy.buildorder.SpeedlingR;
+import strategy.buildorder.SpeedlingT;
+import strategy.buildorder.SpeedlingZ;
 import strategy.buildorder.protoss.ThreeHatchHydra;
 import strategy.buildorder.protoss.ThreeHatchMuta;
 import strategy.buildorder.terran.CrazyZerg;
@@ -20,20 +24,35 @@ import java.util.Set;
 /**
  * Terminal build orders an opener may transition into, by opponent race.
  */
-final class OpenerTransitions {
+public final class OpenerTransitions {
     private OpenerTransitions() {
     }
 
     /**
-     * The transitions for this game's opponent race, leaving SpeedlingAllIn out against a Terran whose wall was
-     * detected this game or in the previous game, and offering TwoHatchHydraTerran only against a Terran whose
-     * mech persists across recent games or when the strategy override names it.
+     * The transitions for this game's opponent race, leaving SpeedlingT out against a Terran whose wall was
+     * detected this game or in the previous game or whose main Bunker is detected, and offering
+     * TwoHatchHydraTerran only against a Terran whose mech persists across recent games or when the strategy
+     * override names it.
      */
     static Set<BuildOrder> forGame(GameState gameState) {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
-        boolean terranWall = strategyTracker != null && strategyTracker.isTerranWallDetected();
-        return forRace(gameState.getOpponentRace(), terranWall,
+        return forRace(gameState.getOpponentRace(), barsSpeedlingT(strategyTracker),
                 offersHydraBuild(strategyTracker, gameState.getConfig()));
+    }
+
+    /**
+     * Whether SpeedlingT is left out: a Terran wall was detected this game or persists, or BunkerMain is detected.
+     */
+    static boolean barsSpeedlingT(StrategyTracker strategyTracker) {
+        return strategyTracker != null
+                && (strategyTracker.isTerranWallDetected() || strategyTracker.isDetectedStrategy(BunkerMain.NAME));
+    }
+
+    /**
+     * The Terran transitions without SpeedlingT, for the build that bails out of it.
+     */
+    public static Set<BuildOrder> terranWithoutSpeedling(GameState gameState) {
+        return forRace(Race.Terran, true, offersHydraBuild(gameState.getStrategyTracker(), gameState.getConfig()));
     }
 
     /**
@@ -65,11 +84,11 @@ final class OpenerTransitions {
             case Protoss:
                 next.add(new ThreeHatchHydra());
                 next.add(new ThreeHatchMuta());
-                next.add(new SpeedlingAllIn());
+                next.add(new SpeedlingP());
                 break;
             case Zerg:
                 next.add(new OneHatchSpire());
-                next.add(new SpeedlingAllIn());
+                next.add(new SpeedlingZ());
                 break;
             case Terran:
                 next.add(new CrazyZerg());
@@ -79,10 +98,11 @@ final class OpenerTransitions {
                 next.add(new ThreeHatchLurker());
                 next.add(new TwoHatchMuta());
                 if (!terranWall) {
-                    next.add(new SpeedlingAllIn());
+                    next.add(new SpeedlingT());
                 }
                 break;
             default:
+                next.add(new SpeedlingR());
                 break;
         }
         return next;

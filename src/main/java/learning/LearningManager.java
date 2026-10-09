@@ -94,7 +94,7 @@ public class LearningManager {
         this.opponentName = game.enemy().getName();
         this.opponentFileName = opponentName + "_" + opponentRace + ".csv";
         this.buildOrderFactory = new BuildOrderFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
-        this.historyRepository = new LearningHistoryRepository(opponentFileName);
+        this.historyRepository = new LearningHistoryRepository(opponentFileName, opponentRace.toString());
         this.recordAccumulator = new LearningRecordAccumulator(opponentName, opponentRace);
 
         try {
@@ -500,7 +500,8 @@ public class LearningManager {
         }
 
         if (config.strategyOverride != null) {
-            BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);
+            BuildOrder forced = buildOrderFactory.getByName(
+                    LegacyBuildOrderNames.resolve(config.strategyOverride, gameState.getOpponentRace()));
             if (forced != null && candidates.contains(forced)) {
                 return forced;
             }

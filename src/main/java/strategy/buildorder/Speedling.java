@@ -1,6 +1,5 @@
 package strategy.buildorder;
 
-import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import info.BaseData;
@@ -18,7 +17,13 @@ import java.util.List;
 import java.util.function.Predicate;
 
 /**
- * Two hatchery speedling all-in, playable in every matchup.
+ * Two hatchery speedling all-in, specialised per opponent race by {@link SpeedlingT},
+ * {@link SpeedlingP}, {@link SpeedlingZ} and {@link SpeedlingR}.
+ *
+ * <p>Each variant plays only its own race, and {@link SpeedlingR} plays Random and Unknown. A
+ * Random opponent whose race resolves mid-game keeps the build it has: there is no forced switch
+ * to the race variant. The variants differ in two overrides, {@link #wantsBaseAdvantage} and
+ * {@link #playsRace}; everything else is shared.
  *
  * <p>Hatchery tech by definition: it never plans a Lair and never reports {@link #needLair()} or
  * {@link #needHive()}. Zergling production is continuous and uncapped; the cap is on drones, from
@@ -39,14 +44,16 @@ import java.util.function.Predicate;
  * bounded at {@link #MAX_QUEUED_ZERGLING_PLANS}, so the target drones still arrive, behind the
  * opening zerglings rather than ahead of them.
  *
- * <p>The second hatchery is the natural expansion; only once a second base is held do surplus
- * minerals buy macro hatcheries, up to {@link #MAX_HATCHERIES}, rather than banking. Expanding first
- * is what makes the drone target reachable: {@link GameState#canPlanDrone()} ceilings workers at
+ * <p>The second hatchery is the natural expansion. Once a second base is held, a further base is
+ * requested through {@link #planNewBase} on floating minerals, and for a variant whose
+ * {@link #wantsBaseAdvantage} holds also while the enemy holds as many bases as we do, up to
+ * {@link #MAX_BASES}. A queued expansion is planned ahead of a macro hatchery, which only surplus
+ * minerals buy, up to {@link #MAX_HATCHERIES}, rather than banking. Expanding first is what makes
+ * the drone target reachable: {@link GameState#canPlanDrone()} ceilings workers at
  * {@code bases * 7 + geysers * 3} against Zerg, which is 10 on one base and 17 on two.
  *
- * <p>Exit decision: this build deliberately does not transition out, so {@link #shouldTransition}
- * returns false rather than inheriting it. Leaving hatchery tech is the failure this build exists to
- * avoid; reacting to a hard counter belongs to the build order switching mechanism in IA-251.
+ * <p>Exit decision: the build does not transition out, so {@link #shouldTransition} returns false
+ * unless a variant overrides it. Leaving hatchery tech is the failure this build exists to avoid.
  *
  * <p>Once stalled, meaning past {@link #STALL_TIME} with {@link #STALL_ZERGLINGS} zerglings alive and
  * Metabolic Boost finished, it takes one Evolution Chamber and Zerg Melee Attacks. Melee stops at
@@ -68,9 +75,21 @@ import java.util.function.Predicate;
  * chambers planned and standing, so whichever asks first is the only one built and the stall path
  * falls through to its melee upgrade.
  */
-public class SpeedlingAllIn extends BuildOrder {
+public abstract class Speedling extends BuildOrder {
 
     static final int DRONE_TARGET_ONE_BASE = 11;
+
+    /**
+     * Drones added to the target for each finished base beyond {@link #BASE_TARGET}, so a third
+     * base is mined. A base is seven workers' worth of minerals less the gas drones already counted.
+     */
+    static final int DRONES_PER_EXTRA_BASE = 6;
+
+    /**
+     * The most bases the build holds or has reserved. Beyond the natural, floating minerals would
+     * otherwise keep requesting bases without bound.
+     */
+    static final int MAX_BASES = 4;
 
     /**
      * The target at two bases and two finished hatcheries. It equals {@link #DRONE_TARGET_ONE_BASE},
@@ -136,14 +155,20 @@ public class SpeedlingAllIn extends BuildOrder {
 
     private final List<Plan> openingZerglings = new ArrayList<>();
 
-    public SpeedlingAllIn() {
-        super("SpeedlingAllIn");
+    protected Speedling(String name) {
+        super(name);
     }
 
     @Override
     public boolean shouldTransition(GameState gameState) {
         return false;
     }
+
+    /**
+     * Whether this variant keeps a base advantage: a further base while the enemy holds as many
+     * depots as we do. False for a variant that only expands on floating minerals.
+     */
+    protected abstract boolean wantsBaseAdvantage();
 
     @Override
     protected boolean runsContainHeldRounds(GameState gameState) {
@@ -172,7 +197,10 @@ public class SpeedlingAllIn extends BuildOrder {
         int hatcheryTotal = gameState.hatcheryCount() + Math.max(0, gameState.getPlannedHatcheries());
         boolean wantHatchery = shouldPlanHatchery(hatcheryTotal, gameState.getResourceCount().availableMinerals());
 
-        if (shouldExpand(wantHatchery, baseData.currentAndReservedCount())) {
+        int basesHeldOrReserved = baseData.currentAndReservedCount();
+        boolean baseAdvantage = wantsBaseAdvantage() && behindOnBases(gameState);
+        if (shouldExpand(wantHatchery, basesHeldOrReserved)
+                || wantsExtraBase(baseAdvantage, gameState.isFloatingMinerals(), basesHeldOrReserved, hatcheryTotal)) {
             Plan expansionPlan = this.planNewBase(gameState);
             if (expansionPlan != null) {
                 plans.add(expansionPlan);
@@ -309,11 +337,6 @@ public class SpeedlingAllIn extends BuildOrder {
         return plans;
     }
 
-    @Override
-    public boolean playsRace(Race race) {
-        return true;
-    }
-
     /**
      * The per base Spore target of whichever matchup the opponent turns out to be.
      *
@@ -328,16 +351,6 @@ public class SpeedlingAllIn extends BuildOrder {
     protected int requiredSpores(GameState gameState) {
         return SporeTargets.sporeTarget(gameState.getOpponentRace(), gameState::enemyUnitCount,
                 gameState.observedEnemyAirCombatUnitCount());
-    }
-
-    /**
-     * False. The build has no tech unit to be larva bound on: every larva goes to a Zergling the
-     * Spawning Pool already allows. Its own hatchery request at the mineral bar stays the one
-     * producer, so the shared step would only add a second rule reading the same state.
-     */
-    @Override
-    protected boolean macroHatcheryTechReady(TechProgression techProgression) {
-        return false;
     }
 
     /**
@@ -373,7 +386,8 @@ public class SpeedlingAllIn extends BuildOrder {
     /**
      * The drone total, gas drones included, that this build holds: {@link #DRONE_TARGET_ONE_BASE}
      * below two bases, {@link #DRONE_TARGET_TWO_BASES} at two, and {@link #DRONES_PER_EXTRA_HATCHERY}
-     * more for each finished hatchery beyond two once two bases are held.
+     * more for each finished hatchery beyond two once two bases are held, and
+     * {@link #DRONES_PER_EXTRA_BASE} for each finished base beyond two in place of that single drone.
      * {@link GameState#canPlanDrone()} still bounds the result.
      *
      * @param bases base hatcheries held, from {@link BaseData#currentBaseCount()}
@@ -383,7 +397,29 @@ public class SpeedlingAllIn extends BuildOrder {
         if (bases < BASE_TARGET) {
             return DRONE_TARGET_ONE_BASE;
         }
-        return DRONE_TARGET_TWO_BASES + DRONES_PER_EXTRA_HATCHERY * Math.max(0, usableHatcheries - HATCHERY_TARGET);
+        int finishedBases = Math.min(bases, usableHatcheries);
+        int extraBases = Math.max(0, finishedBases - BASE_TARGET);
+        int macroHatcheries = Math.max(0, usableHatcheries - Math.max(BASE_TARGET, finishedBases));
+        return DRONE_TARGET_TWO_BASES + DRONES_PER_EXTRA_BASE * extraBases
+                + DRONES_PER_EXTRA_HATCHERY * macroHatcheries;
+    }
+
+    /**
+     * Whether a base beyond the natural is requested: floating minerals, or the base advantage the
+     * variant keeps, once the natural is held or reserved and while the base cap and the hatchery
+     * cap leave room.
+     *
+     * @param baseAdvantage whether the variant wants parity and the enemy holds as many depots
+     * @param floatingMinerals whether {@link GameState#isFloatingMinerals()} holds
+     * @param basesHeldOrReserved bases owned plus bases reserved by a queued expansion
+     * @param hatcheryTotal completed hatcheries plus hatcheries already queued
+     */
+    static boolean wantsExtraBase(boolean baseAdvantage, boolean floatingMinerals, int basesHeldOrReserved,
+                                  int hatcheryTotal) {
+        return (baseAdvantage || floatingMinerals)
+                && basesHeldOrReserved >= BASE_TARGET
+                && basesHeldOrReserved < MAX_BASES
+                && hatcheryTotal < MAX_HATCHERIES;
     }
 
     /**

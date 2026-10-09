@@ -23,10 +23,10 @@ class ContainHeldEligibilityTest {
 
     @Test
     void speedlingAllInRunsContainHeldRoundsOnlyWithTwelveLivingZerglings() {
-        assertEquals(SpeedlingAllIn.ZERGLINGS_BEFORE_EXTRA_DRONES, SpeedlingAllIn.ZERGLINGS_FOR_CONTAIN_HELD_ROUND);
-        assertEquals(12, SpeedlingAllIn.ZERGLINGS_FOR_CONTAIN_HELD_ROUND);
-        assertFalse(SpeedlingAllIn.runsContainHeldRounds(SpeedlingAllIn.ZERGLINGS_FOR_CONTAIN_HELD_ROUND - 1));
-        assertTrue(SpeedlingAllIn.runsContainHeldRounds(SpeedlingAllIn.ZERGLINGS_FOR_CONTAIN_HELD_ROUND));
+        assertEquals(Speedling.ZERGLINGS_BEFORE_EXTRA_DRONES, Speedling.ZERGLINGS_FOR_CONTAIN_HELD_ROUND);
+        assertEquals(12, Speedling.ZERGLINGS_FOR_CONTAIN_HELD_ROUND);
+        assertFalse(Speedling.runsContainHeldRounds(Speedling.ZERGLINGS_FOR_CONTAIN_HELD_ROUND - 1));
+        assertTrue(Speedling.runsContainHeldRounds(Speedling.ZERGLINGS_FOR_CONTAIN_HELD_ROUND));
     }
 
     @Test
