@@ -25,29 +25,29 @@ public class Record implements UCBRecord {
     @Default
     private List<Long> lossTimestamps = new ArrayList<>();
     @Default
-    private int priorWins = 0;
+    private double priorWins = 0.0;
     @Default
-    private int priorGames = 0;
+    private double priorGames = 0.0;
 
     /**
-     * Returns the games played for real: the recorded games less the seeded prior pseudo-games.
-     */
-    public int realGames() {
-        return games() - priorGames;
-    }
-
-    /**
-     * Returns whether every game on this record is a seeded pseudo-game from the per-race prior.
+     * Returns whether the record holds seeded prior evidence but no real game.
      */
     public boolean isPriorOnly() {
-        return priorGames > 0 && realGames() == 0;
+        return priorGames > 0 && games() == 0;
     }
 
     /**
-     * Returns the win rate of the seeded pseudo-games, or 0 when none were seeded.
+     * Returns whether the record holds any evidence, real or seeded.
+     */
+    public boolean hasEvidence() {
+        return priorGames > 0 || games() > 0;
+    }
+
+    /**
+     * Returns the win rate of the seeded prior, or 0 when none was seeded.
      */
     public double priorMean() {
-        return priorGames == 0 ? 0.0 : (double) priorWins / priorGames;
+        return priorGames == 0 ? 0.0 : priorWins / priorGames;
     }
 
     public int netWins() {
@@ -78,7 +78,7 @@ public class Record implements UCBRecord {
      * Returns the discounted win rate, weighted by recency against the global game order.
      */
     public double discountedMean(List<Long> gameTimestamps) {
-        if (this.games() == 0) {
+        if (!hasEvidence()) {
             return 0.0;
         }
         List<Long> sortedGameTimestamps = GlobalGameOrder.sortedAscending(gameTimestamps);
@@ -104,12 +104,12 @@ public class Record implements UCBRecord {
         List<Long> sortedPriorGames = GlobalGameOrder.sortedAscending(priorGames);
         double discountedGames = 0.0;
         for (Long winTimestamp : winTimestamps) {
-            if (winTimestamp < timestamp && winTimestamp != LearningRecordAccumulator.PRIOR_TIMESTAMP) {
+            if (winTimestamp < timestamp) {
                 discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, winTimestamp, sortedPriorGames);
             }
         }
         for (Long lossTimestamp : lossTimestamps) {
-            if (lossTimestamp < timestamp && lossTimestamp != LearningRecordAccumulator.PRIOR_TIMESTAMP) {
+            if (lossTimestamp < timestamp) {
                 discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, lossTimestamp, sortedPriorGames);
             }
         }
@@ -139,15 +139,20 @@ public class Record implements UCBRecord {
     }
 
     private double calculateDiscountedWins(List<Long> sortedGameTimestamps) {
-        double discountedWins = 0.0;
+        double discountedWins = priorWeight(sortedGameTimestamps) * priorWins;
         for (Long timestamp : winTimestamps) {
             discountedWins += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }
         return discountedWins;
     }
 
+    private double priorWeight(List<Long> sortedGameTimestamps) {
+        return Math.pow(UCBSelectionPolicy.GAMMA, sortedGameTimestamps.size());
+    }
+
     private double calculateDiscountedGames(List<Long> sortedGameTimestamps) {
-        double discountedGames = calculateDiscountedWins(sortedGameTimestamps);
+        double discountedGames = calculateDiscountedWins(sortedGameTimestamps)
+                + priorWeight(sortedGameTimestamps) * (priorGames - priorWins);
         for (Long timestamp : lossTimestamps) {
             discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, timestamp, sortedGameTimestamps);
         }

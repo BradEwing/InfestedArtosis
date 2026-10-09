@@ -8,12 +8,6 @@ import java.util.Map;
 import java.util.Set;
 
 final class LearningRecordAccumulator {
-    /**
-     * Timestamp of every seeded prior pseudo-game. It is older than any real game, so a pseudo-game
-     * ages one game of decay per real game played, and it marks the observation as not a selection.
-     */
-    static final long PRIOR_TIMESTAMP = 0L;
-
     private final String opponentName;
     private final Race opponentRace;
 
@@ -48,29 +42,20 @@ final class LearningRecordAccumulator {
     }
 
     /**
-     * Seeds pseudo-games onto an existing arm record: a bandit observation only. The opponent's
-     * totals, game clock, map records and opener-build pairs are untouched. Does nothing when the
-     * arm has no record, and returns whether it seeded.
+     * Seeds prior evidence onto an existing arm record: a bandit observation only. The opponent's totals, game
+     * clock, map records and opener-build pairs are untouched, and the record keeps no timestamp for it. The
+     * evidence decays by GAMMA per real game played. Does nothing when the arm has no record or no games, and
+     * returns whether it seeded.
      */
-    boolean applyPrior(OpponentRecord opponent, boolean opener, String arm, int pseudoWins, int pseudoGames) {
+    boolean applyPrior(OpponentRecord opponent, boolean opener, String arm, double pseudoWins, double pseudoGames) {
         Map<String, Record> records = opener ? opponent.getOpenerRecord() : opponent.getBuildOrderRecord();
         Record record = records.get(arm);
         if (record == null || pseudoGames <= 0) {
             return false;
         }
-        int wins = Math.max(0, Math.min(pseudoWins, pseudoGames));
-        for (int i = 0; i < pseudoGames; i++) {
-            if (i < wins) {
-                record.setWins(record.getWins() + 1);
-                record.addWinTimestamp(PRIOR_TIMESTAMP);
-            } else {
-                record.setLosses(record.getLosses() + 1);
-                record.addLossTimestamp(PRIOR_TIMESTAMP);
-            }
-        }
-        record.setPriorWins(record.getPriorWins() + wins);
+        record.setPriorWins(record.getPriorWins() + Math.max(0.0, Math.min(pseudoWins, pseudoGames)));
         record.setPriorGames(record.getPriorGames() + pseudoGames);
-        opponent.setPriorGames(opponent.getPriorGames() + pseudoGames);
+        opponent.setPriorSeeded(true);
         return true;
     }
 

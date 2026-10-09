@@ -81,7 +81,7 @@ public class LearningManager {
     private boolean terranWallPersists;
     private boolean terranMechPersists;
     private String lastGameOpener = "";
-    private boolean historyEmpty;
+    private int historyGames = Integer.MAX_VALUE;
     private RacePrior.Report racePriorReport = new RacePrior.Report(false, RacePrior.raceKey(Race.Unknown), 0, 0);
 
     private BuildOrderFactory buildOrderFactory;
@@ -103,7 +103,7 @@ public class LearningManager {
         try {
             LearningHistory history = historyRepository.load();
             this.opponentRecord = recordAccumulator.reconstruct(history);
-            historyEmpty = history.games().isEmpty();
+            historyGames = history.games().size();
             GameRecord lastGame = history.lastGame();
             if (lastGame != null) {
                 lastGameDetectedStrategies = lastGame.getDetectedStrategies();
@@ -125,7 +125,7 @@ public class LearningManager {
     }
 
     private void seedRacePrior() {
-        racePriorReport = RacePrior.load().seedIfNew(Config.racePrior, historyEmpty, opponentRecord,
+        racePriorReport = RacePrior.load().seedIfNew(Config.racePrior, historyGames, opponentRecord,
                 recordAccumulator, RacePrior.raceKey(opponentRace));
     }
 
@@ -361,13 +361,13 @@ public class LearningManager {
         Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
         List<Long> gameTimestamps = opponentRecord.getGameTimestamps();
         Record leader = openerRecords.get(ucbWinner);
-        if (leader == null || leader.realGames() == 0
+        if (leader == null || leader.games() == 0
                 || leader.discountedMean(gameTimestamps) >= PROBE_GATE_WIN_RATE) {
             return null;
         }
         for (String opener : playableOpeners) {
             Record record = openerRecords.get(opener);
-            if (record == null || record.realGames() == 0) {
+            if (record == null || record.games() == 0) {
                 continue;
             }
             OpenerSelectionLog log = OpenerSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
@@ -387,7 +387,7 @@ public class LearningManager {
                 continue;
             }
             Record record = openerRecords.get(opener);
-            if (record == null || record.realGames() == 0) {
+            if (record == null || record.games() == 0) {
                 eligible.add(opener);
                 continue;
             }
@@ -419,7 +419,7 @@ public class LearningManager {
      */
     static boolean isBenched(String opener, OpponentRecord opponentRecord) {
         Record record = opponentRecord.getOpenerRecord().get(opener);
-        if (record == null || record.realGames() == 0) {
+        if (record == null || record.games() == 0) {
             return false;
         }
         OpenerSelectionLog log = OpenerSelectionLog.from(record,
@@ -439,7 +439,7 @@ public class LearningManager {
      */
     private static boolean isExposureCapped(String opener, OpponentRecord opponentRecord) {
         Record record = opponentRecord.getOpenerRecord().get(opener);
-        if (record == null || record.realGames() == 0) {
+        if (record == null || record.games() == 0) {
             return false;
         }
         OpenerSelectionLog log = OpenerSelectionLog.from(record,
@@ -458,7 +458,7 @@ public class LearningManager {
     private static int recentUnprovenExposure(OpponentRecord opponentRecord) {
         int unprovenExposure = 0;
         for (Record record : opponentRecord.getOpenerRecord().values()) {
-            if (record.realGames() == 0) {
+            if (record.games() == 0) {
                 continue;
             }
             OpenerSelectionLog log = OpenerSelectionLog.from(record, opponentRecord.getGameTimestamps(),
@@ -498,7 +498,7 @@ public class LearningManager {
                                                       String openerName) {
         for (String name : candidateNames) {
             Record record = opponentRecord.getBuildOrderRecord().get(name);
-            if (record == null || record.realGames() == 0 || record.wins() > 0) {
+            if (record == null || record.games() == 0 || record.wins() > 0) {
                 return candidateNames;
             }
         }

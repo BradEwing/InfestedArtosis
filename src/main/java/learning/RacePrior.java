@@ -15,7 +15,7 @@ import java.util.Map;
 
 /**
  * Per-race learning prior bundled in the jar as {@value #RESOURCE}: for each opponent race, the pseudo-games
- * (wins out of games) each opener and build order starts with against an opponent with no history. A
+ * (wins out of games) each opener and build order starts with against an opponent with a short history. A
  * Random opponent, whose race is Unknown until scouted, uses the Unknown rows. A missing or unreadable
  * resource is an empty prior, and malformed rows are skipped.
  */
@@ -27,14 +27,19 @@ final class RacePrior {
     static final String UNKNOWN_RACE = "Unknown";
 
     /**
+     * History length from which the prior is no longer seeded; its weight is then GAMMA to the power of this.
+     */
+    static final int HISTORY_HORIZON_GAMES = 50;
+
+    /**
      * One arm's pseudo-games.
      */
     static final class Arm {
         private final String name;
-        private final int wins;
-        private final int games;
+        private final double wins;
+        private final double games;
 
-        Arm(String name, int wins, int games) {
+        Arm(String name, double wins, double games) {
             this.name = name;
             this.wins = wins;
             this.games = games;
@@ -44,11 +49,11 @@ final class RacePrior {
             return name;
         }
 
-        int wins() {
+        double wins() {
             return wins;
         }
 
-        int games() {
+        double games() {
             return games;
         }
     }
@@ -143,12 +148,10 @@ final class RacePrior {
         try {
             double pseudoWins = Double.parseDouble(fields[3].trim());
             double pseudoGames = Double.parseDouble(fields[4].trim());
-            int games = (int) Math.round(pseudoGames);
-            int wins = (int) Math.round(pseudoWins);
-            if (games <= 0 || wins < 0 || Double.isNaN(pseudoWins) || Double.isNaN(pseudoGames)) {
+            if (!(pseudoGames > 0) || !(pseudoWins >= 0) || Double.isInfinite(pseudoGames) || Double.isInfinite(pseudoWins)) {
                 return;
             }
-            parsed.computeIfAbsent(key(race, kind), k -> new ArrayList<>()).add(new Arm(name, Math.min(wins, games), games));
+            parsed.computeIfAbsent(key(race, kind), k -> new ArrayList<>()).add(new Arm(name, Math.min(pseudoWins, pseudoGames), pseudoGames));
         } catch (NumberFormatException e) {
             return;
         }
@@ -173,13 +176,15 @@ final class RacePrior {
     }
 
     /**
-     * Seeds the race's pseudo-games when the switch is on and the opponent has no history, otherwise seeds nothing.
+     * Seeds the race's prior when the switch is on and the opponent has fewer than {@link #HISTORY_HORIZON_GAMES} games
+     * of history, otherwise seeds nothing. The prior is seeded afresh each game, since the record is rebuilt from the
+     * history file, and decays by GAMMA per real game, so it is below 10% of its weight at the horizon.
      * The pseudo-games go onto the opponent record's existing opener and build order records. An arm the record
      * does not hold, because it is not a legal candidate, is ignored, and an arm absent from the prior stays untried.
      */
-    Report seedIfNew(boolean enabled, boolean historyEmpty, OpponentRecord opponentRecord,
+    Report seedIfNew(boolean enabled, int historyGames, OpponentRecord opponentRecord,
                      LearningRecordAccumulator accumulator, String race) {
-        if (!enabled || !historyEmpty) {
+        if (!enabled || historyGames >= HISTORY_HORIZON_GAMES) {
             return new Report(false, race, 0, 0);
         }
         return seed(opponentRecord, accumulator, race);

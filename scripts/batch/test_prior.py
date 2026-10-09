@@ -14,7 +14,7 @@ def game(run, opponent, gnum, opener, build, win, race="Terran", file_race=None)
 
 
 def repeat(count, **kwargs):
-    return [game(run=f"r{i}", **kwargs) for i in range(count)]
+    return [game(run=f"2026100{i}", **kwargs) for i in range(count)]
 
 
 class FirstExposureTest(unittest.TestCase):
@@ -29,6 +29,11 @@ class FirstExposureTest(unittest.TestCase):
     def test_a_build_equal_to_the_opener_is_not_a_build(self):
         rows = [game("r0", "a", 1, "4Pool", "4Pool", 1)]
         self.assertEqual([], prior.first_exposures(rows, "build", 10))
+
+    def test_since_drops_earlier_runs(self):
+        rows = [game("20260905%02d" % i, "a", 1, "Old", "x", 1) for i in range(30)]
+        self.assertEqual([], prior.build_prior(rows, since="20261001"))
+        self.assertNotEqual([], prior.build_prior(rows, since="20260901"))
 
     def test_random_bot_is_keyed_unknown(self):
         rows = [game("r0", "Dave Churchill", 1, "12Pool", "x", 1, race="Zerg")]
@@ -73,6 +78,12 @@ class BuildPriorTest(unittest.TestCase):
     def test_arm_below_min_n_is_left_out(self):
         rows = repeat(4, opponent="a", gnum=1, opener="Rare", build="x", win=1)
         self.assertEqual([], [row for row in prior.build_prior(rows, min_n=5) if row[2] == "Rare"])
+
+    def test_pseudo_wins_are_fractional_not_rounded(self):
+        rows = repeat(10, opponent="a", gnum=1, opener="Mid", build="x", win=0) + [
+            game("z%d" % i, "a", 1, "Mid", "x", 1) for i in range(10)]
+        wins = {arm: w for race, kind, arm, w, g in prior.build_prior(rows, since="") if kind == "opener"}
+        self.assertNotEqual(wins["Mid"], round(wins["Mid"]))
 
     def test_pseudo_wins_never_exceed_pseudo_games(self):
         rows = repeat(30, opponent="a", gnum=1, opener="Great", build="x", win=1)

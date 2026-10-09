@@ -21,7 +21,7 @@ class RacePriorTest {
 
     private static final String PRIOR_CSV = String.join("\n",
             "race,kind,arm,pseudo_wins,pseudo_games",
-            "Terran,opener,9Hatch,2,3",
+            "Terran,opener,9Hatch,1.6,3",
             "Terran,opener,12Pool,0,3",
             "Terran,opener,4Pool,0,5",
             "Terran,build,3HatchLurker,2,3",
@@ -58,7 +58,7 @@ class RacePriorTest {
     }
 
     private static RacePrior.Report seed(OpponentRecord record, String race) throws IOException {
-        return parse(PRIOR_CSV).seedIfNew(true, true, record, new LearningRecordAccumulator("Opponent", Race.Terran),
+        return parse(PRIOR_CSV).seedIfNew(true, 0, record, new LearningRecordAccumulator("Opponent", Race.Terran),
                 race);
     }
 
@@ -72,30 +72,36 @@ class RacePriorTest {
         assertTrue(report.applied());
         assertEquals(3, report.openers());
         assertEquals(1, report.builds());
-        assertEquals(2, nineHatch.getWins());
-        assertEquals(1, nineHatch.getLosses());
+        assertEquals(0, nineHatch.games());
+        assertEquals(1.6, nineHatch.getPriorWins(), 1e-9);
         assertEquals(3.0, nineHatch.discountedGames(record.getGameTimestamps()), 1e-9);
-        assertEquals(2.0 / 3.0, nineHatch.discountedMean(record.getGameTimestamps()), 1e-9);
-        assertEquals(5, record.getOpenerRecord().get("4Pool").getPriorGames());
+        assertEquals(1.6 / 3.0, nineHatch.discountedMean(record.getGameTimestamps()), 1e-9);
+        assertEquals(5.0, record.getOpenerRecord().get("4Pool").discountedGames(record.getGameTimestamps()), 1e-9);
         assertEquals(0.0, record.getOpenerRecord().get("4Pool").discountedMean(record.getGameTimestamps()), 1e-9);
         assertEquals(2.0 / 3.0, record.getBuildOrderRecord().get("3HatchLurker")
                 .discountedMean(record.getGameTimestamps()), 1e-9);
     }
 
     @Test
-    void seededGamesAgeAtGammaPerRealGame() throws IOException {
-        OpponentRecord record = terranRecord();
-        seed(record, "Terran");
+    void seededEvidenceAgesAtGammaPerRealGameWhenRebuiltFromHistory() throws IOException {
         LearningRecordAccumulator accumulator = new LearningRecordAccumulator("Opponent", Race.Terran);
+        OpponentRecord record = accumulator.reconstruct(new LearningHistory(Arrays.asList(
+                realGame(1_000L, "12Pool", true), realGame(2_000L, "12Pool", false), realGame(3_000L, "12Pool", true))));
+        record.getOpenerRecord().put("9Hatch", Record.builder().opener("9Hatch").build());
 
-        accumulator.apply(record, GameRecord.builder().timestamp(1_000L).mapName("MapA").opener("12Pool")
-                .buildOrder("12Pool").isWinner(true).build());
-        accumulator.apply(record, GameRecord.builder().timestamp(2_000L).mapName("MapA").opener("12Pool")
-                .buildOrder("12Pool").isWinner(true).build());
+        RacePrior.Report report = parse(PRIOR_CSV).seedIfNew(true, 3, record, accumulator, "Terran");
 
         Record nineHatch = record.getOpenerRecord().get("9Hatch");
-        double expected = 3.0 * Math.pow(UCBSelectionPolicy.GAMMA, 2);
-        assertEquals(expected, nineHatch.discountedGames(record.getGameTimestamps()), 1e-9);
+        assertTrue(report.applied());
+        assertEquals(3.0 * Math.pow(UCBSelectionPolicy.GAMMA, 3), nineHatch.discountedGames(record.getGameTimestamps()), 1e-9);
+        assertEquals(1.6 / 3.0, nineHatch.discountedMean(record.getGameTimestamps()), 1e-9);
+        assertEquals(3, record.totalGames());
+        assertEquals(3, record.getGameTimestamps().size());
+    }
+
+    private static GameRecord realGame(long timestamp, String opener, boolean won) {
+        return GameRecord.builder().timestamp(timestamp).mapName("MapA").opener(opener).buildOrder(opener)
+                .isWinner(won).build();
     }
 
     @Test
@@ -111,7 +117,7 @@ class RacePriorTest {
         assertTrue(record.getMapSpecificOpenerRecord().isEmpty());
         assertTrue(record.getMapSpecificBuildOrderRecord().isEmpty());
         assertTrue(record.getOpenerBuildPairs().isEmpty());
-        assertEquals(14, record.selectionGames());
+        assertEquals(1, record.selectionGames());
     }
 
     @Test
@@ -131,7 +137,7 @@ class RacePriorTest {
     void nonEmptyHistoryIgnoresThePrior() throws IOException {
         OpponentRecord record = terranRecord();
 
-        RacePrior.Report report = parse(PRIOR_CSV).seedIfNew(true, false, record,
+        RacePrior.Report report = parse(PRIOR_CSV).seedIfNew(true, RacePrior.HISTORY_HORIZON_GAMES, record,
                 new LearningRecordAccumulator("Opponent", Race.Terran), "Terran");
 
         assertFalse(report.applied());
@@ -143,11 +149,12 @@ class RacePriorTest {
     void switchOffSeedsNothing() throws IOException {
         OpponentRecord record = terranRecord();
 
-        RacePrior.Report report = parse(PRIOR_CSV).seedIfNew(false, true, record,
+        RacePrior.Report report = parse(PRIOR_CSV).seedIfNew(false, 0, record,
                 new LearningRecordAccumulator("Opponent", Race.Terran), "Terran");
 
         assertFalse(report.applied());
         assertEquals("applied=n;race=Terran;openers=0;builds=0", report.label());
+        assertEquals(0, record.selectionGames());
         assertEquals(0, record.getOpenerRecord().get("9Hatch").games());
     }
 
@@ -162,9 +169,9 @@ class RacePriorTest {
         assertEquals("Unknown", RacePrior.raceKey(Race.Unknown));
         assertEquals("Terran", RacePrior.raceKey(Race.Terran));
         assertEquals(2, report.openers());
-        assertEquals(3, record.getOpenerRecord().get("9PoolSpeed").getWins());
+        assertEquals(3.0, record.getOpenerRecord().get("9PoolSpeed").getPriorWins(), 1e-9);
         assertEquals(0, record.getOpenerRecord().get("9Hatch").games());
-        assertEquals(2, record.getBuildOrderRecord().get("SpeedlingR").getWins());
+        assertEquals(2.0, record.getBuildOrderRecord().get("SpeedlingR").getPriorWins(), 1e-9);
     }
 
     @Test
@@ -205,18 +212,18 @@ class RacePriorTest {
                 .timestamp(5_000L).mapName("MapA").opener("9Hatch").buildOrder("9Hatch").isWinner(false).build());
 
         assertFalse(nineHatch.isPriorOnly());
-        assertEquals(1, nineHatch.realGames());
+        assertEquals(1, nineHatch.games());
     }
 
     @Test
     void safetyNetPlaysAPriorOnlyArmWhenTheLeaderDropsBelowTheGate() throws IOException {
         OpponentRecord record = terranRecord();
-        seed(record, "Terran");
         LearningRecordAccumulator accumulator = new LearningRecordAccumulator("Opponent", Race.Terran);
         for (int i = 0; i < 8; i++) {
             accumulator.apply(record, GameRecord.builder().timestamp(1_000L + i).mapName("MapA").opener("9Hatch")
                     .buildOrder("9Hatch").isWinner(false).build());
         }
+        parse(PRIOR_CSV).seedIfNew(true, 8, record, accumulator, "Terran");
         List<String> playable = Arrays.asList("9Hatch", "12Pool", "4Pool", "Overpool");
 
         String picked = PriorSafetyNet.apply("9Hatch", playable, record.getOpenerRecord(),
@@ -231,12 +238,11 @@ class RacePriorTest {
     @Test
     void safetyNetPicksTheHighestPriorMeanAmongPriorOnlyArms() throws IOException {
         OpponentRecord record = freshRecord(Arrays.asList("9Hatch", "12Pool", "4Pool"), Arrays.asList());
-        record.getOpenerRecord().get("9Hatch").setWins(0);
         LearningRecordAccumulator accumulator = new LearningRecordAccumulator("Opponent", Race.Terran);
-        accumulator.applyPrior(record, true, "12Pool", 1, 3);
-        accumulator.applyPrior(record, true, "4Pool", 2, 3);
         accumulator.apply(record, GameRecord.builder().timestamp(9_000L).mapName("MapA").opener("9Hatch")
                 .buildOrder("9Hatch").isWinner(false).build());
+        accumulator.applyPrior(record, true, "12Pool", 1.0, 3.0);
+        accumulator.applyPrior(record, true, "4Pool", 2.0, 3.0);
 
         String picked = PriorSafetyNet.apply("9Hatch", Arrays.asList("9Hatch", "12Pool", "4Pool"),
                 record.getOpenerRecord(), record.getGameTimestamps());

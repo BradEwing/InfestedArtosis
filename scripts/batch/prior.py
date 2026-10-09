@@ -10,7 +10,9 @@ default). The rate is opponent-balanced, the mean over opponents of each opponen
 bot that was played many times does not outweigh the others. It is then shrunk toward the race mean (the same
 balanced rate over every arm of that kind) with --shrink pseudo-observations. The pseudo-games are --games
 (default 3), or --loser-games (default 5) for an arm whose shrunk rate is at or below --loser-rate with at least
---loser-min first exposures. Pseudo-wins are the rounded product of the shrunk rate and the pseudo-games. Arms
+--loser-min first exposures. Pseudo-wins are the product of the shrunk rate and the pseudo-games, to two decimals.
+Only runs whose id (a start timestamp) is at or after --since count (default 20261001, the October runs the
+study recommends from). Arms
 with fewer than --min-n first exposures are left out and stay untried.
 
 A bot that plays Random (Dave Churchill, Randomhammer) is keyed Unknown whatever race it rolled.
@@ -38,8 +40,8 @@ RACE_ORDER = ("Terran", "Protoss", "Zerg", "Unknown")
 HEADER = ["race", "kind", "arm", "pseudo_wins", "pseudo_games"]
 
 
-def race_key(row):
-    if row["file_race"] == "Unknown" or row["race"] in RANDOM_RACES or row["opponent"] in RANDOM_BOTS:
+def race_key(row, random_bots=RANDOM_BOTS):
+    if row["race"] in RANDOM_RACES or row["opponent"] in random_bots:
         return "Unknown"
     return row["race"]
 
@@ -61,12 +63,12 @@ def load_rows(path):
     return rows
 
 
-def first_exposures(rows, kind, window):
+def first_exposures(rows, kind, window, random_bots=RANDOM_BOTS):
     """Returns (race, arm, opponent, win) for the first game of each arm per run and opponent within the window."""
     seen = set()
     exposures = []
     for row in rows:
-        race = race_key(row)
+        race = race_key(row, random_bots)
         arm = arm_name(kind, row[kind], race)
         if not arm or kind == "build" and arm == row["opener"]:
             continue
@@ -95,11 +97,12 @@ def shrink(rate, n, mean, strength):
 
 
 def build_prior(rows, window=10, shrink_strength=10, games=3, loser_games=5, loser_rate=0.10, loser_min=20,
-                min_n=5):
+                min_n=5, since="", random_bots=RANDOM_BOTS):
+    rows = [row for row in rows if row["run"] >= since]
     prior = []
     for kind, label in KINDS:
         by_race = defaultdict(list)
-        for race, arm, opponent, win in first_exposures(rows, kind, window):
+        for race, arm, opponent, win in first_exposures(rows, kind, window, random_bots):
             by_race[race].append((arm, opponent, win))
         for race in RACE_ORDER:
             observations = by_race.get(race, [])
@@ -113,7 +116,7 @@ def build_prior(rows, window=10, shrink_strength=10, games=3, loser_games=5, los
                     continue
                 rate = shrink(balanced_rate(by_arm[arm]), n, race_mean, shrink_strength)
                 pseudo_games = loser_games if rate <= loser_rate and n >= loser_min else games
-                pseudo_wins = min(pseudo_games, int(round(rate * pseudo_games)))
+                pseudo_wins = round(min(1.0, rate) * pseudo_games, 2)
                 prior.append((race, label, arm, pseudo_wins, pseudo_games))
     return prior
 
@@ -136,9 +139,11 @@ def main(argv=None):
     parser.add_argument("--loser-rate", type=float, default=0.10)
     parser.add_argument("--loser-min", type=int, default=20)
     parser.add_argument("--min-n", type=int, default=5)
+    parser.add_argument("--since", default="20261001")
+    parser.add_argument("--random-bots", nargs="*", default=sorted(RANDOM_BOTS))
     args = parser.parse_args(argv)
     prior = build_prior(load_rows(args.games_csv), args.window, args.shrink, args.games, args.loser_games,
-                        args.loser_rate, args.loser_min, args.min_n)
+                        args.loser_rate, args.loser_min, args.min_n, args.since, set(args.random_bots))
     write_prior(prior, Path(args.output))
     print(f"wrote {len(prior)} rows to {args.output}")
 

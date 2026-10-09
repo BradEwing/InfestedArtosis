@@ -10,7 +10,7 @@ import java.util.Set;
  * Selection history of one opener, expressed in games: games since it was last selected,
  * games since it last re-entered after a dormant stretch, the games played and won since
  * that re-entry, whether that trial began with low evidence, and how many of its games
- * fall inside the exposure window. Seeded prior pseudo-games are not selections and are left out.
+ * fall inside the exposure window.
  */
 final class OpenerSelectionLog {
 
@@ -41,7 +41,6 @@ final class OpenerSelectionLog {
     static OpenerSelectionLog from(Record record, List<Long> gameTimestamps, int dormantGames) {
         List<Long> selectionTimestamps = new ArrayList<>(record.getWinTimestamps());
         selectionTimestamps.addAll(record.getLossTimestamps());
-        selectionTimestamps.removeIf(timestamp -> timestamp == LearningRecordAccumulator.PRIOR_TIMESTAMP);
         if (selectionTimestamps.isEmpty()) {
             return new OpenerSelectionLog(NEVER_SELECTED, NEVER_SELECTED, 0, 0, true, 0);
         }
