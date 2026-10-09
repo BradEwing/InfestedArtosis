@@ -19,7 +19,8 @@ A bot that plays Random (Dave Churchill, Randomhammer) is keyed Unknown whatever
 A build equal to the opener is no transition and is not rated as a build.
 
 Race is Terran, Protoss, Zerg or Unknown (a Random opponent). The legacy build SpeedlingAllIn is written under
-the IA-470 per-race name SpeedlingT, SpeedlingP, SpeedlingZ or SpeedlingR (Unknown maps to SpeedlingR).
+the IA-470 per-race name SpeedlingT, SpeedlingP or SpeedlingZ by the race the game resolved to (the race column),
+which for a Random bot is the rolled race; with no resolved race it counts toward all four names, SpeedlingR included.
 
 Command line used for the committed file (run from the repository root):
 
@@ -46,10 +47,16 @@ def race_key(row, random_bots=RANDOM_BOTS):
     return row["race"]
 
 
-def arm_name(kind, name, race):
+def arm_names(kind, name, race, resolved=""):
+    """Returns the arm names a row counts toward. SpeedlingAllIn follows the race the game resolved to; a Random
+    row whose resolved race is unknown counts toward all four per-race names."""
     if kind == "build" and name == LEGACY_SPEEDLING:
-        return SPEEDLING_BY_RACE[race]
-    return name
+        if race != "Unknown":
+            return [SPEEDLING_BY_RACE[race]]
+        if resolved in SPEEDLING_BY_RACE and resolved != "Unknown":
+            return [SPEEDLING_BY_RACE[resolved]]
+        return list(SPEEDLING_BY_RACE.values())
+    return [name]
 
 
 def load_rows(path):
@@ -69,15 +76,15 @@ def first_exposures(rows, kind, window, random_bots=RANDOM_BOTS):
     exposures = []
     for row in rows:
         race = race_key(row, random_bots)
-        arm = arm_name(kind, row[kind], race)
-        if not arm or kind == "build" and arm == row["opener"]:
+        if not row[kind] or kind == "build" and row[kind] == row["opener"]:
             continue
-        key = (row["run"], row["opponent"], arm)
-        if key in seen:
-            continue
-        seen.add(key)
-        if row["gnum"] <= window:
-            exposures.append((race, arm, row["opponent"], row["win"]))
+        for arm in arm_names(kind, row[kind], race, row["race"]):
+            key = (row["run"], row["opponent"], arm)
+            if key in seen:
+                continue
+            seen.add(key)
+            if row["gnum"] <= window:
+                exposures.append((race, arm, row["opponent"], row["win"]))
     return exposures
 
 

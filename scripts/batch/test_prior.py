@@ -42,13 +42,25 @@ class FirstExposureTest(unittest.TestCase):
 
 class ArmNameTest(unittest.TestCase):
     def test_legacy_speedling_maps_by_race(self):
-        for race, expected in (("Terran", "SpeedlingT"), ("Protoss", "SpeedlingP"), ("Zerg", "SpeedlingZ"),
-                               ("Unknown", "SpeedlingR")):
-            self.assertEqual(expected, prior.arm_name("build", "SpeedlingAllIn", race))
+        for race, expected in (("Terran", "SpeedlingT"), ("Protoss", "SpeedlingP"), ("Zerg", "SpeedlingZ")):
+            self.assertEqual([expected], prior.arm_names("build", "SpeedlingAllIn", race))
+
+    def test_random_row_maps_by_resolved_race(self):
+        self.assertEqual(["SpeedlingT"], prior.arm_names("build", "SpeedlingAllIn", "Unknown", "Terran"))
+
+    def test_random_row_without_resolved_race_counts_toward_all_four(self):
+        self.assertEqual(["SpeedlingT", "SpeedlingP", "SpeedlingZ", "SpeedlingR"],
+                         prior.arm_names("build", "SpeedlingAllIn", "Unknown", "Random"))
 
     def test_other_names_and_openers_are_unchanged(self):
-        self.assertEqual("3HatchMuta", prior.arm_name("build", "3HatchMuta", "Protoss"))
-        self.assertEqual("SpeedlingAllIn", prior.arm_name("opener", "SpeedlingAllIn", "Protoss"))
+        self.assertEqual(["3HatchMuta"], prior.arm_names("build", "3HatchMuta", "Protoss"))
+        self.assertEqual(["SpeedlingAllIn"], prior.arm_names("opener", "SpeedlingAllIn", "Protoss"))
+
+    def test_random_bot_speedling_rows_use_resolved_race_in_the_prior(self):
+        rows = [game("20261002%02d" % i, "Dave Churchill", 1, "12Pool", "SpeedlingAllIn", 1, race="Terran")
+                for i in range(10)]
+        builds = [row[2] for row in prior.build_prior(rows) if row[0] == "Unknown" and row[1] == "build"]
+        self.assertEqual(["SpeedlingT"], builds)
 
 
 class BuildPriorTest(unittest.TestCase):
