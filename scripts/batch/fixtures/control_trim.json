@@ -1,0 +1,92 @@
+{
+ "run_id": "20261006-201949",
+ "opponents": [
+  "insanitybot",
+  "GrimHammer"
+ ],
+ "games_per_opponent": 50,
+ "status": "completed",
+ "finished_at": "2026-10-07T01:24:48",
+ "games": [
+  {
+   "index": 13,
+   "game_name": "MIP9100D",
+   "opponent": "insanitybot",
+   "map": "(4)Roadrunner.scx",
+   "launched_at": "2026-10-06T21:49:35",
+   "scbw_exit_code": 0,
+   "outcome": "WIN",
+   "finished_at": "2026-10-06T21:54:39"
+  },
+  {
+   "index": 331,
+   "game_name": "MIP91097",
+   "opponent": "GrimHammer",
+   "map": "(4)Icarus.scm",
+   "launched_at": "2026-10-06T23:41:22",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-06T23:45:42"
+  },
+  {
+   "index": 332,
+   "game_name": "MIP91098",
+   "opponent": "GrimHammer",
+   "map": "(4)Jade.scx",
+   "launched_at": "2026-10-06T23:45:42",
+   "scbw_exit_code": 0,
+   "outcome": "WIN",
+   "finished_at": "2026-10-06T23:49:00"
+  },
+  {
+   "index": 333,
+   "game_name": "MIP91099",
+   "opponent": "GrimHammer",
+   "map": "(4)LaMancha1.1.scx",
+   "launched_at": "2026-10-06T23:49:00",
+   "scbw_exit_code": 1,
+   "outcome": "DRAW",
+   "finished_at": "2026-10-06T23:53:53"
+  },
+  {
+   "index": 334,
+   "game_name": "MIP9109A",
+   "opponent": "GrimHammer",
+   "map": "(4)Python.scx",
+   "launched_at": "2026-10-06T23:53:53",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-06T23:58:11"
+  },
+  {
+   "index": 335,
+   "game_name": "MIP9109B",
+   "opponent": "GrimHammer",
+   "map": "(4)Roadrunner.scx",
+   "launched_at": "2026-10-06T23:58:11",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-07T00:03:40"
+  },
+  {
+   "index": 339,
+   "game_name": "MIP9109F",
+   "opponent": "GrimHammer",
+   "map": "(3)NeoMoonGlaive.scx",
+   "launched_at": "2026-10-07T00:17:18",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-07T00:22:08"
+  },
+  {
+   "index": 340,
+   "game_name": "MIP9109G",
+   "opponent": "GrimHammer",
+   "map": "(3)TauCross.scx",
+   "launched_at": "2026-10-07T00:22:08",
+   "scbw_exit_code": 0,
+   "outcome": "LOSS",
+   "finished_at": "2026-10-07T00:25:49"
+  }
+ ]
+}

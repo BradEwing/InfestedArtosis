@@ -2,6 +2,10 @@
 
 Usage:
   py scripts/batch/report.py [--run latest|<runid>] [--tail 10] [--archive losses|all|none]
+                             [--games-dir DIR] [--stdout-log FILE]
+
+--games-dir reads game dirs from an archive instead of the scbw games root. --stdout-log names the run.py
+stdout log, whose "Batch <run> stopped..." end line marks every game still in flight as STOPPED.
 
 Pure read; safe to run while a batch is still in progress.
 """
@@ -23,17 +27,20 @@ def parse_args():
     p.add_argument("--tail", type=int, default=10, help="learning rows to print per opponent")
     p.add_argument("--archive", choices=["losses", "all", "none"], default="none",
                    help="copy replays/logs/learning files into batches/<runid>/")
+    p.add_argument("--games-dir", help="directory holding the GAME_* dirs (default the scbw games root)")
+    p.add_argument("--stdout-log", help="run.py stdout log; a stopped end line marks in-flight games STOPPED")
     return p.parse_args()
 
 
-def collect(manifest):
+def collect(manifest, run_stopped=False):
     results = []
-    in_progress = not manifest.get("finished_at")
+    in_progress = not manifest.get("finished_at") and not run_stopped
     for game in manifest.get("games", []):
         outcome, game_time, row = bl.classify(game)
         if outcome == "NO_RESULT" and in_progress:
             outcome = "RUNNING"
-        results.append({**game, "outcome": outcome, "game_time": game_time, "row": row})
+        label = bl.non_result_label(game, outcome, run_stopped)
+        results.append({**game, "outcome": outcome, "game_time": game_time, "row": row, "label": label})
     return results
 
 
@@ -93,21 +100,27 @@ def print_field_table(label, rows, field, sep=None):
         print(f"      {name:<24} {c['WIN']:>3}W {c['LOSS']:>3}L  {c['WIN'] / total:>5.0%}")
 
 
-def print_bot_errors(results):
-    """Report games the JVM did not survive.
+def print_non_results(results):
+    """Report every attempt that produced no WIN or LOSS, with why.
 
-    These are invisible in result.json: StarCraft exits normally, so the game scores as an ordinary loss even
-    though the bot stopped playing partway through and never wrote a learning row.
+    STALEMATE: our bot played to the frame cap. STOPPED: the stop rule or an owner kill ended the run while
+    the game was in flight. JVM_DIED: the bot's JVM died mid-game, which result.json hides because StarCraft
+    exits normally. Other crashes keep their CRASH outcome.
 
     A failure the bot catches and survives is not reported here. The guard suppresses it silently, because the
     bot must not write to stdout or stderr, so nothing distinguishes a degraded game from a clean one.
     """
-    crashed = [r for r in results if r["outcome"] == "CRASH"]
-    if not crashed:
+    flagged = [r for r in results if r["label"] or r["outcome"] == "CRASH"]
+    if not flagged:
         return
-    print(f"\nBot failures (logs_0/bot.log): {len(crashed)} crashed")
-    for r in crashed:
-        print(f"  {r['game_name']:<18} vs {r['opponent']:<20} JVM died mid-game (scored {r['outcome']})")
+    counts = Counter(r["label"] or r["outcome"] for r in flagged)
+    summary = ", ".join(f"{n} {name}" for name, n in sorted(counts.items()))
+    print(f"\nNon-results (logs_0/frames.csv, logs_0/bot.log): {summary}")
+    for r in flagged:
+        frame = bl.last_frame(bl.game_dir(r["game_name"]) / "logs_0" / "frames.csv")
+        at = "no frames" if frame is None else f"frame {frame} (~{frame / 1440:.1f} min)"
+        print(f"  {r['game_name']:<18} vs {r['opponent']:<20} {r['label'] or r['outcome']:<10} "
+              f"{at}, scored {r['outcome']}")
 
 
 def print_retry_line(results, opponent):
@@ -191,12 +204,14 @@ def describe_flags(manifest):
     return ", ".join(f"{k}={v}" for k, v in flags.items()) or "none"
 
 
-def report(run_id, tail=10, archive_mode="none"):
+def report(run_id, tail=10, archive_mode="none", run_stopped=False):
     manifest = bl.load_manifest(run_id)
-    results = collect(manifest)
+    results = collect(manifest, run_stopped)
     mode = "frozen" if manifest.get("frozen") else "accumulate"
     if manifest.get("finished_at"):
         status = f"{manifest.get('status', 'finished').upper()} {manifest['finished_at']}"
+    elif run_stopped:
+        status = "STOPPED (end line in stdout log)"
     else:
         status = "IN PROGRESS"
     print(f"Batch {run_id} | {status}")
@@ -207,7 +222,7 @@ def report(run_id, tail=10, archive_mode="none"):
     if not results:
         print("  No games launched yet.")
         return
-    print_bot_errors(results)
+    print_non_results(results)
     finals = bl.final_attempts(results)
     print(f"  retries {bl.retry_count(results)} (tables count final attempts only)")
     print_table("By opponent", tally(finals, "opponent"))
@@ -218,7 +233,14 @@ def report(run_id, tail=10, archive_mode="none"):
 
 def main():
     args = parse_args()
-    report(bl.resolve_run_id(args.run), tail=args.tail, archive_mode=args.archive)
+    if args.games_dir:
+        bl.set_games_dir(args.games_dir)
+    run_id = bl.resolve_run_id(args.run)
+    run_stopped = False
+    if args.stdout_log:
+        with open(args.stdout_log, encoding="utf-8", errors="replace") as f:
+            run_stopped = bl.run_stopped_by_log(run_id, f.read())
+    report(run_id, tail=args.tail, archive_mode=args.archive, run_stopped=run_stopped)
 
 
 if __name__ == "__main__":
