@@ -586,4 +586,13 @@ class AirHarassEvaluatorTest {
         neverHarassed.startRetreatLock(NOW);
         assertFalse(neverHarassed.isHarassExitLocked(NOW + 1));
     }
+
+    @Test
+    void aLinkHeldSquadHoldsABlindAdvanceUnlessItIsMeasuredOrAlreadyFighting() {
+        assertTrue(AirHarassEvaluator.holdsBlindAdvance(0, 9000, false, SquadStatus.RETREAT, true));
+        assertTrue(AirHarassEvaluator.holdsBlindAdvance(100, 9000, false, SquadStatus.RALLY, true));
+        assertFalse(AirHarassEvaluator.holdsBlindAdvance(0, 9000, true, SquadStatus.RETREAT, true));
+        assertFalse(AirHarassEvaluator.holdsBlindAdvance(0, 9000, false, SquadStatus.FIGHT, true));
+        assertFalse(AirHarassEvaluator.holdsBlindAdvance(0, 9000, false, SquadStatus.RETREAT, false));
+    }
 }

@@ -348,8 +348,9 @@ class AirHarassTargetingTest {
 
     @Test
     void aTargetFarFromTheBaseIsTakenOnlyWhenClose() {
-        AirHarassTargeting.Contact near = contact(1, UnitType.Terran_SCV, east(AirHarassTargeting.LOCAL_TARGET_RADIUS));
-        AirHarassTargeting.Contact far = contact(2, UnitType.Terran_SCV,
+        AirHarassTargeting.Contact near = contact(1, UnitType.Terran_Supply_Depot,
+                east(AirHarassTargeting.LOCAL_TARGET_RADIUS));
+        AirHarassTargeting.Contact far = contact(2, UnitType.Terran_Supply_Depot,
                 east(AirHarassTargeting.LOCAL_TARGET_RADIUS + 1));
 
         AirHarassTargeting.Decision nearDecision = AirHarassTargeting.choose(muta(), situation(9)
@@ -372,5 +373,39 @@ class AirHarassTargetingTest {
                 .contacts(Arrays.asList(first, second)).build(), 1).getId());
         assertEquals(2, AirHarassTargeting.bestTarget(muta(), situation(9)
                 .contacts(Arrays.asList(first, second)).build(), -1).getId());
+    }
+
+    @Test
+    void aMutaFiresOnTheTargetTheVolleyPlanAssignedItInsteadOfTheNearestWorker() {
+        AirHarassTargeting.Contact worker = contact(1, UnitType.Terran_SCV, east(64));
+        AirHarassTargeting.Contact marine = contact(5, UnitType.Terran_Marine, east(200));
+
+        AirHarassTargeting.Decision decision = AirHarassTargeting.choose(muta(), situation(9)
+                .contacts(Arrays.asList(worker, marine))
+                .snipeTargets(Collections.singletonMap(1, 5))
+                .build(), new AirHarassTargeting.MutaMemory());
+
+        assertEquals(Kind.ATTACK, decision.getKind());
+        assertEquals(5, decision.getTargetId());
+    }
+
+    @Test
+    void aPlannedTargetNoLongerInSightOrCoveredByAnAvoidedZoneFallsBackToTheNearestWorker() {
+        AirHarassTargeting.Contact worker = contact(1, UnitType.Terran_SCV, east(64));
+        AirHarassTargeting.Contact marine = contact(5, UnitType.Terran_Marine, east(200));
+        AirHarassTargeting.AirThreat tank = threat(9, UnitType.Terran_Goliath, east(260));
+
+        AirHarassTargeting.Decision gone = AirHarassTargeting.choose(muta(), situation(9)
+                .contacts(Collections.singletonList(worker))
+                .snipeTargets(Collections.singletonMap(1, 5))
+                .build(), new AirHarassTargeting.MutaMemory());
+        AirHarassTargeting.Decision covered = AirHarassTargeting.choose(muta(), situation(9)
+                .contacts(Arrays.asList(worker, marine))
+                .avoided(Collections.singletonList(tank))
+                .snipeTargets(Collections.singletonMap(1, 5))
+                .build(), new AirHarassTargeting.MutaMemory());
+
+        assertEquals(1, gone.getTargetId());
+        assertNotEquals(5, covered.getTargetId());
     }
 }

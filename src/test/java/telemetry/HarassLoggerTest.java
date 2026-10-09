@@ -5,8 +5,10 @@ import bwapi.UnitType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import unit.squad.AirHarassDefenseZones;
 import unit.squad.AirHarassEvaluator;
 import unit.squad.AirHarassState;
+import unit.squad.AirHarassTargeting;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -133,7 +135,7 @@ class HarassLoggerTest {
                 .frame(10296)
                 .squadId("squad-1")
                 .event(HarassRow.Event.ENTRY_CHECK)
-                .verdict(AirHarassEvaluator.EntryVerdict.PROBE)
+                .verdict(AirHarassEvaluator.EntryVerdict.ENTER)
                 .aaSightingAge(10296)
                 .build();
 
@@ -143,43 +145,13 @@ class HarassLoggerTest {
         assertEquals(columnIndex("flock_defense") + 1, columnIndex("aa_sighting_age"));
         assertEquals(columns.length, fields.length);
         assertEquals("10296", fields[columnIndex("aa_sighting_age")]);
-        assertEquals("PROBE", fields[columnIndex("verdict")]);
+        assertEquals("ENTER", fields[columnIndex("verdict")]);
         assertEquals("-1", HarassLogger.row("game-1", event(10300, HarassRow.Event.KILL))
                 .split(",", -1)[columnIndex("aa_sighting_age")]);
     }
 
     @Test
-    void aProbeRowAppendsTheProberHitPointsAndItsPeakAsTheLastColumns() {
-        HarassRow tick = HarassRow.builder()
-                .frame(10849)
-                .squadId("squad-1")
-                .event(HarassRow.Event.TICK)
-                .phase(AirHarassState.Phase.PROBE)
-                .proberHitPoints(111)
-                .proberPeakHitPoints(120)
-                .build();
-
-        String[] columns = HarassLogger.HEADER.split(",", -1);
-        String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
-
-        assertColumnsInOrder("aa_sighting_age", "prober_hp", "prober_peak_hp");
-        assertEquals(columns.length, fields.length);
-        assertEquals("111", fields[columnIndex("prober_hp")]);
-        assertEquals("120", fields[columnIndex("prober_peak_hp")]);
-        String[] kill = HarassLogger.row("game-1", event(10300, HarassRow.Event.KILL)).split(",", -1);
-        assertEquals("-1", kill[columnIndex("prober_hp")]);
-        assertEquals("-1", kill[columnIndex("prober_peak_hp")]);
-    }
-
-    @Test
-    void theProberIdAndTheKnownCoverOfTheProbePointAreAppendedAfterTheProberHitPoints() {
-        HarassRow tick = HarassRow.builder()
-                .frame(10849)
-                .squadId("squad-1")
-                .event(HarassRow.Event.TICK)
-                .phase(AirHarassState.Phase.PROBE)
-                .proberId(265)
-                .build();
+    void theKnownCoverAndTheAntiAirReactionAreAppendedAfterTheSightingAge() {
         HarassRow entryCheck = HarassRow.builder()
                 .frame(10296)
                 .squadId("squad-1")
@@ -189,15 +161,152 @@ class HarassLoggerTest {
                 .build();
 
         String[] columns = HarassLogger.HEADER.split(",", -1);
-        String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
         String[] check = HarassLogger.row("game-1", entryCheck).split(",", -1);
 
-        assertColumnsInOrder("prober_id", "aa_known_cover");
-        assertEquals(columns.length, fields.length);
-        assertEquals("265", fields[columnIndex("prober_id")]);
-        assertEquals("-1", fields[columnIndex("aa_known_cover")]);
+        assertColumnsInOrder("aa_sighting_age", "prober_hp", "prober_peak_hp", "prober_id", "aa_known_cover",
+                "stalled", "exposed_score", "base_score", "aa_seen_frame", "aa_turn_frame", "aa_hp_lost",
+                "aa_trigger_type", "aa_trigger_id", "aa_at_target");
+        assertEquals(columns.length, check.length);
         assertEquals("1", check[columnIndex("aa_known_cover")]);
         assertEquals("-1", check[columnIndex("prober_id")]);
+        assertEquals("-1", check[columnIndex("aa_seen_frame")]);
+        assertEquals("-1", check[columnIndex("aa_turn_frame")]);
+        assertEquals("-1", check[columnIndex("aa_hp_lost")]);
+        assertEquals("NONE", check[columnIndex("aa_trigger_type")]);
+        assertEquals("-1", check[columnIndex("aa_trigger_id")]);
+        assertEquals("-1", check[columnIndex("aa_at_target")]);
+    }
+
+    @Test
+    void anAntiAirReactionRowCarriesTheFrameSeenTheFrameTurnedAndTheHitPointsLostBetween() {
+        HarassRow reaction = HarassRow.builder()
+                .frame(11040)
+                .squadId("squad-1")
+                .event(HarassRow.Event.AA_REACTION)
+                .aaSeenFrame(11032)
+                .aaTurnFrame(11040)
+                .aaHitPointsLost(24)
+                .aaTriggerType(UnitType.Terran_Goliath)
+                .aaTriggerId(301)
+                .aaAtTarget(0)
+                .build();
+
+        String[] fields = HarassLogger.row("game-1", reaction).split(",", -1);
+
+        assertEquals("AA_REACTION", fields[columnIndex("event")]);
+        assertEquals("11032", fields[columnIndex("aa_seen_frame")]);
+        assertEquals("11040", fields[columnIndex("aa_turn_frame")]);
+        assertEquals("24", fields[columnIndex("aa_hp_lost")]);
+        assertEquals("Terran_Goliath", fields[columnIndex("aa_trigger_type")]);
+        assertEquals("301", fields[columnIndex("aa_trigger_id")]);
+        assertEquals("0", fields[columnIndex("aa_at_target")]);
+        assertEquals("-1", fields[columnIndex("aa_known_cover")]);
+    }
+
+    @Test
+    void theEdgeTurretAndRetargetColumnsFollowTheReactionColumnsAndStartAtMinusOne() {
+        HarassRow tick = HarassRow.builder().frame(100).squadId("squad-1").event(HarassRow.Event.TICK).build();
+
+        String[] fields = HarassLogger.row("game-1", tick).split(",", -1);
+
+        assertColumnsInOrder("aa_trigger_id", "aa_at_target", "edge_turrets", "edge_turret_id", "retarget_old_id",
+                "retarget_old_type", "retarget_new_id", "retarget_new_type");
+        assertEquals(HarassLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals("-1", fields[columnIndex("edge_turrets")]);
+        assertEquals("-1", fields[columnIndex("edge_turret_id")]);
+        assertEquals("-1", fields[columnIndex("retarget_old_id")]);
+        assertEquals("NONE", fields[columnIndex("retarget_old_type")]);
+        assertEquals("-1", fields[columnIndex("retarget_new_id")]);
+        assertEquals("NONE", fields[columnIndex("retarget_new_type")]);
+        assertColumnsInOrder("retarget_new_type", "retarget_old_distance", "retarget_new_distance",
+                "retarget_old_tier", "retarget_new_tier", "defense_zones", "zone_units");
+        assertEquals(Csv.format(-1), fields[columnIndex("retarget_old_distance")]);
+        assertEquals(Csv.format(-1), fields[columnIndex("retarget_new_distance")]);
+        assertEquals("NONE", fields[columnIndex("retarget_old_tier")]);
+        assertEquals("NONE", fields[columnIndex("retarget_new_tier")]);
+        assertEquals("-1", fields[columnIndex("defense_zones")]);
+        assertEquals("-1", fields[columnIndex("zone_units")]);
+    }
+
+    @Test
+    void aUnitRetargetRowCarriesTheDistancesAndTiersOfBothTargets() {
+        HarassRow retarget = HarassRow.builder()
+                .frame(11100)
+                .squadId("squad-1")
+                .event(HarassRow.Event.UNIT_RETARGET)
+                .retargetOldDistance(212.5)
+                .retargetNewDistance(96)
+                .retargetOldTier(AirHarassTargeting.Tier.PRODUCTION)
+                .retargetNewTier(AirHarassTargeting.Tier.WORKER)
+                .build();
+        HarassRow tick = HarassRow.builder().frame(11200).squadId("squad-1").event(HarassRow.Event.TICK)
+                .defenseZones(2).zoneUnits(5).build();
+
+        String[] fields = HarassLogger.row("game-1", retarget).split(",", -1);
+        String[] tickFields = HarassLogger.row("game-1", tick).split(",", -1);
+
+        assertEquals(HarassLogger.HEADER.split(",", -1).length, fields.length);
+        assertEquals(Csv.format(212.5), fields[columnIndex("retarget_old_distance")]);
+        assertEquals(Csv.format(96), fields[columnIndex("retarget_new_distance")]);
+        assertEquals("PRODUCTION", fields[columnIndex("retarget_old_tier")]);
+        assertEquals("WORKER", fields[columnIndex("retarget_new_tier")]);
+        assertEquals("2", tickFields[columnIndex("defense_zones")]);
+        assertEquals("5", tickFields[columnIndex("zone_units")]);
+        assertEquals("-1", tickFields[columnIndex("zone_age")]);
+    }
+
+    @Test
+    void zoneRowsCarryTheZoneCountsAndTheClearsAfterMainsColumns() {
+        HarassRow record = HarassRow.builder().frame(11300).squadId("squad-1").event(HarassRow.Event.ZONE_RECORD)
+                .aaAtTarget(1).defenseZones(3).zoneUnits(4).build();
+        HarassRow clear = HarassRow.builder().frame(11400).event(HarassRow.Event.ZONE_CLEAR)
+                .defenseZones(1).zoneAge(900).zoneCause(AirHarassDefenseZones.Cause.SEEN_CLEAR).build();
+
+        String[] recordFields = HarassLogger.row("game-1", record).split(",", -1);
+        String[] clearFields = HarassLogger.row("game-1", clear).split(",", -1);
+
+        assertEquals(HarassLogger.HEADER.split(",", -1).length, recordFields.length);
+        assertEquals(HarassLogger.HEADER.split(",", -1).length, clearFields.length);
+        assertEquals("ZONE_RECORD", recordFields[columnIndex("event")]);
+        assertEquals("1", recordFields[columnIndex("aa_at_target")]);
+        assertEquals("4", recordFields[columnIndex("zone_units")]);
+        assertEquals("ZONE_CLEAR", clearFields[columnIndex("event")]);
+        assertEquals("NONE", clearFields[columnIndex("squad_id")]);
+        assertEquals("900", clearFields[columnIndex("zone_age")]);
+        assertEquals("SEEN_CLEAR", clearFields[columnIndex("zone_cause")]);
+        assertColumnsInOrder("zone_units", "zone_age", "zone_cause");
+    }
+
+    @Test
+    void aUnitRetargetRowNamesTheTargetLeftAndTheTargetTaken() {
+        HarassRow retarget = HarassRow.builder()
+                .frame(11100)
+                .squadId("squad-1")
+                .event(HarassRow.Event.UNIT_RETARGET)
+                .retargetOldId(41)
+                .retargetOldType(UnitType.Terran_Barracks)
+                .retargetNewId(52)
+                .retargetNewType(UnitType.Terran_SCV)
+                .build();
+        HarassRow turret = HarassRow.builder()
+                .frame(11120)
+                .squadId("squad-1")
+                .event(HarassRow.Event.EDGE_TURRET)
+                .edgeTurrets(1)
+                .edgeTurretId(77)
+                .build();
+
+        String[] retargetFields = HarassLogger.row("game-1", retarget).split(",", -1);
+        String[] turretFields = HarassLogger.row("game-1", turret).split(",", -1);
+
+        assertEquals("UNIT_RETARGET", retargetFields[columnIndex("event")]);
+        assertEquals("41", retargetFields[columnIndex("retarget_old_id")]);
+        assertEquals("Terran_Barracks", retargetFields[columnIndex("retarget_old_type")]);
+        assertEquals("52", retargetFields[columnIndex("retarget_new_id")]);
+        assertEquals("Terran_SCV", retargetFields[columnIndex("retarget_new_type")]);
+        assertEquals("EDGE_TURRET", turretFields[columnIndex("event")]);
+        assertEquals("1", turretFields[columnIndex("edge_turrets")]);
+        assertEquals("77", turretFields[columnIndex("edge_turret_id")]);
     }
 
     @Test
@@ -287,5 +396,39 @@ class HarassLoggerTest {
         assertEquals("ENTER", rows.get(2)[columnIndex("event")]);
         assertEquals("EXIT", rows.get(4)[columnIndex("event")]);
         assertEquals("12600", rows.get(5)[columnIndex("frame")]);
+    }
+
+    @Test
+    void approachAndSnipeRowsCarryTheirColumnsAfterTheZoneColumns() {
+        HarassRow priced = HarassRow.builder().frame(11500).squadId("squad-1").event(HarassRow.Event.APPROACH_PRICED)
+                .approachDecision(unit.squad.AirApproachPricing.Decision.REROUTE)
+                .approachReason(unit.squad.AirApproachPricing.Reason.DETOUR)
+                .approachMobileAa(41.5).approachFlockStrength(120).approachUnits(2).build();
+        HarassRow snipe = HarassRow.builder().frame(11600).squadId("squad-1").event(HarassRow.Event.SNIPE)
+                .snipeType(UnitType.Terran_SCV).snipeHitPoints(60).snipeAlpha(72).snipeKilled(1).build();
+        HarassRow tick = HarassRow.builder().frame(11700).squadId("squad-1").event(HarassRow.Event.TICK).build();
+
+        String[] pricedFields = HarassLogger.row("game-1", priced).split(",", -1);
+        String[] snipeFields = HarassLogger.row("game-1", snipe).split(",", -1);
+        String[] tickFields = HarassLogger.row("game-1", tick).split(",", -1);
+
+        int width = HarassLogger.HEADER.split(",", -1).length;
+        assertEquals(width, pricedFields.length);
+        assertEquals(width, snipeFields.length);
+        assertEquals("APPROACH_PRICED", pricedFields[columnIndex("event")]);
+        assertEquals("REROUTE", pricedFields[columnIndex("approach_decision")]);
+        assertEquals("DETOUR", pricedFields[columnIndex("approach_reason")]);
+        assertEquals(Csv.format(41.5), pricedFields[columnIndex("approach_mobile_aa")]);
+        assertEquals(Csv.format(120), pricedFields[columnIndex("approach_flock_strength")]);
+        assertEquals("2", pricedFields[columnIndex("approach_units")]);
+        assertEquals("SNIPE", snipeFields[columnIndex("event")]);
+        assertEquals("Terran_SCV", snipeFields[columnIndex("snipe_type")]);
+        assertEquals("60", snipeFields[columnIndex("snipe_hp")]);
+        assertEquals("72", snipeFields[columnIndex("snipe_alpha")]);
+        assertEquals("1", snipeFields[columnIndex("snipe_killed")]);
+        assertEquals("NONE", tickFields[columnIndex("approach_decision")]);
+        assertEquals("-1", tickFields[columnIndex("snipe_killed")]);
+        assertColumnsInOrder("zone_cause", "approach_decision", "approach_reason", "approach_mobile_aa",
+                "approach_flock_strength", "approach_units", "snipe_type", "snipe_hp", "snipe_alpha", "snipe_killed");
     }
 }

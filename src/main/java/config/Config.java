@@ -21,9 +21,9 @@ public final class Config {
     public static boolean baseChecks = true;
     /**
      * Whether a Lurker refuses to burrow inside known enemy fire it cannot answer, and a containing squad keeps its
-     * points out of live hit marks. Off unless IA_LURKER_FIRE_AWARE is set to true.
+     * points out of live hit marks. On unless IA_LURKER_FIRE_AWARE is set to false.
      */
-    public static boolean lurkerFireAware = false;
+    public static boolean lurkerFireAware = true;
     /**
      * Whether any Bunker gate runs: ground scouts kept off a held route, melee contain squads kept out of a held
      * Bunker, and the repeat-advance gate on a Bunker priced as a loss. On unless IA_BUNKER_GATE is set to false.
@@ -120,11 +120,17 @@ public final class Config {
         this.telemetryCombat = Boolean.parseBoolean(setting(dotenv, "IA_TELEMETRY_COMBAT"));
         String airFlapEscapeSetting = setting(dotenv, "IA_AIR_FLAP_ESCAPE");
         airFlapEscape = Boolean.parseBoolean(airFlapEscapeSetting);
-        baseChecks = !"false".equalsIgnoreCase(setting(dotenv, "IA_BASE_CHECKS"));
-        String lurkerFireAwareSetting = setting(dotenv, "IA_LURKER_FIRE_AWARE");
-        lurkerFireAware = Boolean.parseBoolean(lurkerFireAwareSetting);
-        bunkerGate = !"false".equalsIgnoreCase(setting(dotenv, "IA_BUNKER_GATE"));
-        bunkerEcon = !"false".equalsIgnoreCase(setting(dotenv, "IA_BUNKER_ECON"));
+        baseChecks = enabledUnlessFalse(setting(dotenv, "IA_BASE_CHECKS"));
+        lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
+        bunkerGate = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_GATE"));
+        bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
+    }
+
+    /**
+     * Parses a default-on switch: on when the setting is absent or anything other than "false" (case-insensitive).
+     */
+    static boolean enabledUnlessFalse(String setting) {
+        return !"false".equalsIgnoreCase(setting);
     }
 
     /**
