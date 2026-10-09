@@ -467,17 +467,25 @@ class SpeedlingTest {
 
     @Test
     void anExtraBaseIsRequestedAtParityOrOnFloatingMineralsOnceTheNaturalStands() {
-        assertTrue(Speedling.wantsExtraBase(true, false, 2, 2));
-        assertTrue(Speedling.wantsExtraBase(false, true, 2, 2));
-        assertFalse(Speedling.wantsExtraBase(false, false, 2, 2));
-        assertFalse(Speedling.wantsExtraBase(true, true, 1, 1));
+        assertTrue(Speedling.wantsExtraBase(true, false, 2));
+        assertTrue(Speedling.wantsExtraBase(false, true, 2));
+        assertFalse(Speedling.wantsExtraBase(false, false, 2));
+        assertFalse(Speedling.wantsExtraBase(true, true, 1));
     }
 
     @Test
-    void anExtraBaseStopsAtTheBaseAndHatcheryCaps() {
-        assertFalse(Speedling.wantsExtraBase(true, true, Speedling.MAX_BASES, 4));
-        assertTrue(Speedling.wantsExtraBase(true, true, Speedling.MAX_BASES - 1, 4));
-        assertFalse(Speedling.wantsExtraBase(true, true, 3, Speedling.MAX_HATCHERIES));
+    void anExtraBaseStopsAtTheBaseCapOnly() {
+        assertFalse(Speedling.wantsExtraBase(true, true, Speedling.MAX_BASES));
+        assertTrue(Speedling.wantsExtraBase(true, true, Speedling.MAX_BASES - 1));
+        assertTrue(Speedling.wantsExtraBase(true, true, 3));
+    }
+
+    @Test
+    void parityBaseWaitsForTheOpeningWave() {
+        assertFalse(Speedling.parityBaseWanted(true, true, Speedling.ZERGLINGS_BEFORE_EXTRA_DRONES - 1));
+        assertTrue(Speedling.parityBaseWanted(true, true, Speedling.ZERGLINGS_BEFORE_EXTRA_DRONES));
+        assertFalse(Speedling.parityBaseWanted(false, true, 40));
+        assertFalse(Speedling.parityBaseWanted(true, false, 40));
     }
 
     @Test

@@ -23,7 +23,7 @@ final class LearningHistoryRepository {
 
     /**
      * Loads the games in the read file, with a legacy Speedling build order mapped to the variant of the
-     * file's race, see {@link LegacyBuildOrderNames}. The file itself is not rewritten.
+     * file's race or the row's resolved race, see {@link LegacyBuildOrderNames}. The file itself is not rewritten.
      */
     LearningHistory load() throws IOException {
         List<GameRecord> games = new ArrayList<>();
@@ -33,8 +33,9 @@ final class LearningHistoryRepository {
         List<String> lines = Files.readAllLines(readFile.toPath());
         for (int i = 1; i < lines.size(); i++) {
             GameRecord game = GameRecord.fromCsvRow(lines.get(i));
-            game.setBuildOrder(LegacyBuildOrderNames.resolveChain(game.getBuildOrder(), fileRace));
-            game.setOpener(LegacyBuildOrderNames.resolve(game.getOpener(), fileRace));
+            String variantRace = LegacyBuildOrderNames.variantRace(fileRace, game.getOpponentRace());
+            game.setBuildOrder(LegacyBuildOrderNames.resolveChain(game.getBuildOrder(), variantRace));
+            game.setOpener(LegacyBuildOrderNames.resolve(game.getOpener(), variantRace));
             games.add(game);
         }
         return new LearningHistory(games);

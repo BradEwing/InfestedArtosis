@@ -37,6 +37,16 @@ class LegacyBuildOrderNamesTest {
     }
 
     @Test
+    void aRandomFilesRowMapsByTheRaceItResolvedTo() {
+        assertEquals("Terran", LegacyBuildOrderNames.variantRace("Unknown", "Terran"));
+        assertEquals("Zerg", LegacyBuildOrderNames.variantRace("Unknown", "Zerg"));
+        assertEquals("Unknown", LegacyBuildOrderNames.variantRace("Unknown", "Unknown"));
+        assertEquals("Protoss", LegacyBuildOrderNames.variantRace("Protoss", "Unknown"));
+        assertEquals("SpeedlingT", LegacyBuildOrderNames.resolve("SpeedlingAllIn",
+                LegacyBuildOrderNames.variantRace("Unknown", "Terran")));
+    }
+
+    @Test
     void emptyAndNullChainsAreUnchanged() {
         assertEquals("", LegacyBuildOrderNames.resolveChain("", "Terran"));
         assertNull(LegacyBuildOrderNames.resolveChain(null, "Terran"));

@@ -60,6 +60,19 @@ public final class LegacyBuildOrderNames {
     }
 
     /**
+     * @param fileRace the race of the learning file
+     * @param rowRace the race recorded on the row, which is the resolved race for a Random opponent
+     * @return the race that picks the variant: the row's race when it is Terran, Protoss or Zerg, else the file's
+     */
+    public static String variantRace(String fileRace, String rowRace) {
+        if (Race.Terran.toString().equals(rowRace) || Race.Protoss.toString().equals(rowRace)
+                || Race.Zerg.toString().equals(rowRace)) {
+            return rowRace;
+        }
+        return fileRace;
+    }
+
+    /**
      * @param chain a build_order column value: build order names joined by semicolons
      * @param raceName the race of the learning file
      * @return the chain with every legacy Speedling segment replaced, null and empty chains unchanged

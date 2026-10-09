@@ -102,6 +102,10 @@ class OpenerTransitionsTest {
         assertFalse(OpenerTransitions.barsSpeedlingT(cold));
         assertTrue(OpenerTransitions.barsSpeedlingT(bunkerMain));
         assertFalse(OpenerTransitions.barsSpeedlingT(bunkerNatural));
+        StrategyTracker both = terranTracker();
+        both.getDetectedStrategies().add(new BunkerMain());
+        both.getDetectedStrategies().add(new BunkerNatural());
+        assertFalse(OpenerTransitions.barsSpeedlingT(both));
         assertTrue(OpenerTransitions.barsSpeedlingT(persistedWall));
     }
 

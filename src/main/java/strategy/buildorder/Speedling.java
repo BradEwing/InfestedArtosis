@@ -198,9 +198,10 @@ public abstract class Speedling extends BuildOrder {
         boolean wantHatchery = shouldPlanHatchery(hatcheryTotal, gameState.getResourceCount().availableMinerals());
 
         int basesHeldOrReserved = baseData.currentAndReservedCount();
-        boolean baseAdvantage = wantsBaseAdvantage() && behindOnBases(gameState);
+        boolean baseAdvantage = parityBaseWanted(wantsBaseAdvantage(), behindOnBases(gameState),
+                gameState.ourLivingUnitCount(UnitType.Zerg_Zergling));
         if (shouldExpand(wantHatchery, basesHeldOrReserved)
-                || wantsExtraBase(baseAdvantage, gameState.isFloatingMinerals(), basesHeldOrReserved, hatcheryTotal)) {
+                || wantsExtraBase(baseAdvantage, gameState.isFloatingMinerals(), basesHeldOrReserved)) {
             Plan expansionPlan = this.planNewBase(gameState);
             if (expansionPlan != null) {
                 plans.add(expansionPlan);
@@ -405,21 +406,28 @@ public abstract class Speedling extends BuildOrder {
     }
 
     /**
+     * Whether the variant asks for a base to keep parity: it keeps a base advantage, the enemy holds as many
+     * depots as we do, and {@link #ZERGLINGS_BEFORE_EXTRA_DRONES} zerglings are alive, so the opening wave is not
+     * delayed by a third hatchery.
+     */
+    static boolean parityBaseWanted(boolean keepsBaseAdvantage, boolean behindOnBases, int livingZerglings) {
+        return keepsBaseAdvantage && behindOnBases && livingZerglings >= ZERGLINGS_BEFORE_EXTRA_DRONES;
+    }
+
+    /**
      * Whether a base beyond the natural is requested: floating minerals, or the base advantage the
-     * variant keeps, once the natural is held or reserved and while the base cap and the hatchery
-     * cap leave room.
+     * variant keeps, once the natural is held or reserved and while the base cap leaves room.
+     * The parity term waits for {@link #ZERGLINGS_BEFORE_EXTRA_DRONES} living zerglings so the opening wave is
+     * not delayed by a third hatchery.
      *
-     * @param baseAdvantage whether the variant wants parity and the enemy holds as many depots
+     * @param baseAdvantage whether the variant wants parity, the enemy holds as many depots and the opening wave stands
      * @param floatingMinerals whether {@link GameState#isFloatingMinerals()} holds
      * @param basesHeldOrReserved bases owned plus bases reserved by a queued expansion
-     * @param hatcheryTotal completed hatcheries plus hatcheries already queued
      */
-    static boolean wantsExtraBase(boolean baseAdvantage, boolean floatingMinerals, int basesHeldOrReserved,
-                                  int hatcheryTotal) {
+    static boolean wantsExtraBase(boolean baseAdvantage, boolean floatingMinerals, int basesHeldOrReserved) {
         return (baseAdvantage || floatingMinerals)
                 && basesHeldOrReserved >= BASE_TARGET
-                && basesHeldOrReserved < MAX_BASES
-                && hatcheryTotal < MAX_HATCHERIES;
+                && basesHeldOrReserved < MAX_BASES;
     }
 
     /**
