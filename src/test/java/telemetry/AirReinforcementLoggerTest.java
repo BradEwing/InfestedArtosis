@@ -71,6 +71,31 @@ class AirReinforcementLoggerTest {
         assertEquals("-1.0000", fields[columnIndex("nearest_mate_px")]);
         assertEquals("-1", fields[columnIndex("hatch_frame")]);
         assertEquals("-1.0000", fields[columnIndex("nearest_squad_mate_px")]);
+        assertEquals("-1", fields[columnIndex("zone_threats")]);
+        assertEquals("-1.0000", fields[columnIndex("detour_px")]);
+        assertEquals("-1", fields[columnIndex("in_flight")]);
+        assertEquals("-1", fields[columnIndex("link_frames")]);
+    }
+
+    @Test
+    void linkUpRowsCarryTheZonesTheDetourAndTheFlightCounts() {
+        AirReinforcementRow route = AirReinforcementRow.builder().frame(12290).event(AirReinforcementRow.Event.ROUTE)
+                .squadId("squad-1").zoneThreats(3).detour(410.5).inFlight(2).build();
+        AirReinforcementRow join = AirReinforcementRow.builder().frame(12600).event(AirReinforcementRow.Event.JOIN)
+                .squadId("squad-1").zoneThreats(3).inFlight(1).linkFrames(310).build();
+        AirReinforcementRow hold = AirReinforcementRow.builder().frame(12290).event(AirReinforcementRow.Event.HOLD)
+                .squadId("squad-2").inFlight(2).build();
+
+        String[] routeFields = AirReinforcementLogger.row("game-1", route).split(",", -1);
+        String[] joinFields = AirReinforcementLogger.row("game-1", join).split(",", -1);
+        String[] holdFields = AirReinforcementLogger.row("game-1", hold).split(",", -1);
+
+        assertEquals("3", routeFields[columnIndex("zone_threats")]);
+        assertEquals(Csv.format(410.5), routeFields[columnIndex("detour_px")]);
+        assertEquals("2", routeFields[columnIndex("in_flight")]);
+        assertEquals("310", joinFields[columnIndex("link_frames")]);
+        assertEquals("HOLD", holdFields[columnIndex("event")]);
+        assertEquals("2", holdFields[columnIndex("in_flight")]);
     }
 
     @Test

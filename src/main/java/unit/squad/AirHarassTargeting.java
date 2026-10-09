@@ -3,6 +3,7 @@ package unit.squad;
 import bwapi.Position;
 import bwapi.UnitType;
 import bwapi.WeaponType;
+import info.map.HarassHeatMap;
 import info.tracking.EnemyReachMemory;
 import lombok.Builder;
 import lombok.Getter;
@@ -13,7 +14,10 @@ import util.StaticDefenseZone;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.function.Predicate;
 import java.util.function.ToIntFunction;
 
@@ -31,6 +35,9 @@ import java.util.function.ToIntFunction;
  * zones toward the flock's shared {@link #flockPoint}, or the strike point without one. Ranges, speeds, hit points
  * and damage are read from JBWAPI; the constants are tuning values.
  *
+ * <p>A Mutalisk the flock's volley plan assigned a target, see {@link AirSnipe}, fires on it ahead of the tiers while the
+ * target is a visible contact outside every other avoided zone; it still evades first.
+ *
  * <p>On an exposed target a Missile Turret whose zone the flock does not avoid is taken in the isolated anti-air tier
  * too, see {@link #turretTaken}.
  */
@@ -41,6 +48,8 @@ public final class AirHarassTargeting {
     static final int COVER_MARGIN = 16;
     static final int KILL_VOLLEYS = 2;
     static final int LOCAL_TARGET_RADIUS = 160;
+    static final int OPPORTUNITY_RADIUS = 288;
+    static final int OPPORTUNITY_LEAVE_RADIUS = 432;
     static final int EVADE_HYSTERESIS = 32;
     static final int EVADE_COMMIT_FRAMES = 12;
     static final double CURRENT_TARGET_BONUS = 1.2;
@@ -54,14 +63,17 @@ public final class AirHarassTargeting {
 
     /**
      * Target tiers of a harass, lowest first. ISOLATED_AA is anti-air the flock kills quickly, or on an exposed
-     * target a Missile Turret it tolerates, see {@link #tier(Contact, Situation)}.
+     * target a Missile Turret it tolerates, see {@link #tier(Contact, Situation)}. EDGE_TURRET is a lone Missile Turret
+     * the flock takes on, see {@link #edgeTurrets}; it outranks Workers, since the damage budget that admits it holds
+     * only while the flock kills it.
      */
     public enum Tier {
         OTHER,
         PRODUCTION,
         SUPPLY,
         ISOLATED_AA,
-        WORKER
+        WORKER,
+        EDGE_TURRET
     }
 
     /**
@@ -186,6 +198,10 @@ public final class AirHarassTargeting {
         private final Predicate<Position> pointAllowed = position -> true;
         private final int now;
         private final boolean turretsTaken;
+        @Builder.Default
+        private final Set<Integer> edgeTurretIds = Collections.emptySet();
+        @Builder.Default
+        private final Map<Integer, Integer> snipeTargets = Collections.emptyMap();
     }
 
     /**
@@ -350,13 +366,17 @@ public final class AirHarassTargeting {
 
     /**
      * The tier a contact is taken in on this frame: its {@link #tier(Contact, int)}, or ISOLATED_AA for a Missile
-     * Turret the situation takes, see {@link #turretTaken}.
+     * Turret the situation takes, see {@link #turretTaken}, or EDGE_TURRET for a lone Turret it takes on, see
+     * {@link #edgeTurrets}.
      *
      * @param contact the contact
      * @param situation the frame's shared view
      * @return the tier, or null
      */
     public static Tier tier(Contact contact, Situation situation) {
+        if (situation.getEdgeTurretIds().contains(contact.getId())) {
+            return Tier.EDGE_TURRET;
+        }
         Tier tier = tier(contact, situation.getFlockSize());
         if (tier == null && situation.isTurretsTaken() && turretTaken(contact, situation.getAvoided())) {
             return Tier.ISOLATED_AA;
@@ -382,6 +402,175 @@ public final class AirHarassTargeting {
             }
         }
         return true;
+    }
+
+    /**
+     * Mutalisk hit points a lone Missile Turret's fire may cost before the flock kills it, as a share of one
+     * Mutalisk's maximum.
+     */
+    static final double EDGE_TURRET_DAMAGE_BUDGET = 1.5;
+
+    /** Tuning value: pixels of the flock's approach to a lone Turret that must be free of other anti-air. */
+    static final int APPROACH_SPAN = 512;
+
+    /**
+     * The hit points a lone Missile Turret's fire costs the flock before it dies: its damage per frame over the
+     * frames the flock spends under it, the approach from the turret's air range in to a Mutalisk's weapon range plus
+     * the time the flock's volleys need for the turret's hit points. Damage types, armor of the flock and the Glave
+     * Wurm bounce are not counted.
+     *
+     * @param turret the Missile Turret's threat
+     * @param flockSize Mutalisks, injured or not in the squad
+     * @return the hit points the turret deals, or positive infinity for an empty flock
+     */
+    public static double turretDamageBeforeKill(AirThreat turret, int flockSize) {
+        WeaponType glave = UnitType.Zerg_Mutalisk.groundWeapon();
+        WeaponType missile = turret.getType().airWeapon();
+        if (flockSize <= 0) {
+            return Double.POSITIVE_INFINITY;
+        }
+        if (missile == null || missile == WeaponType.None || missile.damageCooldown() == 0) {
+            return 0;
+        }
+        double perHit = Math.max(1, glave.damageAmount() - turret.getType().armor());
+        double flockPerFrame = flockSize * perHit * glave.damageFactor() / glave.damageCooldown();
+        double killFrames = turret.getType().maxHitPoints() / flockPerFrame;
+        double approach = Math.max(0, turret.getReach() - glave.maxRange()) / UnitType.Zerg_Mutalisk.topSpeed();
+        double turretPerFrame = (double) missile.damageAmount() * missile.damageFactor() / missile.damageCooldown();
+        return turretPerFrame * (approach + killFrames);
+    }
+
+    /**
+     * The ids of the Missile Turrets standing alone, with no other anti-air covering them within
+     * {@link AirHarassEvaluator#STRIKE_RADIUS}, that the flock kills for no more than
+     * {@link #EDGE_TURRET_DAMAGE_BUDGET} Mutalisks of hit points, see {@link #turretDamageBeforeKill}. The flock takes
+     * such a Turret on and does not price it as a defense, wherever it stands in the base or on the way to it, since
+     * the cost is bounded and the Turret's own zone is all it covers.
+     *
+     * @param threats every known anti-air threat
+     * @param flockSize Mutalisks, injured or not in the squad
+     * @return the ids of the Turrets
+     */
+    public static Set<Integer> edgeTurrets(Collection<AirThreat> threats, int flockSize) {
+        return edgeTurrets(threats, flockSize, null, Collections.emptySet());
+    }
+
+    /**
+     * The ids of the lone Missile Turrets the flock takes on, see {@link #edgeTurrets(Collection, int)}, that no other
+     * known anti-air covers on the approach: the stretch of the straight line from the flock to the Turret that lies
+     * within {@link #APPROACH_SPAN} of the Turret. A Turret the harass has already engaged stays taken on while it
+     * stands and no other anti-air covers it, whatever the damage budget and the approach read now, so it is not priced
+     * as a defense again in the middle of the kill; other anti-air arriving beside it ends the latch.
+     *
+     * @param threats every known anti-air threat
+     * @param flockSize Mutalisks, injured or not in the squad
+     * @param flockCenter the flock's center, or null to leave the approach unchecked
+     * @param engaged ids of the Turrets this harass has engaged
+     * @return the ids of the Turrets
+     */
+    public static Set<Integer> edgeTurrets(Collection<AirThreat> threats, int flockSize, Position flockCenter,
+                                           Collection<Integer> engaged) {
+        Set<Integer> ids = new HashSet<>();
+        double budget = EDGE_TURRET_DAMAGE_BUDGET * UnitType.Zerg_Mutalisk.maxHitPoints();
+        for (AirThreat turret : threats) {
+            if (turret.getType() != UnitType.Terran_Missile_Turret) {
+                continue;
+            }
+            if (!isLone(turret, threats)) {
+                continue;
+            }
+            if (engaged.contains(turret.getId())
+                    || turretDamageBeforeKill(turret, flockSize) <= budget
+                    && approachClear(turret, threats, flockCenter)) {
+                ids.add(turret.getId());
+            }
+        }
+        return ids;
+    }
+
+    /**
+     * Whether no anti-air but the Turret itself covers the stretch of the line from the flock to the Turret that lies
+     * within {@link #APPROACH_SPAN} of it.
+     *
+     * @param turret the Turret
+     * @param threats every known anti-air threat
+     * @param from the flock's center, or null for an unchecked approach
+     * @return true when the approach is clear
+     */
+    static boolean approachClear(AirThreat turret, Collection<AirThreat> threats, Position from) {
+        if (from == null) {
+            return true;
+        }
+        Position to = turret.getPosition();
+        double length = from.getDistance(to);
+        double start = Math.max(0, length - APPROACH_SPAN);
+        for (double along = start; along <= length; along += SEGMENT_STEP) {
+            double fraction = length == 0 ? 0 : along / length;
+            Position point = new Position((int) Math.round(from.getX() + (to.getX() - from.getX()) * fraction),
+                    (int) Math.round(from.getY() + (to.getY() - from.getY()) * fraction));
+            for (AirThreat other : threats) {
+                if (other.getId() != turret.getId() && other.covers(point, 0)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /** Tuning value: pixels from an enemy base's center within which a Turret belongs to the base. */
+    static final int EDGE_BASE_RADIUS = HarassHeatMap.RADIUS_TILES * 32 + 256;
+
+    /** Tuning value: frames since a base's core was in sight within which a Turret at the base may be taken on. */
+    static final int EDGE_CORE_SIGHT_FRAMES = 720;
+
+    /**
+     * Whether a lone Turret may be taken on as an edge Turret: one beside no known enemy base, an exposed target's
+     * Turret, or one at a base whose core was in sight within {@link #EDGE_CORE_SIGHT_FRAMES}, since a base's next
+     * Turret is only discovered on arrival and its core being seen tells the flock that none stands beyond.
+     *
+     * @param turret the Turret's position
+     * @param sightingAges frames since the core of each known enemy base, by its center, was in sight
+     * @return true when the Turret may be taken on
+     */
+    public static boolean edgeTurretOpen(Position turret, Map<Position, Integer> sightingAges) {
+        Position nearest = null;
+        for (Position base : sightingAges.keySet()) {
+            if (base.getDistance(turret) <= EDGE_BASE_RADIUS
+                    && (nearest == null || base.getDistance(turret) < nearest.getDistance(turret))) {
+                nearest = base;
+            }
+        }
+        return nearest == null || sightingAges.get(nearest) <= EDGE_CORE_SIGHT_FRAMES;
+    }
+
+    private static boolean isLone(AirThreat turret, Collection<AirThreat> threats) {
+        for (AirThreat other : threats) {
+            if (other.getId() != turret.getId()
+                    && other.covers(turret.getPosition(), AirHarassEvaluator.STRIKE_RADIUS)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * The threats the flock prices as a defense: every threat but the Turrets it takes on, see {@link #edgeTurrets}.
+     *
+     * @param threats every known anti-air threat
+     * @param edgeTurrets ids of the Turrets taken on
+     * @return the threats left, in their original order
+     */
+    public static List<AirThreat> priced(Collection<AirThreat> threats, Set<Integer> edgeTurrets) {
+        if (edgeTurrets.isEmpty()) {
+            return new ArrayList<>(threats);
+        }
+        List<AirThreat> kept = new ArrayList<>();
+        for (AirThreat threat : threats) {
+            if (!edgeTurrets.contains(threat.getId())) {
+                kept.add(threat);
+            }
+        }
+        return kept;
     }
 
     /**
@@ -460,9 +649,13 @@ public final class AirHarassTargeting {
      * @return the decision
      */
     public static Decision choose(Muta muta, Situation situation, MutaMemory memory) {
-        Contact target = bestTarget(muta, situation, memory.targetId);
+        Contact target = snipeTarget(muta, situation);
         Tier tier = target == null ? null : tier(target, situation);
-        int ignoredId = tier == Tier.ISOLATED_AA ? target.getId() : NO_TARGET;
+        if (tier == null) {
+            target = bestTarget(muta, situation, memory.targetId);
+            tier = target == null ? null : tier(target, situation);
+        }
+        int ignoredId = tier == Tier.ISOLATED_AA || tier == Tier.EDGE_TURRET ? target.getId() : NO_TARGET;
         List<AirThreat> zones = without(situation.getAvoided(), ignoredId);
         Position route = situation.getFlockPoint() != null ? situation.getFlockPoint() : situation.getSeekPoint();
         Position goal = target != null ? target.getPosition() : route;
@@ -481,7 +674,61 @@ public final class AirHarassTargeting {
     }
 
     /**
-     * The best target for a Mutalisk: among allowed contacts, and contacts within {@link #LOCAL_TARGET_RADIUS} of it,
+     * How far from a Mutalisk a contact outside the target area is still taken: {@link #OPPORTUNITY_RADIUS} for a
+     * Worker or isolated anti-air the flock kills quickly, which a Mutalisk on its way or striking elsewhere switches
+     * to instead of flying past, held out to {@link #OPPORTUNITY_LEAVE_RADIUS} once it is the Mutalisk's target so a
+     * target stepping away does not flip it back, and {@link #LOCAL_TARGET_RADIUS} for any other tier.
+     *
+     * @param tier the contact's tier
+     * @param current true when the contact is the Mutalisk's current target
+     * @return the radius in pixels
+     */
+    static int reachRadius(Tier tier, boolean current) {
+        if (tier == Tier.WORKER || tier == Tier.ISOLATED_AA || tier == Tier.EDGE_TURRET) {
+            return current ? OPPORTUNITY_LEAVE_RADIUS : OPPORTUNITY_RADIUS;
+        }
+        return LOCAL_TARGET_RADIUS;
+    }
+
+    /**
+     * Whether leaving one target for another is a switch to higher value rather than a swap between equals: a Worker
+     * taken over a target that is not one, or an edge Turret taken over anything else.
+     *
+     * @param left the type of the target left
+     * @param taken the type of the target taken
+     * @param takenIsEdgeTurret true when the target taken is an edge Turret, see {@link #edgeTurrets}
+     * @return true for such a switch
+     */
+    public static boolean isValueSwitch(UnitType left, UnitType taken, boolean takenIsEdgeTurret) {
+        if (takenIsEdgeTurret) {
+            return left != UnitType.Terran_Missile_Turret;
+        }
+        return Filter.isWorkerType(taken) && !Filter.isWorkerType(left);
+    }
+
+    /**
+     * The target the volley plan assigned to a Mutalisk, see {@link AirSnipe}: the contact it names while it is still
+     * a visible contact and no other avoided zone covers it.
+     *
+     * @param muta the Mutalisk
+     * @param situation the frame's shared view
+     * @return the contact, or null with no assignment
+     */
+    static Contact snipeTarget(Muta muta, Situation situation) {
+        Integer id = situation.getSnipeTargets().get(muta.getId());
+        if (id == null) {
+            return null;
+        }
+        for (Contact contact : situation.getContacts()) {
+            if (contact.getId() == id) {
+                return covered(contact, situation.getAvoided()) ? null : contact;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * The best target for a Mutalisk: among allowed contacts, and contacts within {@link #reachRadius} of it,
      * that have a tier and no other avoided zone covers, the highest tier first, then the most injured and nearest,
      * with the current target favoured by {@link #CURRENT_TARGET_BONUS}.
      *
@@ -496,14 +743,16 @@ public final class AirHarassTargeting {
         double bestScore = -1;
         for (Contact contact : situation.getContacts()) {
             double distance = muta.getPosition().getDistance(contact.getPosition());
-            if (!situation.getTargetAllowed().test(contact.getPosition()) && distance > LOCAL_TARGET_RADIUS) {
-                continue;
-            }
             Tier tier = tier(contact, situation);
             if (tier == null || covered(contact, situation.getAvoided())) {
                 continue;
             }
-            double bonus = contact.getId() == currentTargetId ? CURRENT_TARGET_BONUS : 1.0;
+            boolean current = contact.getId() == currentTargetId;
+            if (!situation.getTargetAllowed().test(contact.getPosition())
+                    && distance > reachRadius(tier, current)) {
+                continue;
+            }
+            double bonus = current ? CURRENT_TARGET_BONUS : 1.0;
             double score = (1.0 + 0.5 * (1.0 - contact.getHpFraction())) * bonus / Math.max(distance, 1);
             if (bestTier == null || tier.ordinal() > bestTier.ordinal()
                     || tier == bestTier && score > bestScore) {

@@ -5,6 +5,7 @@ import bwapi.Position;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.WeaponType;
 import bwem.Base;
 import config.Config;
 import info.GameState;
@@ -16,12 +17,13 @@ import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Filter;
 import util.MapEdge;
-import util.Vec2;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,6 +34,12 @@ import java.util.function.Predicate;
  * {@link AirHarassEvaluator} and {@link AirHarassTargeting} for every decision, turns those into orders for the
  * Mutalisks, and records telemetry_harass.csv. {@link SquadManager} owns the squad's status and calls in through
  * {@link #checkEntry}, {@link #start}, {@link #tick}, {@link #stop} and {@link #onUnitDestroy}.
+ *
+ * <p>The approach to a strike point is priced against the mobile anti-air that can reach the path or the target, see
+ * {@link AirApproachPricing}, when an entry is checked and on every decision tick: a priced-out target is left out of
+ * the entry, a priced-out approach in flight takes another target or ends as APPROACH_DEFENDED, and the mobile
+ * anti-air a detour flies around joins the avoided zones. The Mutalisks that fly with the flock fire a volley plan,
+ * see {@link AirSnipe}, at the targets it kills in one volley.
  */
 public class AirHarassController {
 
@@ -49,13 +57,23 @@ public class AirHarassController {
      * swap sides of a zone every order. Matches {@link AirHarassTargeting#EVADE_COMMIT_FRAMES}.
      */
     static final int FLOCK_POINT_COMMIT_FRAMES = AirHarassTargeting.EVADE_COMMIT_FRAMES;
+    /** Tuning value: pixels from a map edge inside which a flock point, evade point or regroup point is not taken. */
+    static final int POINT_EDGE_MARGIN = 32;
 
     private final Game game;
     private final GameState gameState;
     private final Map<Base, Set<TilePosition>> resourceTiles = new HashMap<>();
     private final ExposedTargets.Memory exposedMemory = new ExposedTargets.Memory();
     private final Map<Base, Integer> lastSighted = new HashMap<>();
-    private final Map<Base, Integer> probeRefusedUntil = new HashMap<>();
+    private final Map<Base, Integer> refusedUntil = new HashMap<>();
+    private final Map<Base, Integer> flockSideExitAt = new HashMap<>();
+    private final Map<Integer, Integer> carriedAntiAir = new HashMap<>();
+    private final Map<String, String> refusedPricing = new HashMap<>();
+    private final AirHarassDefenseZones defenseZones = new AirHarassDefenseZones();
+    /** Tuning value: pixels the flight to the strike point must close by to count as progress. */
+    static final int TRANSIT_GAIN = 64;
+    /** Tuning value: frames after a volley was committed to a target within which the target must die to count. */
+    static final int SNIPE_WINDOW_FRAMES = 120;
 
     public AirHarassController(Game game, GameState gameState) {
         this.game = game;
@@ -64,8 +82,8 @@ public class AirHarassController {
 
     /**
      * The outcome of an entry check: the verdict, the base and strike point, or the exposed group, a harass would
-     * start on, the age of that base's anti-air sighting, and whether known anti-air structures cover its probe
-     * point. A PROBE verdict starts the harass with a probe of the base; an exposed group is never probed.
+     * start on, the age of that base's anti-air sighting, and whether known anti-air structures cover its core
+     * point.
      */
     public static final class Entry {
         private final AirHarassEvaluator.EntryVerdict verdict;
@@ -76,6 +94,7 @@ public class AirHarassController {
         private final int stalled;
         private final double exposedScore;
         private final double baseScore;
+        private AirApproachPricing.Result pricing;
 
         Entry(AirHarassEvaluator.EntryVerdict verdict, AirHarassEvaluator.BaseOption<Base> option,
               ExposedTargets.Group exposed, int sightingAge, int knownCover, int stalled, double exposedScore,
@@ -90,16 +109,19 @@ public class AirHarassController {
             this.baseScore = baseScore;
         }
 
+        Entry priced(AirApproachPricing.Result result) {
+            this.pricing = result;
+            return this;
+        }
+
         public boolean enters() {
-            return verdict == AirHarassEvaluator.EntryVerdict.ENTER && (option != null || exposed != null)
-                    || verdict == AirHarassEvaluator.EntryVerdict.PROBE && option != null;
+            return verdict == AirHarassEvaluator.EntryVerdict.ENTER && (option != null || exposed != null);
         }
     }
 
     /**
      * Steps the harassment heat map every {@link #HEAT_INTERVAL} frames: every known enemy base heats up, has its
-     * anti-air sighting refreshed, and the ground within sight of each harassing Mutalisk is zeroed. A probing
-     * Mutalisk near the probed base leaves its heat alone, see {@link AirHarassScouting#coolsHeat}.
+     * anti-air sighting refreshed, and the ground within sight of each harassing Mutalisk is zeroed.
      *
      * @param now current frame
      * @param squads fight squads
@@ -122,14 +144,8 @@ public class AirHarassController {
             if (squad.getStatus() != SquadStatus.HARASS) {
                 continue;
             }
-            AirHarassState state = squad.getHarassState();
-            boolean probing = state != null && state.getPhase() == AirHarassState.Phase.PROBE;
-            Position probed = probing && state.getTargetBase() != null ? state.getTargetBase().getCenter() : null;
             for (ManagedUnit member : squad.getMembers()) {
-                if (AirHarassScouting.coolsHeat(probing, member.getPosition(), probed,
-                        UnitType.Zerg_Mutalisk.sightRange())) {
-                    heatMap.visit(member.getPosition(), sight);
-                }
+                heatMap.visit(member.getPosition(), sight);
             }
         }
     }
@@ -138,10 +154,12 @@ public class AirHarassController {
      * Runs the entry gates for an air squad and records the verdict. The base options and the exposed groups are only
      * read for a squad that passes the cheap gates, and the harass starts on whichever scores higher, see
      * {@link AirHarassEvaluator#exposedOutscoresBase} when {@link Config#airFlapEscape} is on; with it off, which is
-     * the default, an exposed group is raided only when no base qualifies. A base a probe found defended is left out until its refusal
-     * runs out, see {@link AirHarassScouting#unrefused}, and a stale base whose probe point known anti-air structures
-     * cover is entered on the entry verdict, not probed. With the escape on, a base or exposed group at the held target
-     * is no candidate, see {@link AirHarassEvaluator#isFailedTarget}; with it off, no target is held.
+     * the default, an exposed group is raided only when no base qualifies. A base the flock left on newly seen
+     * anti-air is left out until its refusal runs out, see {@link AirHarassScouting#unrefused}, and so is an exposed
+     * group beside such a base, see {@link AirHarassScouting#besideNoRefusedBase}. With the escape on, a
+     * base or exposed group at the held target is no candidate, see {@link AirHarassEvaluator#isFailedTarget}; with
+     * it off, no target is held. The anti-air remembered in the defense zones is priced with the known anti-air, see
+     * {@link AirHarassDefenseZones}.
      *
      * @param squad air squad
      * @param now current frame
@@ -160,22 +178,34 @@ public class AirHarassController {
                 && !basesUnderAttack;
         List<AirHarassEvaluator.BaseOption<Base>> options = new ArrayList<>();
         List<AirHarassTargeting.AirThreat> threats = new ArrayList<>();
+        List<AirHarassTargeting.AirThreat> known = threats;
+        View view = null;
+        int edgeTurrets = -1;
         ExposedTargets.Group exposed = null;
         double flockDefense = 0;
+        AirApproachPricing.Result outcome = null;
         if (cheapGatesPass) {
-            View view = view(now);
-            threats = view.threats;
+            view = view(now);
+            view.price(flock.mutas, squad.getCenter(), Collections.emptySet());
+            threats = view.priced;
+            known = view.threats;
+            edgeTurrets = view.edgeTurrets.size();
             Collection<Base> bases = new ArrayList<>();
-            for (Base base : AirHarassScouting.unrefused(gameState.getBaseData().getEnemyBases(), probeRefusedUntil,
+            for (Base base : AirHarassScouting.unrefused(gameState.getBaseData().getEnemyBases(), refusedUntil,
                     now)) {
                 if (!AirHarassEvaluator.isFailedTarget(heldTarget, base.getCenter())) {
                     bases.add(base);
                 }
             }
             options = options(threats, tolerance, containPoints, bases, MIN_ENTRY_HEAT);
-            exposed = ExposedTargets.choose(withoutFailedTarget(exposedMemory.admitted(ExposedTargets.groups(
-                    view.candidates(), flock.mutas, AirHarassTargeting.avoided(threats, tolerance)), now),
-                    heldTarget), threats, tolerance, squad.getCenter());
+            List<ExposedTargets.Group> groups = awayFromRefused(withoutFailedTarget(exposedMemory.admitted(
+                    ExposedTargets.groups(view.candidates(), flock.mutas,
+                            AirHarassTargeting.avoided(threats, tolerance)), now), heldTarget), now);
+            ApproachChoice approach = priceApproaches(options, groups, threats, tolerance, flock.healthy,
+                    squad.getCenter());
+            options = approach.options;
+            exposed = approach.exposed;
+            outcome = approach.outcome;
             flockDefense = AirHarassTargeting.defenseAt(threats, squad.getCenter(), 0);
         }
         AirHarassEvaluator.EntryVerdict verdict = AirHarassEvaluator.entryVerdict(
@@ -200,12 +230,11 @@ public class AirHarassController {
         ExposedTargets.Group chosenExposed = enters && raidsExposed ? exposed : null;
         Position strike = chosen != null ? chosen.getStrikePoint()
                 : chosenExposed != null ? chosenExposed.getAnchor() : null;
-        int sightingAge = chosen == null ? -1 : sightingAge(chosen.getBase(), now);
-        int knownCover = chosen == null ? -1 : knownCover(chosen.getBase(), threats);
-        if (chosenExposed == null) {
-            verdict = AirHarassScouting.entryMode(verdict,
-                    AirHarassScouting.probeSightingAge(sightingAge, knownCover == 1));
+        if (chosen == null && chosenExposed == null) {
+            logRefusedPricing(squad, outcome, flock, tolerance, now);
         }
+        int sightingAge = chosen == null ? -1 : sightingAge(chosen.getBase(), now);
+        int knownCover = chosen == null ? -1 : knownCover(chosen.getBase(), known);
         HarassTelemetry.row(HarassRow.builder()
                 .frame(now)
                 .squadId(squad.getId())
@@ -228,8 +257,111 @@ public class AirHarassController {
                 .stalled(stalled)
                 .exposedScore(exposedScore)
                 .baseScore(baseScore)
+                .edgeTurrets(edgeTurrets)
+                .defenseZones(defenseZones.size())
+                .zoneUnits(view == null ? -1 : view.zoned.size())
                 .build());
-        return new Entry(verdict, chosen, chosenExposed, sightingAge, knownCover, stalled, exposedScore, baseScore);
+        return new Entry(verdict, chosen, chosenExposed, sightingAge, knownCover, stalled, exposedScore, baseScore)
+                .priced(outcome);
+    }
+
+    /**
+     * The entry candidates after their approach was priced: the base options with the strike point of every priced-out
+     * one dropped, the best exposed group the flock flies to, and the pricing of the target the entry would have
+     * taken unpriced, read as REROUTE for another target when another candidate replaces it.
+     */
+    private static final class ApproachChoice {
+        private final List<AirHarassEvaluator.BaseOption<Base>> options;
+        private final ExposedTargets.Group exposed;
+        private final AirApproachPricing.Result outcome;
+
+        private ApproachChoice(List<AirHarassEvaluator.BaseOption<Base>> options, ExposedTargets.Group exposed,
+                               AirApproachPricing.Result outcome) {
+            this.options = options;
+            this.exposed = exposed;
+            this.outcome = outcome;
+        }
+    }
+
+    private ApproachChoice priceApproaches(List<AirHarassEvaluator.BaseOption<Base>> options,
+                                           List<ExposedTargets.Group> groups,
+                                           List<AirHarassTargeting.AirThreat> threats, double tolerance,
+                                           int healthy, Position from) {
+        Predicate<Position> allowed = allowedPoints();
+        Map<AirHarassEvaluator.BaseOption<Base>, AirApproachPricing.Result> optionResults = new IdentityHashMap<>();
+        List<AirHarassEvaluator.BaseOption<Base>> flyable = new ArrayList<>();
+        for (AirHarassEvaluator.BaseOption<Base> option : options) {
+            if (option.getStrikePoint() == null) {
+                flyable.add(option);
+                continue;
+            }
+            AirApproachPricing.Result result = AirApproachPricing.price(threats, from, option.getStrikePoint(),
+                    tolerance, healthy, allowed);
+            optionResults.put(option, result);
+            flyable.add(result.flies() ? option : new AirHarassEvaluator.BaseOption<>(option.getBase(), null, 0,
+                    option.isHeated(), option.getContainDistance()));
+        }
+        Map<ExposedTargets.Group, AirApproachPricing.Result> groupResults = new IdentityHashMap<>();
+        List<ExposedTargets.Group> flyableGroups = new ArrayList<>();
+        for (ExposedTargets.Group group : groups) {
+            AirApproachPricing.Result result = AirApproachPricing.price(threats, from, group.getAnchor(), tolerance,
+                    healthy, allowed);
+            groupResults.put(group, result);
+            if (result.flies()) {
+                flyableGroups.add(group);
+            }
+        }
+        ExposedTargets.Group exposedUnpriced = ExposedTargets.choose(groups, threats, tolerance, from);
+        ExposedTargets.Group exposed = ExposedTargets.choose(flyableGroups, threats, tolerance, from);
+        AirHarassEvaluator.BaseOption<Base> bestUnpriced = AirHarassEvaluator.chooseBase(options);
+        AirHarassEvaluator.BaseOption<Base> best = AirHarassEvaluator.chooseBase(flyable);
+        boolean exposedPreferred = raidsExposed(exposedUnpriced, bestUnpriced, from);
+        AirApproachPricing.Result preferred = exposedPreferred ? groupResults.get(exposedUnpriced)
+                : bestUnpriced == null ? null : optionResults.get(bestUnpriced);
+        boolean flies = raidsExposed(exposed, best, from) ? exposed != null : best != null;
+        AirApproachPricing.Result outcome = preferred == null || preferred.flies() ? preferred
+                : flies ? preferred.toOtherTarget() : preferred;
+        return new ApproachChoice(flyable, exposed, outcome);
+    }
+
+    private Predicate<Position> allowedPoints() {
+        int mapWidth = game.mapWidth() * 32;
+        int mapHeight = game.mapHeight() * 32;
+        return point -> MapEdge.inside(point, mapWidth, mapHeight, POINT_EDGE_MARGIN);
+    }
+
+    /**
+     * Writes the APPROACH_PRICED row of an entry the pricing refused, once for every change in its decision and
+     * reason.
+     */
+    private void logRefusedPricing(Squad squad, AirApproachPricing.Result outcome, Flock flock, double tolerance,
+                                   int now) {
+        if (outcome == null || outcome.flies()) {
+            refusedPricing.remove(squad.getId());
+            return;
+        }
+        if (outcome.key().equals(refusedPricing.put(squad.getId(), outcome.key()))) {
+            return;
+        }
+        HarassTelemetry.row(pricedRow(squad.getId(), null, outcome, now)
+                .center(squad.getCenter())
+                .mutas(flock.mutas)
+                .healthyMutas(flock.healthy)
+                .tolerance(tolerance)
+                .build());
+    }
+
+    private static HarassRow.HarassRowBuilder pricedRow(String squadId, AirHarassState state,
+                                                        AirApproachPricing.Result result, int now) {
+        HarassRow.HarassRowBuilder row = state == null
+                ? HarassRow.builder().frame(now).squadId(squadId).event(HarassRow.Event.APPROACH_PRICED)
+                : row(squadId, state, HarassRow.Event.APPROACH_PRICED, now);
+        return row
+                .approachDecision(result.getDecision())
+                .approachReason(result.getReason())
+                .approachMobileAa(result.getMobileStrength())
+                .approachFlockStrength(result.getFlockStrength())
+                .approachUnits(result.units());
     }
 
     /**
@@ -273,6 +405,28 @@ public class AirHarassController {
                 : AirHarassEvaluator.baseScore(bestBase.getHeat(), bestBase.getContainDistance());
     }
 
+    /**
+     * Drops the exposed groups beside a base refused now, see {@link AirHarassScouting#besideNoRefusedBase}.
+     */
+    private List<ExposedTargets.Group> awayFromRefused(Collection<ExposedTargets.Group> groups, int now) {
+        List<Position> centers = new ArrayList<>();
+        for (Base base : AirHarassScouting.refused(gameState.getBaseData().getEnemyBases(), refusedUntil, now)) {
+            centers.add(base.getCenter());
+        }
+        return AirHarassScouting.besideNoRefusedBase(groups, centers);
+    }
+
+    /**
+     * The anti-air the defense zones remember that is not among the known threats, see
+     * {@link AirHarassDefenseZones#remembered}.
+     *
+     * @param known the known anti-air threats
+     * @return the remembered threats
+     */
+    public List<AirHarassTargeting.AirThreat> rememberedAntiAir(Collection<AirHarassTargeting.AirThreat> known) {
+        return defenseZones.remembered(known);
+    }
+
     static List<ExposedTargets.Group> withoutFailedTarget(Collection<ExposedTargets.Group> groups,
                                                                   Position heldTarget) {
         List<ExposedTargets.Group> open = new ArrayList<>();
@@ -293,8 +447,7 @@ public class AirHarassController {
 
     /**
      * Starts a harass on the entry's base or exposed group and hands every Mutalisk the HARASS role. The anti-air
-     * known now is not new to this harass. A PROBE entry starts with a probe of the base, any other with the flight
-     * to its target.
+     * known now is not new to this harass. The whole flock flies to the target.
      *
      * @param squad squad entering HARASS
      * @param entry the entry that passed
@@ -303,14 +456,29 @@ public class AirHarassController {
     public void start(Squad squad, Entry entry, int now) {
         Flock flock = flock(squad);
         AirHarassState state = new AirHarassState(now, flock.hitPoints);
-        state.learnAntiAir(view(now).threats);
         if (entry.option == null) {
             state.targetExposed(entry.exposed, now);
-        } else if (entry.verdict != AirHarassEvaluator.EntryVerdict.PROBE
-                || !beginProbe(squad, state, entry.option.getBase(), entry.option.getStrikePoint(), now)) {
+        } else {
             state.target(entry.option.getBase(), entry.option.getStrikePoint(), now);
         }
+        View view = view(now);
+        view.price(flock.mutas, squad.getCenter(), state.getEngagedEdgeTurrets());
+        state.acceptAntiAir(AirHarassScouting.inReach(view.threats, state.targetCenter(), squad.getCenter()), now,
+                flock.hitPoints);
+        state.acceptIds(AirHarassScouting.carried(carriedAntiAir, now), now, flock.hitPoints);
+        state.acceptIds(defenseZones.memberIds(), now, flock.hitPoints);
         state.setLastTickFrame(now - AirHarassEvaluator.HARASS_TICK);
+        refusedPricing.remove(squad.getId());
+        if (entry.pricing != null) {
+            state.setApproachZones(entry.pricing.routeAround());
+            state.notePricing(entry.pricing.key());
+            HarassTelemetry.row(pricedRow(squad.getId(), state, entry.pricing, now)
+                    .center(squad.getCenter())
+                    .mutas(flock.mutas)
+                    .healthyMutas(flock.healthy)
+                    .tolerance(AirHarassEvaluator.tolerance(flock.healthy))
+                    .build());
+        }
         squad.setHarassState(state);
         for (ManagedUnit member : squad.getMembers()) {
             member.clearRegroup();
@@ -318,14 +486,14 @@ public class AirHarassController {
             member.setFightTarget(null);
             member.setContainPosition(null);
             member.setRetreatTarget(null);
-            member.setHarassDestination(destinationOf(state, member));
+            member.setHarassDestination(state.getStrikePoint());
         }
         HarassTelemetry.row(row(squad, state, HarassRow.Event.ENTER, now)
                 .mutas(flock.mutas)
                 .healthyMutas(flock.healthy)
                 .flockHitPoints(flock.hitPoints)
                 .tolerance(AirHarassEvaluator.tolerance(flock.healthy))
-                .airDefense(AirHarassTargeting.defenseAt(view(now).threats, state.getStrikePoint(),
+                .airDefense(AirHarassTargeting.defenseAt(view.priced, state.getStrikePoint(),
                         AirHarassEvaluator.STRIKE_RADIUS))
                 .aaSightingAge(entry.sightingAge)
                 .aaKnownCover(entry.knownCover)
@@ -378,7 +546,11 @@ public class AirHarassController {
         }
         View view = view(now);
         Flock flock = flock(squad);
+        view.price(flock.mutas, squad.getCenter(), state.getEngagedEdgeTurrets());
         double tolerance = AirHarassEvaluator.tolerance(flock.healthy);
+        if (reactsToAntiAir(squad, state, view, flock, tolerance, now)) {
+            return AirHarassEvaluator.ExitReason.NEW_AA;
+        }
         if (AirHarassEvaluator.decisionTickDue(now, state.getLastTickFrame())) {
             state.setLastTickFrame(now);
             AirHarassEvaluator.ExitReason reason = decisionTick(squad, state, view, flock, tolerance,
@@ -387,16 +559,81 @@ public class AirHarassController {
                 return reason;
             }
         }
-        assignOrders(squad, state, view, AirHarassTargeting.avoided(view.threats, tolerance), flock.mutas, now);
+        assignOrders(squad, state, view, withApproach(AirHarassTargeting.avoided(view.priced, tolerance), state),
+                flock.mutas, now);
         return null;
     }
 
     /**
+     * Reads the anti-air that came into reach this frame and, when it is more than the flock can answer at the target
+     * or at the flock, see {@link AirHarassScouting#react}, records the AA_REACTION row: the frame the anti-air that
+     * made up that defense came into reach, this frame as the frame the flock turns, and the hit points the flock
+     * lost between. Either reaction records the defense group as a zone, see {@link AirHarassDefenseZones}. Runs
+     * every frame, not on the decision tick. The ids of the anti-air making up the defense are carried
+     * into the next harass as accepted, see {@link AirHarassScouting#carried}.
+     *
+     * @return true when the harass ends on newly seen anti-air
+     */
+    private boolean reactsToAntiAir(Squad squad, AirHarassState state, View view, Flock flock, double tolerance,
+                                    int now) {
+        boolean targetLive = state.targetsExposed()
+                || gameState.getBaseData().getEnemyBases().contains(state.getTargetBase());
+        AirHarassScouting.Reaction reaction = AirHarassScouting.react(state, view.reactive,
+                targetLive ? state.targetCenter() : null, squad.getCenter(), tolerance, now, flock.hitPoints);
+        if (reaction == null) {
+            return false;
+        }
+        state.setDefendedAtTarget(reaction.isAtTarget());
+        int zoneUnits = recordZone(squad, state, view, reaction.getTrigger(), AirHarassEvaluator.ExitReason.NEW_AA,
+                reaction.isAtTarget(), now);
+        for (int id : reaction.getContributorIds()) {
+            carriedAntiAir.put(id, now);
+        }
+        HarassTelemetry.row(row(squad, state, HarassRow.Event.AA_REACTION, now)
+                .center(squad.getCenter())
+                .mutas(flock.mutas)
+                .healthyMutas(flock.healthy)
+                .flockHitPoints(flock.hitPoints)
+                .tolerance(tolerance)
+                .airDefense(AirHarassTargeting.defenseAt(view.priced, reaction.getTrigger().getPosition(),
+                        AirHarassEvaluator.STRIKE_RADIUS))
+                .aaSeenFrame(reaction.getSeenFrame())
+                .aaTurnFrame(reaction.getTurnFrame())
+                .aaHitPointsLost(reaction.getHitPointsLost())
+                .aaTriggerType(reaction.getTrigger().getType())
+                .aaTriggerId(reaction.getTrigger().getId())
+                .aaAtTarget(reaction.isAtTarget() ? 1 : 0)
+                .zoneUnits(zoneUnits)
+                .build());
+        return true;
+    }
+
+    /**
+     * Records the defense group a harass ends on as a zone priced for the refusal the exit sets, see
+     * {@link AirHarassScouting#holdFrames}, and writes its ZONE_RECORD row.
+     *
+     * @return the members the zone holds
+     */
+    private int recordZone(Squad squad, AirHarassState state, View view, AirHarassTargeting.AirThreat trigger,
+                           AirHarassEvaluator.ExitReason reason, boolean atTarget, int now) {
+        Base targetBase = state.getTargetBase();
+        int zoneUnits = defenseZones.record(trigger, view.threats, now, AirHarassScouting.holdFrames(reason, atTarget,
+                targetBase == null ? null : flockSideExitAt.get(targetBase), now)).size();
+        HarassTelemetry.row(row(squad, state, HarassRow.Event.ZONE_RECORD, now)
+                .center(trigger.getPosition())
+                .aaTriggerType(trigger.getType())
+                .aaTriggerId(trigger.getId())
+                .aaAtTarget(atTarget ? 1 : 0)
+                .defenseZones(defenseZones.size())
+                .zoneUnits(zoneUnits)
+                .build());
+        return zoneUnits;
+    }
+
+    /**
      * Ends a harass: records the EXIT row, records an exposed target in the {@link ExposedTargets.Memory}, refuses
-     * a base the probe found defended for {@link AirHarassScouting#PROBE_REFUSAL_FRAMES}, and clears every
-     * Mutalisk's harass order. When a probe ends the harass and its hold point is clear of known anti-air, see
-     * {@link AirHarassScouting#proberRegroups}, the prober flies back to the hold point ahead of the squad's next
-     * orders, see {@link ManagedUnit#regroup}. The squad's status is left to the caller.
+     * a base the flock left on newly seen anti-air for {@link AirHarassScouting#holdFrames}, and clears
+     * every Mutalisk's harass order. The squad's status is left to the caller.
      *
      * @param squad harassing squad
      * @param reason why the harass ended
@@ -407,27 +644,43 @@ public class AirHarassController {
         if (state != null && state.targetsExposed()) {
             exposedMemory.record(state.getExposedAnchor(), now);
         }
-        if (state != null && state.getTargetBase() != null && AirHarassScouting.refusesBase(reason)) {
-            probeRefusedUntil.put(state.getTargetBase(), now + AirHarassScouting.PROBE_REFUSAL_FRAMES);
+        if (state != null && state.getTargetBase() != null) {
+            Base base = state.getTargetBase();
+            int hold = AirHarassScouting.holdFrames(reason, state.isDefendedAtTarget(),
+                    flockSideExitAt.get(base), now);
+            if (hold > 0) {
+                AirHarassScouting.hold(refusedUntil, base, now + hold);
+            }
+            AirHarassScouting.noteFlockSideExit(flockSideExitAt, base, reason, state.isDefendedAtTarget(), hold, now);
         }
         Flock flock = flock(squad);
-        List<AirHarassTargeting.AirThreat> threats = view(now).threats;
-        HarassTelemetry.row(withProber(exitRow(squad.getId(), state, reason, now,
-                squad.size() == 0 ? null : squad.getCenter(), flock.hitPoints, threats), squad, state)
+        View view = view(now);
+        view.price(flock.mutas, squad.size() == 0 ? null : squad.getCenter(),
+                state == null ? Collections.emptySet() : state.getEngagedEdgeTurrets());
+        List<AirHarassTargeting.AirThreat> threats = view.priced;
+        if (state != null) {
+            for (AirHarassState.Snipe snipe : state.drainSnipes()) {
+                logSnipe(squad, state, snipe, false, now);
+            }
+        }
+        HarassTelemetry.row(exitRow(squad.getId(), state, reason, now,
+                squad.size() == 0 ? null : squad.getCenter(), flock.hitPoints, threats)
                 .mutas(flock.mutas)
                 .healthyMutas(flock.healthy)
                 .build());
-        ManagedUnit prober = state != null && state.getPhase() == AirHarassState.Phase.PROBE
-                ? proberOf(squad, state) : null;
-        if (prober != null && state.getHoldPoint() != null
-                && AirHarassScouting.proberRegroups(reason, AirHarassScouting.holdExposed(threats,
-                        state.getHoldPoint()))) {
-            prober.regroup(state.getHoldPoint(), now + AirHarassScouting.PROBER_REGROUP_FRAMES);
-        }
         for (ManagedUnit member : squad.getMembers()) {
             member.setHarassDestination(null);
             member.setFightTarget(null);
         }
+    }
+
+    private void logSnipe(Squad squad, AirHarassState state, AirHarassState.Snipe snipe, boolean killed, int now) {
+        HarassTelemetry.row(row(squad, state, HarassRow.Event.SNIPE, now)
+                .snipeType(snipe.getType())
+                .snipeHitPoints(snipe.getHitPoints())
+                .snipeAlpha(snipe.getAlpha())
+                .snipeKilled(killed ? 1 : 0)
+                .build());
     }
 
     /**
@@ -485,9 +738,20 @@ public class AirHarassController {
         if (!ours && !game.self().isEnemy(unit.getPlayer())) {
             return;
         }
+        if (!ours) {
+            logDrops(defenseZones.forget(unit.getID(), now), now);
+        }
         if (ours) {
             creditLoss(unit, squads, now);
             return;
+        }
+        for (Squad squad : squads) {
+            AirHarassState state = squad.getHarassState();
+            AirHarassState.Snipe snipe = squad.getStatus() == SquadStatus.HARASS && state != null
+                    ? state.resolveSnipe(unit.getID()) : null;
+            if (snipe != null) {
+                logSnipe(squad, state, snipe, true, now);
+            }
         }
         int creditRadius = UnitType.Zerg_Mutalisk.groundWeapon().maxRange() + KILL_CREDIT_MARGIN;
         Position position = unit.getPosition();
@@ -558,8 +822,10 @@ public class AirHarassController {
                                                        List<Position> containPoints, int now) {
         boolean targetGone;
         boolean heated;
+        boolean structuresDefend;
         Position strike;
-        List<AirHarassTargeting.AirThreat> avoided = AirHarassTargeting.avoided(view.threats, tolerance);
+        List<AirHarassTargeting.AirThreat> avoided = AirHarassTargeting.avoided(view.priced, tolerance);
+        List<AirHarassTargeting.AirThreat> structures = AirApproachPricing.structures(view.priced);
         if (state.targetsExposed()) {
             ExposedTargets.Group group = ExposedTargets.follow(
                     ExposedTargets.groups(view.candidates(), flock.mutas, avoided), state.getExposedAnchor());
@@ -568,51 +834,64 @@ public class AirHarassController {
             if (heated) {
                 state.follow(group);
             }
-            strike = heated && ExposedTargets.exposed(group, view.threats, tolerance) ? group.getAnchor() : null;
+            strike = heated && ExposedTargets.exposed(group, view.priced, tolerance) ? group.getAnchor() : null;
+            structuresDefend = heated && !ExposedTargets.exposed(group, structures, tolerance);
         } else {
             HarassHeatMap heatMap = gameState.getGameMap().getHarassHeatMap();
             Base base = state.getTargetBase();
             targetGone = !gameState.getBaseData().getEnemyBases().contains(base);
-            strike = targetGone ? null : heatMap.hottestNear(base.getCenter(), tolerated(view.threats, tolerance));
+            strike = targetGone ? null : heatMap.hottestNear(base.getCenter(), tolerated(view.priced, tolerance));
             heated = !targetGone && heatMap.hottestNear(base.getCenter(), point -> true) != null;
+            structuresDefend = heated && heatMap.hottestNear(base.getCenter(), tolerated(structures, tolerance)) == null;
         }
         double hpLoss = AirHarassEvaluator.hpLossFraction(state.getStartHitPoints(), flock.hitPoints);
-        double flockDefense = AirHarassTargeting.defenseAt(view.threats, squad.getCenter(), 0);
+        double flockDefense = AirHarassTargeting.defenseAt(structures, squad.getCenter(), 0);
         AirHarassEvaluator.ExitReason reason = AirHarassEvaluator.exitReason(AirHarassEvaluator.ExitInput.builder()
                 .basesUnderAttack(basesUnderAttack)
                 .healthyMutas(flock.healthy)
                 .hpLossFraction(hpLoss)
-                .strikeDefended(heated && strike == null)
+                .strikeDefended(structuresDefend)
                 .flockDefense(flockDefense)
                 .tolerance(tolerance)
                 .build());
         if (reason != null) {
-            return AirHarassScouting.probeExitReason(reason, state.getPhase() == AirHarassState.Phase.PROBE,
-                    flockDefense > tolerance);
+            return reason;
         }
-        List<AirHarassTargeting.AirThreat> newThreats = state.learnAntiAir(view.threats);
-        if (state.getPhase() == AirHarassState.Phase.PROBE && !targetGone) {
-            reason = heated ? probeTick(squad, state, strike, view.threats, now)
-                    : AirHarassEvaluator.ExitReason.NO_TARGET;
-            if (reason != null) {
-                return reason;
-            }
-        } else {
-            if (AirHarassScouting.newAntiAirExit(newThreats, view.threats, targetGone ? null : state.targetCenter(),
-                    squad.getCenter(), tolerance)) {
-                return AirHarassEvaluator.ExitReason.NEW_AA;
-            }
-            if (strike != null) {
-                state.setStrikePoint(strike);
-            }
-            if (!state.hasArrived() && AirHarassEvaluator.arrived(squad.getCenter(), state.getStrikePoint())) {
-                state.arrive(now);
-            }
-            if (AirHarassEvaluator.shouldRetarget(targetGone, heated, state.hasArrived(), now,
-                    state.getLastProgressFrame())
-                    && !retarget(squad, state, view, flock.mutas, tolerance, containPoints, now)) {
+        if (strike != null) {
+            state.setStrikePoint(strike);
+        }
+        AirApproachPricing.Result pricing = state.getStrikePoint() == null ? null : AirApproachPricing.price(
+                view.priced, squad.getCenter(), state.getStrikePoint(), tolerance, flock.healthy, allowedPoints());
+        boolean pricedOut = pricing != null && !pricing.flies();
+        state.setApproachZones(pricing == null ? Collections.emptyList() : pricing.routeAround());
+        if (!pricedOut && pricing != null && state.notePricing(pricing.key())) {
+            logPricing(squad, state, pricing, flock, tolerance, now);
+        }
+        if (!state.hasArrived() && AirHarassEvaluator.arrived(squad.getCenter(), state.getStrikePoint())) {
+            state.arrive(now);
+        }
+        boolean stalled = !state.hasArrived() && state.getStrikePoint() != null && state.transitStalled(
+                squad.getCenter().getDistance(state.getStrikePoint()), now, AirHarassEvaluator.NO_TARGET_FRAMES,
+                TRANSIT_GAIN);
+        AirApproachPricing.Result blocked = pricedOut ? pricing : stalled ? pricing.toNoDetour() : null;
+        boolean retargets = AirHarassEvaluator.shouldRetarget(targetGone, heated, state.hasArrived(), now,
+                state.getLastProgressFrame());
+        if ((retargets || blocked != null)
+                && !retarget(squad, state, view, flock.mutas, tolerance, containPoints, now)) {
+            if (blocked == null) {
                 return AirHarassEvaluator.ExitReason.NO_TARGET;
             }
+            state.setDefendedAtTarget(blocked.getReason() == AirApproachPricing.Reason.TARGET_DEFENDED);
+            logPricing(squad, state, blocked, flock, tolerance, now);
+            AirHarassTargeting.AirThreat strongest = blocked.strongest();
+            if (strongest != null) {
+                recordZone(squad, state, view, strongest, AirHarassEvaluator.ExitReason.APPROACH_DEFENDED,
+                        state.isDefendedAtTarget(), now);
+            }
+            return AirHarassEvaluator.ExitReason.APPROACH_DEFENDED;
+        }
+        if (blocked != null) {
+            logPricing(squad, state, blocked.toOtherTarget(), flock, tolerance, now);
         }
         HarassTelemetry.row(row(squad, state, HarassRow.Event.TICK, now)
                 .flockDefense(flockDefense)
@@ -622,9 +901,12 @@ public class AirHarassController {
                 .flockHitPoints(flock.hitPoints)
                 .hpLossFraction(hpLoss)
                 .tolerance(tolerance)
-                .airDefense(AirHarassTargeting.defenseAt(view.threats, state.getStrikePoint(),
+                .airDefense(AirHarassTargeting.defenseAt(view.priced, state.getStrikePoint(),
                         AirHarassEvaluator.STRIKE_RADIUS))
                 .avoidedZones(avoided.size())
+                .edgeTurrets(view.edgeTurrets.size())
+                .defenseZones(defenseZones.size())
+                .zoneUnits(view.zoned.size())
                 .containDistance(nearestDistance(squad.getCenter(), containPoints))
                 .basesUnderAttack(basesUnderAttack ? 1 : 0)
                 .aaSightingAge(sightingAge(state.getTargetBase(), now))
@@ -632,108 +914,30 @@ public class AirHarassController {
         return null;
     }
 
-    /**
-     * Runs one decision tick of a probe: follows the strike point, moves the hold point out of newly known anti-air,
-     * notes when the probed base's resources come into sight, sends the prober on to the strike point once they have,
-     * and acts on what the probe found. A cleared probe sends the whole flock to the strike point.
-     *
-     * @param strike the base's hottest tolerated point, or null when it has none
-     * @param threats every known anti-air threat
-     * @return PROBE_DEFENDED or NO_TARGET to end the harass, or null to keep going
-     */
-    private AirHarassEvaluator.ExitReason probeTick(Squad squad, AirHarassState state, Position strike,
-                                                    List<AirHarassTargeting.AirThreat> threats, int now) {
-        Base base = state.getTargetBase();
-        int sightingAge = sightingAge(base, now);
-        ManagedUnit prober = proberOf(squad, state);
-        int proberHitPoints = prober == null ? 0 : prober.getUnit().getHitPoints();
-        if (strike != null) {
-            state.setStrikePoint(strike);
-        }
-        if (AirHarassScouting.holdExposed(threats, state.getHoldPoint())) {
-            state.setHoldPoint(holdPoint(base, squad.getCenter(), threats));
-        }
-        state.setProbeResourcesSighted(AirHarassScouting.probeResourcesSighted(state.isProbeResourcesSighted(),
-                base.getCenter(), resourceCenterOf(base), point -> game.isVisible(point.toTilePosition())));
-        boolean sighted = AirHarassScouting.probeSighted(state.isProbeResourcesSighted(), strike != null,
-                strike != null && game.isVisible(strike.toTilePosition()));
-        AirHarassScouting.ProbeOutcome outcome = AirHarassScouting.probeOutcome(prober != null, proberHitPoints,
-                state.getProberPeakHitPoints(), sighted, strike != null, now, state.getProbeStartFrame());
-        state.observeProberHitPoints(proberHitPoints);
-        switch (outcome) {
-            case DEFENDED:
-                return AirHarassEvaluator.ExitReason.PROBE_DEFENDED;
-            case TIMED_OUT:
-                return AirHarassEvaluator.ExitReason.NO_TARGET;
-            case CLEAR:
-                int proberPeakHitPoints = state.getProberPeakHitPoints();
-                state.clearProbe(strike, now);
-                HarassTelemetry.row(row(squad, state, HarassRow.Event.PROBE_CLEAR, now)
-                        .center(squad.getCenter())
-                        .aaSightingAge(sightingAge)
-                        .proberHitPoints(proberHitPoints)
-                        .proberPeakHitPoints(proberPeakHitPoints)
-                        .proberId(state.getProberId())
-                        .build());
-                return null;
-            default:
-                return null;
-        }
+    private void logPricing(Squad squad, AirHarassState state, AirApproachPricing.Result pricing, Flock flock,
+                            double tolerance, int now) {
+        HarassTelemetry.row(pricedRow(squad.getId(), state, pricing, now)
+                .center(squad.getCenter())
+                .mutas(flock.mutas)
+                .healthyMutas(flock.healthy)
+                .flockHitPoints(flock.hitPoints)
+                .tolerance(tolerance)
+                .build());
     }
 
-    /**
-     * Starts a probe of a base: the healthiest Mutalisk flies to the base's resources while the rest hold short of
-     * the base, outside the anti-air known now.
-     *
-     * @return false when the squad has no Mutalisk to probe with
-     */
-    private boolean beginProbe(Squad squad, AirHarassState state, Base base, Position strike, int now) {
-        Map<Integer, Integer> hitPoints = new HashMap<>();
-        for (ManagedUnit member : squad.getMembers()) {
-            if (member.getUnitType() == UnitType.Zerg_Mutalisk) {
-                hitPoints.put(member.getUnitID(), member.getUnit().getHitPoints());
+    private static List<AirHarassTargeting.AirThreat> withApproach(List<AirHarassTargeting.AirThreat> avoided,
+                                                                   AirHarassState state) {
+        List<AirHarassTargeting.AirThreat> zones = new ArrayList<>(avoided);
+        Set<Integer> ids = new HashSet<>();
+        for (AirHarassTargeting.AirThreat threat : avoided) {
+            ids.add(threat.getId());
+        }
+        for (AirHarassTargeting.AirThreat threat : state.approachZones()) {
+            if (ids.add(threat.getId())) {
+                zones.add(threat);
             }
         }
-        int prober = AirHarassScouting.chooseProber(hitPoints);
-        if (prober < 0) {
-            return false;
-        }
-        state.probe(base, strike, prober, hitPoints.get(prober), probePointOf(base),
-                holdPoint(base, squad.getCenter(), view(now).threats), now);
-        return true;
-    }
-
-    private Position holdPoint(Base base, Position flockCenter, List<AirHarassTargeting.AirThreat> threats) {
-        Position hold = AirHarassScouting.holdPoint(base.getCenter(), flockCenter, threats);
-        return Vec2.between(flockCenter, hold).clampToMap(game, flockCenter);
-    }
-
-    private static ManagedUnit proberOf(Squad squad, AirHarassState state) {
-        for (ManagedUnit member : squad.getMembers()) {
-            if (member.getUnitID() == state.getProberId()) {
-                return member;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Where a harassing Mutalisk flies when it has no target: during a probe the hold point, or for the prober its
-     * {@link AirHarassScouting#proberDestination}; the strike point otherwise.
-     *
-     * @param state the harass state
-     * @param member a Mutalisk of the harassing squad
-     * @return the destination
-     */
-    static Position destinationOf(AirHarassState state, ManagedUnit member) {
-        if (state.getPhase() != AirHarassState.Phase.PROBE) {
-            return state.getStrikePoint();
-        }
-        if (member.getUnitID() != state.getProberId()) {
-            return state.getHoldPoint();
-        }
-        return AirHarassScouting.proberDestination(state.isProbeResourcesSighted(), state.getProbePoint(),
-                state.getStrikePoint());
+        return zones;
     }
 
     /**
@@ -752,16 +956,16 @@ public class AirHarassController {
     }
 
     /**
-     * Whether known anti-air structures cover a base's probe point, see {@link AirHarassScouting#knownAntiAirCovers}.
+     * Whether known anti-air structures cover a base's core point, see {@link AirHarassScouting#knownAntiAirCovers}.
      *
      * @return 1 when they do, 0 otherwise
      */
     private static int knownCover(Base base, List<AirHarassTargeting.AirThreat> threats) {
-        return AirHarassScouting.knownAntiAirCovers(threats, probePointOf(base)) ? 1 : 0;
+        return AirHarassScouting.knownAntiAirCovers(threats, corePointOf(base)) ? 1 : 0;
     }
 
-    private static Position probePointOf(Base base) {
-        return AirHarassScouting.probePoint(base.getCenter(), resourceCenterOf(base),
+    private static Position corePointOf(Base base) {
+        return AirHarassScouting.corePoint(base.getCenter(), resourceCenterOf(base),
                 UnitType.Zerg_Mutalisk.sightRange());
     }
 
@@ -796,12 +1000,11 @@ public class AirHarassController {
     }
 
     /**
-     * Moves a harass on to the best known enemy base it has not raided yet this episode and no probe has refused,
-     * probing it first when its anti-air sighting is stale and no known anti-air structure covers its probe point, or
-     * to the best exposed group of enemies the {@link ExposedTargets.Memory} admits when that group outscores the
-     * base, see {@link AirHarassEvaluator#exposedOutscoresBase}, when {@link Config#airFlapEscape} is on; with it
-     * off, a group is taken only when no base qualifies. With the escape on, a base or group at the held target is no
-     * candidate. An exposed target being left is recorded there first.
+     * Moves a harass on to the best known enemy base it has not raided yet this episode and the flock has not
+     * left on newly seen anti-air, or to the best exposed group of enemies the {@link ExposedTargets.Memory} admits
+     * when that group outscores the base, see {@link AirHarassEvaluator#exposedOutscoresBase}, when
+     * {@link Config#airFlapEscape} is on; with it off, a group is taken only when no base qualifies. With the escape
+     * on, a base or group at the held target is no candidate. An exposed target being left is recorded there first.
      *
      * @return true when a target was found
      */
@@ -811,17 +1014,19 @@ public class AirHarassController {
             exposedMemory.record(state.getExposedAnchor(), now);
         }
         Set<Base> candidates = new HashSet<>(AirHarassScouting.unrefused(gameState.getBaseData().getEnemyBases(),
-                probeRefusedUntil, now));
+                refusedUntil, now));
         candidates.removeAll(state.getVisitedBases());
         Position held = AirHarassEvaluator.reentryHold(Config.airFlapEscape, squad.getHarassExitEngageFrame(),
                 squad.getHarassExitEngageTarget(), false, now) == AirHarassEvaluator.ReentryHold.TARGET
                 ? squad.getHarassExitEngageTarget() : null;
         candidates.removeIf(base -> AirHarassEvaluator.isFailedTarget(held, base.getCenter()));
-        AirHarassEvaluator.BaseOption<Base> next = AirHarassEvaluator.chooseBase(
-                options(view.threats, tolerance, containPoints, candidates, 0));
-        ExposedTargets.Group exposed = ExposedTargets.choose(withoutFailedTarget(exposedMemory.admitted(
-                ExposedTargets.groups(view.candidates(), mutas, AirHarassTargeting.avoided(view.threats, tolerance)),
-                now), held), view.threats, tolerance, squad.getCenter());
+        List<ExposedTargets.Group> groups = awayFromRefused(withoutFailedTarget(
+                exposedMemory.admitted(ExposedTargets.groups(view.candidates(), mutas,
+                        AirHarassTargeting.avoided(view.priced, tolerance)), now), held), now);
+        ApproachChoice approach = priceApproaches(options(view.priced, tolerance, containPoints, candidates, 0),
+                groups, view.priced, tolerance, flock(squad).healthy, squad.getCenter());
+        AirHarassEvaluator.BaseOption<Base> next = AirHarassEvaluator.chooseBase(approach.options);
+        ExposedTargets.Group exposed = approach.exposed;
         double exposedScore = exposedScore(exposed, squad.getCenter());
         double baseScore = baseScore(next);
         if (!raidsExposed(exposed, next, squad.getCenter())) {
@@ -834,14 +1039,13 @@ public class AirHarassController {
         } else if (next != null) {
             sightingAge = sightingAge(next.getBase(), now);
             knownCover = knownCover(next.getBase(), view.threats);
-            if (!AirHarassScouting.stale(AirHarassScouting.probeSightingAge(sightingAge, knownCover == 1))) {
-                state.target(next.getBase(), next.getStrikePoint(), now);
-            } else if (!beginProbe(squad, state, next.getBase(), next.getStrikePoint(), now)) {
-                return false;
-            }
+            state.target(next.getBase(), next.getStrikePoint(), now);
         } else {
             return false;
         }
+        state.acceptAntiAir(AirHarassScouting.inReach(view.threats, state.targetCenter(), squad.getCenter()), now,
+                flock(squad).hitPoints);
+        state.acceptIds(defenseZones.memberIds(), now, flock(squad).hitPoints);
         HarassTelemetry.row(row(squad, state, HarassRow.Event.RETARGET, now)
                 .center(squad.getCenter())
                 .aaSightingAge(sightingAge)
@@ -886,22 +1090,14 @@ public class AirHarassController {
      * {@link #FLOCK_POINT_COMMIT_FRAMES}, unless it has a target. Only enemies around the target base, or within
      * {@link ExposedTargets#SEEK_RADIUS} of an exposed target, are sought out; an enemy anywhere else is taken only
      * when it is close to the Mutalisk. On an exposed target a Missile Turret the flock tolerates is taken too, see
-     * {@link AirHarassTargeting#turretTaken}. During a probe no Mutalisk attacks: the prober flies to the probe point
-     * and the rest to the hold point. The Mutalisks that started regrouping are recorded, see
+     * {@link AirHarassTargeting#turretTaken}. The Mutalisks that started regrouping are recorded, see
      * {@link SquadManager#recordRegroups}.
      */
     private void assignOrders(Squad squad, AirHarassState state, View view,
                               List<AirHarassTargeting.AirThreat> avoided, int mutas, int now) {
-        if (state.getPhase() == AirHarassState.Phase.PROBE) {
-            assignProbeOrders(squad, state, now);
-            return;
-        }
         Position baseCenter = state.targetCenter();
         int baseRadius = state.targetsExposed() ? ExposedTargets.SEEK_RADIUS : HarassHeatMap.RADIUS_TILES * 32;
-        int mapWidth = game.mapWidth() * 32;
-        int mapHeight = game.mapHeight() * 32;
-        Predicate<Position> pointAllowed = point -> point.getX() >= 0 && point.getY() >= 0 && point.getX() < mapWidth
-                && point.getY() < mapHeight;
+        Predicate<Position> pointAllowed = allowedPoints();
         Map<Integer, Position> positions = new HashMap<>();
         for (ManagedUnit member : squad.getMembers()) {
             positions.put(member.getUnitID(), member.getPosition());
@@ -926,8 +1122,14 @@ public class AirHarassController {
                 .targetAllowed(point -> point.getDistance(baseCenter) <= baseRadius)
                 .turretsTaken(state.targetsExposed())
                 .pointAllowed(pointAllowed)
+                .edgeTurretIds(view.edgeTurrets)
+                .snipeTargets(snipeTargets(state, view, avoided, firing(squad, positions, stragglers), anchor,
+                        point -> point.getDistance(baseCenter) <= baseRadius, now))
                 .now(now)
                 .build();
+        for (AirHarassState.Snipe missed : state.missedSnipes(now, SNIPE_WINDOW_FRAMES)) {
+            logSnipe(squad, state, missed, false, now);
+        }
         for (ManagedUnit member : squad.getMembers()) {
             if (member.getRole() != UnitRole.HARASS) {
                 member.setRole(UnitRole.HARASS);
@@ -953,6 +1155,7 @@ public class AirHarassController {
                     ? view.units.get(decision.getTargetId())
                     : null;
             if (target != null) {
+                recordTargetSwitch(squad, state, view, situation, member, target, now);
                 member.setHarassDestination(null);
                 member.setFightTarget(target);
                 state.setLastProgressFrame(now);
@@ -964,17 +1167,106 @@ public class AirHarassController {
         SquadManager.recordRegroups(squad, previous, now);
     }
 
-    private static void assignProbeOrders(Squad squad, AirHarassState state, int now) {
+    /**
+     * The Mutalisks of the squad that fly with the flock: not the escorting Overlords, and not the stragglers.
+     */
+    private static Map<Integer, Position> firing(Squad squad, Map<Integer, Position> positions,
+                                                 Set<Integer> stragglers) {
+        Map<Integer, Position> firing = new HashMap<>();
         for (ManagedUnit member : squad.getMembers()) {
-            if (member.getRole() != UnitRole.HARASS) {
-                member.setRole(UnitRole.HARASS);
+            int id = member.getUnitID();
+            if (member.getUnitType() == UnitType.Zerg_Mutalisk && positions.containsKey(id)
+                    && !stragglers.contains(id)) {
+                firing.put(id, positions.get(id));
             }
-            if (!member.isReady() && now < member.getUnreadyUntilFrame()) {
+        }
+        return firing;
+    }
+
+    /**
+     * Plans the volley of the Mutalisks that fly with the flock, see {@link AirSnipe}: the visible contacts a volley
+     * kills, outside every avoided zone and within the target area or {@link AirHarassTargeting#OPPORTUNITY_RADIUS}
+     * of the flock's anchor, each with the damage a hit deals it from our upgrades and its armor. The target of
+     * every Mutalisk the plan assigns is returned, and each target the harass first commits to is recorded.
+     */
+    private Map<Integer, Integer> snipeTargets(AirHarassState state, View view,
+                                               List<AirHarassTargeting.AirThreat> avoided,
+                                               Map<Integer, Position> firing, Position anchor,
+                                               Predicate<Position> atTarget, int now) {
+        if (firing.isEmpty() || anchor == null) {
+            return Collections.emptyMap();
+        }
+        WeaponType glave = UnitType.Zerg_Mutalisk.groundWeapon();
+        int damage = game.self().damage(glave) / Math.max(1, glave.damageFactor());
+        List<AirSnipe.Candidate> candidates = new ArrayList<>();
+        for (AirHarassTargeting.Contact contact : view.contacts) {
+            Unit unit = view.units.get(contact.getId());
+            if (unit == null || view.edgeTurrets.contains(contact.getId())
+                    || AirHarassTargeting.tier(contact, firing.size()) == null
+                    || AirHarassTargeting.covered(contact, avoided)) {
                 continue;
             }
-            member.setFightTarget(null);
-            member.setHarassDestination(destinationOf(state, member));
+            if (!atTarget.test(contact.getPosition())
+                    && contact.getPosition().getDistance(anchor) > AirHarassTargeting.OPPORTUNITY_RADIUS) {
+                continue;
+            }
+            UnitType type = contact.getType();
+            int perHit = AirSnipe.perHit(damage, unit.getPlayer().armor(type), glave, type.size());
+            candidates.add(new AirSnipe.Candidate(contact.getId(), type, contact.getPosition(),
+                    contact.getHitPoints(), perHit));
         }
+        List<AirSnipe.Assignment> plan = AirSnipe.plan(candidates, firing.size(), glave.damageFactor());
+        for (AirSnipe.Assignment assignment : plan) {
+            AirSnipe.Candidate target = assignment.getTarget();
+            state.noteSnipe(target.getId(), target.getType(), target.getHitPoints(),
+                    AirSnipe.alpha(assignment.getMutas(), glave.damageFactor(), target.getPerHit()), now);
+        }
+        Map<Integer, Integer> assigned = AirSnipe.assign(plan, firing, state.getSnipeAssignment());
+        state.setSnipeAssignment(assigned);
+        return assigned;
+    }
+
+    /**
+     * Records a Mutalisk taking a new target: a UNIT_RETARGET row when it leaves a target that is still alive for
+     * one of higher value, see {@link AirHarassTargeting#isValueSwitch}, carrying both with their distances to the
+     * flock and their tiers, and an EDGE_TURRET row the
+     * first time the flock takes a lone Missile Turret on, see {@link AirHarassTargeting#edgeTurrets}.
+     */
+    private void recordTargetSwitch(Squad squad, AirHarassState state, View view,
+                                    AirHarassTargeting.Situation situation, ManagedUnit member, Unit target,
+                                    int now) {
+        Unit previous = member.fightTarget;
+        if (previous != null && previous != target && previous.exists()
+                && AirHarassTargeting.isValueSwitch(previous.getType(), target.getType(),
+                        view.edgeTurrets.contains(target.getID()))) {
+            HarassTelemetry.row(row(squad, state, HarassRow.Event.UNIT_RETARGET, now)
+                    .center(member.getPosition())
+                    .retargetOldId(previous.getID())
+                    .retargetOldType(previous.getType())
+                    .retargetNewId(target.getID())
+                    .retargetNewType(target.getType())
+                    .retargetOldDistance(squad.getCenter().getDistance(previous.getPosition()))
+                    .retargetNewDistance(squad.getCenter().getDistance(target.getPosition()))
+                    .retargetOldTier(tierOf(view, situation, previous.getID()))
+                    .retargetNewTier(tierOf(view, situation, target.getID()))
+                    .build());
+        }
+        if (view.edgeTurrets.contains(target.getID()) && state.engageEdgeTurret(target.getID())) {
+            HarassTelemetry.row(row(squad, state, HarassRow.Event.EDGE_TURRET, now)
+                    .center(squad.getCenter())
+                    .edgeTurrets(view.edgeTurrets.size())
+                    .edgeTurretId(target.getID())
+                    .build());
+        }
+    }
+
+    private static AirHarassTargeting.Tier tierOf(View view, AirHarassTargeting.Situation situation, int unitId) {
+        for (AirHarassTargeting.Contact contact : view.contacts) {
+            if (contact.getId() == unitId) {
+                return AirHarassTargeting.tier(contact, situation);
+            }
+        }
+        return null;
     }
 
     /**
@@ -1022,7 +1314,26 @@ public class AirHarassController {
                     weapon -> visible ? unit.getPlayer().weaponMaxRange(weapon) : weapon.maxRange());
             view.threats.add(AirHarassTargeting.AirThreat.of(unit.getID(), type, position, range));
         }
+        logDrops(defenseZones.refresh(view.threats, point -> game.isVisible(point.toTilePosition()), now), now);
+        for (Base base : gameState.getBaseData().getEnemyBases()) {
+            view.sightingAges.put(base.getCenter(), sightingAge(base, now));
+        }
+        view.zoned = defenseZones.remembered(view.threats);
+        view.price(0, null, Collections.emptySet());
         return view;
+    }
+
+    private void logDrops(List<AirHarassDefenseZones.Drop> drops, int now) {
+        for (AirHarassDefenseZones.Drop drop : drops) {
+            HarassTelemetry.row(HarassRow.builder()
+                    .frame(now)
+                    .event(HarassRow.Event.ZONE_CLEAR)
+                    .center(drop.getCenter())
+                    .defenseZones(defenseZones.size())
+                    .zoneAge(drop.getAgeFrames())
+                    .zoneCause(drop.getCause())
+                    .build());
+        }
     }
 
     private Set<TilePosition> resourceTilesOf(Base base) {
@@ -1058,23 +1369,10 @@ public class AirHarassController {
     }
 
     /**
-     * Starts a row for a harassing squad. While the harass probes, the row carries the prober's hit points and the
-     * most it has had during the probe, 0 hit points once the prober is gone.
+     * Starts a row for a harassing squad.
      */
     private static HarassRow.HarassRowBuilder row(Squad squad, AirHarassState state, HarassRow.Event event, int now) {
-        return withProber(row(squad.getId(), state, event, now), squad, state);
-    }
-
-    private static HarassRow.HarassRowBuilder withProber(HarassRow.HarassRowBuilder row, Squad squad,
-                                                         AirHarassState state) {
-        if (state != null && state.getPhase() == AirHarassState.Phase.PROBE) {
-            ManagedUnit prober = proberOf(squad, state);
-            int proberHitPoints = prober == null ? 0 : prober.getUnit().getHitPoints();
-            row.proberHitPoints(proberHitPoints)
-                    .proberPeakHitPoints(Math.max(state.getProberPeakHitPoints(), proberHitPoints))
-                    .proberId(state.getProberId());
-        }
-        return row;
+        return row(squad.getId(), state, event, now);
     }
 
     private static HarassRow.HarassRowBuilder row(String squadId, AirHarassState state, HarassRow.Event event,
@@ -1126,6 +1424,35 @@ public class AirHarassController {
         private final List<AirHarassTargeting.Contact> remembered = new ArrayList<>();
         private final Map<Integer, Unit> units = new HashMap<>();
         private final List<AirHarassTargeting.AirThreat> threats = new ArrayList<>();
+        private List<AirHarassTargeting.AirThreat> zoned = new ArrayList<>();
+        private List<AirHarassTargeting.AirThreat> priced = new ArrayList<>();
+        private List<AirHarassTargeting.AirThreat> reactive = new ArrayList<>();
+        private final Map<Position, Integer> sightingAges = new HashMap<>();
+        private Set<Integer> edgeTurrets = Collections.emptySet();
+
+        /**
+         * Prices the threats for a flock of this many Mutalisks, injured or not, since an injured one shoots as
+         * hard: the lone Turrets it takes on, see {@link AirHarassTargeting#edgeTurrets}, are left out of
+         * {@link #priced}, except a base's Turret whose core was not in sight lately, see
+         * {@link AirHarassTargeting#edgeTurretOpen}, unless the harass already engaged it. {@link #priced} is the
+         * anti-air every entry, exit and movement decision reads, which also holds the remembered members of the
+         * defense zones, see {@link AirHarassDefenseZones}. {@link #reactive} is the same without them, the anti-air a
+         * flock can meet as new.
+         */
+        private void price(int mutas, Position flockCenter, Collection<Integer> engaged) {
+            List<AirHarassTargeting.AirThreat> remembered = new ArrayList<>(threats);
+            remembered.addAll(zoned);
+            Set<Integer> open = new HashSet<>(AirHarassTargeting.edgeTurrets(remembered, mutas, flockCenter, engaged));
+            for (AirHarassTargeting.AirThreat threat : remembered) {
+                if (open.contains(threat.getId()) && !engaged.contains(threat.getId())
+                        && !AirHarassTargeting.edgeTurretOpen(threat.getPosition(), sightingAges)) {
+                    open.remove(threat.getId());
+                }
+            }
+            edgeTurrets = open;
+            reactive = AirHarassTargeting.priced(threats, edgeTurrets);
+            priced = AirHarassTargeting.priced(remembered, edgeTurrets);
+        }
 
         /**
          * @return the visible contacts and the remembered structures, the enemies an exposed target is grouped from

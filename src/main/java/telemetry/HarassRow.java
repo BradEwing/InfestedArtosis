@@ -4,12 +4,16 @@ import bwapi.Position;
 import bwapi.UnitType;
 import lombok.Builder;
 import lombok.Getter;
+import unit.squad.AirApproachPricing;
+import unit.squad.AirHarassDefenseZones;
 import unit.squad.AirHarassEvaluator;
 import unit.squad.AirHarassState;
+import unit.squad.AirHarassTargeting;
 
 /**
  * One row of telemetry_harass.csv: an air squad's harass entry check, the start, a decision tick, a retarget, a
- * credited kill, a Mutalisk lost, the end of a harass, or a probe that cleared its base for the strike.
+ * credited kill, a Mutalisk lost, the flock reacting to anti-air, the approach priced against mobile anti-air, a
+ * volley committed to a target, or the end of a harass.
  *
  * <p>Counts and measures left at -1 were not evaluated for the row's event.
  */
@@ -28,7 +32,13 @@ public final class HarassRow {
         KILL,
         MUTA_LOST,
         EXIT,
-        PROBE_CLEAR
+        AA_REACTION,
+        UNIT_RETARGET,
+        EDGE_TURRET,
+        ZONE_RECORD,
+        ZONE_CLEAR,
+        APPROACH_PRICED,
+        SNIPE
     }
 
     private final int frame;
@@ -73,12 +83,6 @@ public final class HarassRow {
     @Builder.Default
     private final int aaSightingAge = -1;
     @Builder.Default
-    private final int proberHitPoints = -1;
-    @Builder.Default
-    private final int proberPeakHitPoints = -1;
-    @Builder.Default
-    private final int proberId = -1;
-    @Builder.Default
     private final int aaKnownCover = -1;
     @Builder.Default
     private final int stalled = -1;
@@ -86,6 +90,55 @@ public final class HarassRow {
     private final double exposedScore = -1;
     @Builder.Default
     private final double baseScore = -1;
+    @Builder.Default
+    private final int aaSeenFrame = -1;
+    @Builder.Default
+    private final int aaTurnFrame = -1;
+    @Builder.Default
+    private final int aaHitPointsLost = -1;
+    private final UnitType aaTriggerType;
+    @Builder.Default
+    private final int aaTriggerId = -1;
+    @Builder.Default
+    private final int aaAtTarget = -1;
+    @Builder.Default
+    private final int edgeTurrets = -1;
+    @Builder.Default
+    private final int edgeTurretId = -1;
+    @Builder.Default
+    private final int retargetOldId = -1;
+    private final UnitType retargetOldType;
+    @Builder.Default
+    private final int retargetNewId = -1;
+    private final UnitType retargetNewType;
+    @Builder.Default
+    private final double retargetOldDistance = -1;
+    @Builder.Default
+    private final double retargetNewDistance = -1;
+    private final AirHarassTargeting.Tier retargetOldTier;
+    private final AirHarassTargeting.Tier retargetNewTier;
+    @Builder.Default
+    private final int defenseZones = -1;
+    @Builder.Default
+    private final int zoneUnits = -1;
+    @Builder.Default
+    private final int zoneAge = -1;
+    private final AirHarassDefenseZones.Cause zoneCause;
+    private final AirApproachPricing.Decision approachDecision;
+    private final AirApproachPricing.Reason approachReason;
+    @Builder.Default
+    private final double approachMobileAa = -1;
+    @Builder.Default
+    private final double approachFlockStrength = -1;
+    @Builder.Default
+    private final int approachUnits = -1;
+    private final UnitType snipeType;
+    @Builder.Default
+    private final int snipeHitPoints = -1;
+    @Builder.Default
+    private final int snipeAlpha = -1;
+    @Builder.Default
+    private final int snipeKilled = -1;
 
     /**
      * What a harass targets: a known enemy base, or an exposed group of enemies away from a base's heat.

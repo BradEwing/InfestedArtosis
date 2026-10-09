@@ -24,18 +24,51 @@ import java.util.Map;
  * cumulative over the episode on every row that carries them.
  *
  * <p>aa_sighting_age is the frames since the target base's core, and with it its anti-air, was last in sight; a base
- * never sighted reads the frame count. ENTRY_CHECK rows carry it for the chosen base, and ENTER, RETARGET, TICK and
- * PROBE_CLEAR rows for the target base. An ENTER or RETARGET row whose phase is PROBE sends one Mutalisk to sight the
- * base first; PROBE_CLEAR marks the probe clearing the base, and the flock starting its strike.
+ * never sighted reads the frame count. ENTRY_CHECK rows carry it for the chosen base, and ENTER, RETARGET and TICK
+ * rows for the target base.
  *
- * <p>prober_hp and prober_peak_hp are the probing Mutalisk's hit points and the most it has had since the probe
- * started, on every row written while a harass probes and on PROBE_CLEAR rows; 0 hit points means the prober is
- * gone. A probe reads its base as defended once the two differ by the probe's damage limit. prober_id is the probing
- * Mutalisk's unit id on the same rows.
+ * <p>prober_hp, prober_peak_hp and prober_id are retired and always -1; they keep their columns so the columns after
+ * them stay where they were.
  *
- * <p>aa_known_cover is 1 when known anti-air structures cover the chosen or target base's probe point and 0 when
- * they do not, on ENTRY_CHECK, ENTER and RETARGET rows for a base. A covered base counts as sighted: it is entered on
- * the entry verdict, not probed, whatever its aa_sighting_age.
+ * <p>aa_known_cover is 1 when known anti-air structures cover the chosen or target base's core point and 0 when they
+ * do not, on ENTRY_CHECK, ENTER and RETARGET rows for a base.
+ *
+ * <p>An AA_REACTION row is written once for every harass the flock ends on newly seen anti-air it cannot answer, just
+ * before the EXIT row whose reason is NEW_AA. aa_seen_frame is the frame the first of the anti-air making up that
+ * defense came into sight, aa_turn_frame the frame the flock turned, and aa_hp_lost the flock's hit points lost
+ * between the two, 0 when they are the same frame. aa_trigger_type and aa_trigger_id name the anti-air unit whose
+ * sighting ended the harass, and aa_at_target is 1 when it stood within the zone of the target base and 0 when it
+ * stood only at the flock.
+ *
+ * <p>edge_turrets is how many lone Missile Turrets the flock takes on instead of pricing them as a defense, see
+ * AirHarassTargeting.edgeTurrets, on ENTRY_CHECK and TICK rows. An EDGE_TURRET row is written the first time a
+ * Mutalisk of the harass attacks such a Turret, with its unit id in edge_turret_id. A UNIT_RETARGET row is written
+ * when a Mutalisk leaves a target that is still alive for one of higher value, a Worker over a non-Worker or an edge
+ * Turret over anything else: retarget_old_id and retarget_old_type name the
+ * target it left, retarget_new_id and retarget_new_type the one it took, retarget_old_distance and
+ * retarget_new_distance the pixels from the flock's center to each, and retarget_old_tier and retarget_new_tier the
+ * AirHarassTargeting.Tier each was in, NONE for a target with no tier or no longer a visible contact.
+ *
+ * <p>defense_zones is how many defense groups the flock turned away from are remembered, see AirHarassDefenseZones, and
+ * zone_units how many remembered anti-air units not otherwise known are priced from them, on ENTRY_CHECK and TICK
+ * rows. An AA_REACTION row carries in zone_units the members of the zone it recorded. A ZONE_RECORD row is written
+ * with it, at the trigger's position (center_x, center_y), carrying the trigger in aa_trigger_type and aa_trigger_id,
+ * aa_at_target, the members in zone_units and the zones now remembered in defense_zones. A ZONE_CLEAR row is written
+ * for every zone dropped, at the zone's center, with the frames it was remembered in zone_age and why it went in
+ * zone_cause (SEEN_CLEAR: its ground was in sight and its last member not known, MOVED: its last member was known far
+ * from it, DEAD: its last member died, AGED: it passed the maximum age, LAPSED: the refusal of its base ran out) and
+ * the zones left in defense_zones; it carries no squad.
+ *
+ * <p>An APPROACH_PRICED row is written when a harass starts, and whenever the pricing of its approach to the strike
+ * point against the mobile anti-air that can reach the path or the target zone, see AirApproachPricing, changes its
+ * decision or reason, and for an entry the pricing refused when its decision changes. approach_decision is ENTER,
+ * REROUTE (fly around the mobile anti-air, or take another target) or ABORT, approach_reason CLEAR, DETOUR,
+ * TARGET_DEFENDED or NO_DETOUR, approach_mobile_aa the summed anti-air strength of the mobile units priced,
+ * approach_flock_strength the flock's own air-to-ground strength, approach_units how many mobile units were priced and
+ * tolerance the strength the flock accepts. A harass the pricing aborts in flight ends with exit_reason
+ * APPROACH_DEFENDED. A SNIPE row is written once for every target the flock committed a volley to: snipe_type, snipe_hp
+ * the target's hit points plus shields when committed, snipe_alpha the damage of the flock's volley against it, and
+ * snipe_killed 1 when the target died, 0 when it still stood a window after or the harass ended.
  *
  * <p>stalled is 1 when the squad's FIGHT and RETREAT crossings read as a stall, see AirStallDetector, and 0 when they
  * do not, on ENTRY_CHECK and ENTER rows; it is -1 while the IA_AIR_FLAP_ESCAPE switch is off, which leaves the stall
@@ -53,7 +86,12 @@ public class HarassLogger implements HarassSink {
             + "strike_y,center_x,center_y,mutas,healthy_mutas,flock_hp,hp_loss_fraction,tolerance,air_defense,"
             + "avoided_zones,workers_killed,buildings_killed,other_killed,mutas_lost,killed_type,contain_distance,"
             + "bases_under_attack,target_kind,flock_defense,aa_sighting_age,prober_hp,prober_peak_hp,prober_id,"
-            + "aa_known_cover,stalled,exposed_score,base_score";
+            + "aa_known_cover,stalled,exposed_score,base_score,aa_seen_frame,aa_turn_frame,aa_hp_lost,"
+            + "aa_trigger_type,aa_trigger_id,aa_at_target,edge_turrets,edge_turret_id,retarget_old_id,"
+            + "retarget_old_type,retarget_new_id,retarget_new_type,retarget_old_distance,retarget_new_distance,"
+            + "retarget_old_tier,retarget_new_tier,defense_zones,zone_units,zone_age,zone_cause,approach_decision,"
+            + "approach_reason,approach_mobile_aa,approach_flock_strength,approach_units,snipe_type,snipe_hp,"
+            + "snipe_alpha,snipe_killed";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -171,13 +209,42 @@ public class HarassLogger implements HarassSink {
         fields.add(Csv.name(row.getTargetKind()));
         fields.add(Csv.format(row.getFlockDefense()));
         fields.add(String.valueOf(row.getAaSightingAge()));
-        fields.add(String.valueOf(row.getProberHitPoints()));
-        fields.add(String.valueOf(row.getProberPeakHitPoints()));
-        fields.add(String.valueOf(row.getProberId()));
+        fields.add(String.valueOf(NOT_EVALUATED));
+        fields.add(String.valueOf(NOT_EVALUATED));
+        fields.add(String.valueOf(NOT_EVALUATED));
         fields.add(String.valueOf(row.getAaKnownCover()));
         fields.add(String.valueOf(row.getStalled()));
         fields.add(Csv.format(row.getExposedScore()));
         fields.add(Csv.format(row.getBaseScore()));
+        fields.add(String.valueOf(row.getAaSeenFrame()));
+        fields.add(String.valueOf(row.getAaTurnFrame()));
+        fields.add(String.valueOf(row.getAaHitPointsLost()));
+        fields.add(Csv.name(row.getAaTriggerType()));
+        fields.add(String.valueOf(row.getAaTriggerId()));
+        fields.add(String.valueOf(row.getAaAtTarget()));
+        fields.add(String.valueOf(row.getEdgeTurrets()));
+        fields.add(String.valueOf(row.getEdgeTurretId()));
+        fields.add(String.valueOf(row.getRetargetOldId()));
+        fields.add(Csv.name(row.getRetargetOldType()));
+        fields.add(String.valueOf(row.getRetargetNewId()));
+        fields.add(Csv.name(row.getRetargetNewType()));
+        fields.add(Csv.format(row.getRetargetOldDistance()));
+        fields.add(Csv.format(row.getRetargetNewDistance()));
+        fields.add(Csv.name(row.getRetargetOldTier()));
+        fields.add(Csv.name(row.getRetargetNewTier()));
+        fields.add(String.valueOf(row.getDefenseZones()));
+        fields.add(String.valueOf(row.getZoneUnits()));
+        fields.add(String.valueOf(row.getZoneAge()));
+        fields.add(Csv.name(row.getZoneCause()));
+        fields.add(Csv.name(row.getApproachDecision()));
+        fields.add(Csv.name(row.getApproachReason()));
+        fields.add(Csv.format(row.getApproachMobileAa()));
+        fields.add(Csv.format(row.getApproachFlockStrength()));
+        fields.add(String.valueOf(row.getApproachUnits()));
+        fields.add(Csv.name(row.getSnipeType()));
+        fields.add(String.valueOf(row.getSnipeHitPoints()));
+        fields.add(String.valueOf(row.getSnipeAlpha()));
+        fields.add(String.valueOf(row.getSnipeKilled()));
         return String.join(",", fields);
     }
 

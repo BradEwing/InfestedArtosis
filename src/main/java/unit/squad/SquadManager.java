@@ -229,7 +229,7 @@ public class SquadManager {
         this.agentFactory = new BWMirrorAgentFactory();
         this.containmentEvaluator = new ContainmentEvaluator(gameState);
         this.airHarass = new AirHarassController(game, gameState);
-        this.airReinforcer = new AirReinforcer(game, gameState);
+        this.airReinforcer = new AirReinforcer(game, gameState, airHarass::rememberedAntiAir);
     }
 
     public void updateFightSquads() {
@@ -1668,7 +1668,7 @@ public class SquadManager {
         if (activeAirSquad && reinforceActiveAirSquad(squad, closeThreats)) {
             return;
         }
-        airReinforcer.forget(squad);
+        airReinforcer.drop(squad, game.getFrameCount());
 
         int strength = squadStrength(squad);
         int moveOutThreshold = AirReinforcement.launchThreshold(calculateMoveOutThreshold(squad), squadStatus,
@@ -1776,9 +1776,8 @@ public class SquadManager {
     }
 
     /**
-     * Hands Mutalisks joining a harassing squad the HARASS role and its strike point, or its hold point while the
-     * harass probes, see {@link AirHarassController#destinationOf}, and adds their hit points to
-     * the ones the harass started with, so the reinforcement is not read as hit points regained.
+     * Hands Mutalisks joining a harassing squad the HARASS role and its strike point, and adds their hit points to the
+     * ones the harass started with, so the reinforcement is not read as hit points regained.
      *
      * @param squad harassing squad
      * @param joined units that just joined it
@@ -1791,7 +1790,7 @@ public class SquadManager {
             member.setFightTarget(null);
             member.setContainPosition(null);
             member.setRetreatTarget(null);
-            member.setHarassDestination(state == null ? null : AirHarassController.destinationOf(state, member));
+            member.setHarassDestination(state == null ? null : state.getStrikePoint());
             if (member.getUnitType() == UnitType.Zerg_Mutalisk) {
                 hitPoints += member.getUnit().getHitPoints();
             }
@@ -1812,7 +1811,8 @@ public class SquadManager {
      * the Overlord squad, since they would trail the Mutalisks into the enemy base.
      *
      * @param squad fight squad cleared to act
-     * @return true when the squad entered HARASS
+     * @return true when the squad entered HARASS; false while reinforcements fly to it, see
+     *     {@link AirReinforcer#holdsEntry}
      */
     private boolean tryEnterHarass(Squad squad) {
         int now = game.getFrameCount();
@@ -1825,7 +1825,9 @@ public class SquadManager {
         AirHarassEvaluator.ReentryHold hold = AirHarassEvaluator.reentryHold(Config.airFlapEscape,
                 squad.getHarassExitEngageFrame(), squad.getHarassExitEngageTarget(), stalled, now);
         if (!AirHarassEvaluator.entryCheckDue(squad.isAirSquad(), squad.isRetreatLocked(now) && !stalled,
-                squad.isFightLocked(now), now) || hold == AirHarassEvaluator.ReentryHold.ALL) {
+                squad.isFightLocked(now), now) || hold == AirHarassEvaluator.ReentryHold.ALL
+                || AirReinforcement.linkHoldApplies(gameState.getOpponentRace(), squad.getComposition())
+                && airReinforcer.holdsEntry(squad, now)) {
             return false;
         }
         Position heldTarget = hold == AirHarassEvaluator.ReentryHold.TARGET
@@ -1844,6 +1846,7 @@ public class SquadManager {
         }
         clearCombatSimSnapshot(squad);
         squad.setStatus(SquadStatus.HARASS);
+        airReinforcer.released(squad);
         if (squad instanceof AirSquad) {
             ((AirSquad) squad).getStallDetector().reset();
         }
@@ -2571,7 +2574,7 @@ public class SquadManager {
                     break;
                 }
                 if (AirHarassEvaluator.holdsBlindAdvance(squad.getHarassExitFrame(), now, enemyMeasured,
-                        squad.getStatus())) {
+                        squad.getStatus(), airReinforcer.isHolding(squad, now))) {
                     holdSquad(squad, managedFighters);
                     SquadDecisions.pathTaken(squad, DecisionPath.HARASS_HOLD);
                     break;

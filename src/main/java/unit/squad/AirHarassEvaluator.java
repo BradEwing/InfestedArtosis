@@ -57,8 +57,7 @@ public final class AirHarassEvaluator {
      * the exit applies. Otherwise NO_TARGET means no known enemy base holds enough heat to raid and no exposed group
      * was found, and DEFENDED means the flock stands in more anti-air than it tolerates, or some base holds enough
      * heat but every such point lies under more anti-air than the flock tolerates, whether or not the flock cooled
-     * the rest of the base by visiting it. PROBE is an ENTER on a base whose anti-air sighting is stale, see
-     * {@link AirHarassScouting#entryMode}.
+     * the rest of the base by visiting it.
      */
     public enum EntryVerdict {
         ENTER,
@@ -67,8 +66,7 @@ public final class AirHarassEvaluator {
         TOO_FEW,
         BASE_UNDER_ATTACK,
         NO_TARGET,
-        DEFENDED,
-        PROBE
+        DEFENDED
     }
 
     /**
@@ -76,8 +74,9 @@ public final class AirHarassEvaluator {
      *
      * <p>STRIKE_DEFENDED means the target keeps no strike point within the tolerance, and FLOCK_DEFENDED means the
      * flock's own center stands in more anti-air than it tolerates. Either can be anti-air the flock already knew
-     * about. PROBE_DEFENDED is a probe that found the base defended or lost or hurt its Mutalisk, and NEW_AA is
-     * anti-air seen for the first time inside the harass zone, see {@link AirHarassScouting}.
+     * about. NEW_AA is an anti-air structure seen for the first time at the harass zone or at the flock that the
+     * flock cannot answer, see {@link AirHarassScouting#antiAirReaction}. APPROACH_DEFENDED is an approach to the
+     * target that the mobile anti-air on it prices out and no other target replaces, see {@link AirApproachPricing}.
      */
     public enum ExitReason {
         BASE_UNDER_ATTACK,
@@ -87,8 +86,8 @@ public final class AirHarassEvaluator {
         FLOCK_DEFENDED,
         NO_TARGET,
         WIPED_OUT,
-        PROBE_DEFENDED,
-        NEW_AA
+        NEW_AA,
+        APPROACH_DEFENDED
     }
 
     /**
@@ -374,10 +373,31 @@ public final class AirHarassEvaluator {
      * @return true to hold
      */
     public static boolean holdsBlindAdvance(int harassExitFrame, int now, boolean enemyMeasured, SquadStatus status) {
-        if (harassExitFrame <= 0 || enemyMeasured || status == SquadStatus.FIGHT) {
+        return holdsBlindAdvance(harassExitFrame, now, enemyMeasured, status, false);
+    }
+
+    /**
+     * Whether a blind ADVANCE is held, as {@link #holdsBlindAdvance(int, int, boolean, SquadStatus)} reads it, or
+     * while reinforcements fly to the squad and hold its harass entry, see {@link AirReinforcement.LinkHold}, so the
+     * flock waits for them instead of marching on the enemy alone. A measured enemy and a squad already in FIGHT are
+     * never held.
+     *
+     * @param harassExitFrame frame the squad's last harass ended, or 0 when it never harassed
+     * @param now current frame
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param status the squad's status entering the tick
+     * @param linkHeld whether reinforcements fly to the squad inside the link hold window
+     * @return true to hold
+     */
+    public static boolean holdsBlindAdvance(int harassExitFrame, int now, boolean enemyMeasured, SquadStatus status,
+                                            boolean linkHeld) {
+        if (enemyMeasured || status == SquadStatus.FIGHT) {
             return false;
         }
-        return now - harassExitFrame <= REENTRY_HOLD_FRAMES;
+        if (linkHeld) {
+            return true;
+        }
+        return harassExitFrame > 0 && now - harassExitFrame <= REENTRY_HOLD_FRAMES;
     }
 
     /**
