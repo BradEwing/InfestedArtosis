@@ -2573,7 +2573,8 @@ public class SquadManager {
         }
         boolean lockHolds = fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold);
         if (bunkerGateReadsFightLock(squad.getStatus(), lockHolds, collapseHoldsMembers(squad, now),
-                squad.isCorneredFightHeld(now), baseThreatened(), bunkerGateRead.containsKey(squad.getId()))
+                squad.isCorneredFightHeld(now), baseThreatened(),
+                bunkerGateAlreadyRead(bunkerGateRead, bunkerHeldSquads, squad.getId()))
                 && bunkerGateHolds(squad, snapshot, result, BunkerAdvanceEntry.FIGHT_LOCK, managedFighters, now)) {
             return;
         }
@@ -2835,9 +2836,38 @@ public class SquadManager {
      * @param now current frame
      * @return true when the squad was held
      */
+    /**
+     * Whether the gate has read a squad and may leave it alone: it read the squad or a squad it was formed from, and
+     * the squad is not latched. A latched squad is read again whatever its status, so a merge with a squad that is
+     * already fighting does not hide a held squad from the gate.
+     *
+     * @param read the branch that last read each squad the gate read
+     * @param held the ids of the squads the gate latched
+     * @param squadId the squad's id
+     * @return true when the gate does not read the squad's fight lock
+     */
+    static boolean bunkerGateAlreadyRead(Map<String, BunkerAdvanceEntry> read, Set<String> held, String squadId) {
+        return read.containsKey(squadId) && !held.contains(squadId);
+    }
+
+    private boolean pricesLedgeredBunker(HorizonCombatSimulator.DebugSnapshot snapshot) {
+        if (snapshot == null) {
+            return false;
+        }
+        for (Position priced : snapshot.getPricedBunkers()) {
+            if (bunkerLosses.holds(priced)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private boolean bunkerGateHolds(Squad squad, HorizonCombatSimulator.DebugSnapshot snapshot,
                                     CombatSimulator.CombatResult result, BunkerAdvanceEntry entry,
                                     HashSet<ManagedUnit> managedFighters, int now) {
+        if (entry != BunkerAdvanceEntry.ADVANCE && !pricesLedgeredBunker(snapshot)) {
+            return false;
+        }
         BunkerAdvanceGate.Verdict verdict = bunkerAdvanceVerdict(squad, snapshot, simBreaksBunker(result, snapshot),
                 entry, now);
         if (verdict != null && verdict.isHeld()) {
@@ -2886,9 +2916,9 @@ public class SquadManager {
     }
 
     /**
-     * Writes a BUNKER_ATTACK row the first frame a ground squad id is in FIGHT within the gate's range of a living
-     * Bunker, naming the branch that read it when the gate did, so the share of Bunker attacks the gate saw can be
-     * counted.
+     * Writes a BUNKER_ATTACK row the first frame a ground squad id is in FIGHT within
+     * {@link BunkerCasualties#RADIUS} of a living Bunker, naming the branch that read it when the gate did, so the share of Bunker attacks the
+     * gate saw can be counted.
      *
      * @param squad the squad, after this frame's decision
      * @param now current frame
@@ -2900,7 +2930,7 @@ public class SquadManager {
         }
         Position center = squad.getCenter();
         BunkerAdvanceGate.Bunker nearest = BunkerAdvanceGate.nearestLiving(livingBunkers(), center);
-        if (nearest == null) {
+        if (nearest == null || center.getDistance(nearest.getPosition()) > BunkerCasualties.RADIUS) {
             return;
         }
         bunkerAttackLogged.add(squad.getId());

@@ -37,7 +37,7 @@ import java.util.Map;
  * window the loss counts, bunker_price the enemy strength the retreat was priced against and bunker_id, bunker_x,
  * bunker_y and bunker_hp the Bunker.
  *
- * <p>BUNKER_ATTACK: one row per ground squad id the first frame it is in FIGHT within the gate's range of a living
+ * <p>BUNKER_ATTACK: one row per ground squad id the first frame it is in FIGHT within 288 px of a living
  * Bunker. event is GATED when the gate read the squad, or a squad it was formed from, and entry names the branch that
  * read it, see {@link BunkerAdvanceEntry}; event is UNREAD otherwise. squad_x and squad_y are the squad centre.
  *

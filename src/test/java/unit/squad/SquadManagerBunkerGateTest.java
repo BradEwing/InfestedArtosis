@@ -101,4 +101,26 @@ class SquadManagerBunkerGateTest {
         assertEquals(BunkerAdvanceEntry.ADVANCE, read.get("merged"));
         assertFalse(read.containsKey("a"));
     }
+
+    @Test
+    void aHeldSquadMergedWithASquadThatWasReadStaysUnreadSoTheGateReadsItsFightLock() {
+        Set<String> held = new HashSet<>(Collections.singleton("held"));
+        Map<String, BunkerAdvanceEntry> read = new HashMap<>();
+        read.put("held", BunkerAdvanceEntry.ADVANCE);
+        read.put("other", BunkerAdvanceEntry.ADVANCE);
+
+        SquadManager.carryBunkerGate(held, read, Arrays.asList("held", "other"), "merged", true);
+
+        assertFalse(SquadManager.bunkerGateAlreadyRead(read, held, "merged"));
+    }
+
+    @Test
+    void aSquadTheGateReadAndDidNotHoldIsAlreadyRead() {
+        Set<String> held = new HashSet<>();
+        Map<String, BunkerAdvanceEntry> read = new HashMap<>();
+        read.put("squad", BunkerAdvanceEntry.ENGAGE);
+
+        assertTrue(SquadManager.bunkerGateAlreadyRead(read, held, "squad"));
+        assertFalse(SquadManager.bunkerGateAlreadyRead(read, held, "unseen"));
+    }
 }
