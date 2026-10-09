@@ -9,6 +9,7 @@ import info.tracking.terran.TerranMech;
 import info.tracking.terran.TerranWall;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
+import telemetry.PlanEvents;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -80,6 +81,8 @@ public class LearningManager {
     private boolean terranWallPersists;
     private boolean terranMechPersists;
     private String lastGameOpener = "";
+    private boolean historyEmpty;
+    private RacePrior.Report racePriorReport = new RacePrior.Report(false, RacePrior.raceKey(Race.Unknown), 0, 0);
 
     private BuildOrderFactory buildOrderFactory;
     private LearningHistoryRepository historyRepository;
@@ -100,6 +103,7 @@ public class LearningManager {
         try {
             LearningHistory history = historyRepository.load();
             this.opponentRecord = recordAccumulator.reconstruct(history);
+            historyEmpty = history.games().isEmpty();
             GameRecord lastGame = history.lastGame();
             if (lastGame != null) {
                 lastGameDetectedStrategies = lastGame.getDetectedStrategies();
@@ -114,9 +118,24 @@ public class LearningManager {
         }
 
         ensureOpenersInOpponentRecord();
+        seedRacePrior();
         decisions.setTerranWallPersists(terranWallPersists);
         decisions.setTerranMechPersists(terranMechPersists);
         decisions.setOpener(determineOpener());
+    }
+
+    private void seedRacePrior() {
+        racePriorReport = RacePrior.load().seedIfNew(Config.racePrior, historyEmpty, opponentRecord,
+                recordAccumulator, RacePrior.raceKey(opponentRace));
+    }
+
+    /**
+     * Returns the telemetry label for the game start: whether the prior applied, the race key and the arms seeded,
+     * then the chosen opener and whether its record was prior-only.
+     */
+    public String racePriorLabel() {
+        return racePriorReport.label() + ";opener=" + openerName() + ";prior_only="
+                + (currentOpener != null && currentOpener.isPriorOnly() ? "y" : "n");
     }
 
     /**
@@ -192,6 +211,15 @@ public class LearningManager {
                 .losses(0)
                 .build());
         }
+    }
+
+    private void reportBuildPick(String buildOrderName) {
+        if (!racePriorReport.applied()) {
+            return;
+        }
+        Record record = opponentRecord.getBuildOrderRecord().get(buildOrderName);
+        PlanEvents.racePrior("build=" + buildOrderName + ";prior_only="
+                + (record != null && record.isPriorOnly() ? "y" : "n"));
     }
 
     private BuildOrder determineOpener() {
@@ -279,6 +307,11 @@ public class LearningManager {
             return null;
         }
         String leader = selectableLeader(ucbWinner, playableOpeners, opponentRecord, mapName);
+        String seeded = PriorSafetyNet.apply(leader, playableOpeners, opponentRecord.getOpenerRecord(),
+                opponentRecord.getGameTimestamps());
+        if (!seeded.equals(leader)) {
+            return seeded;
+        }
         String probe = selectForcedReprobe(leader, playableOpeners, opponentRecord, mapName);
         return probe != null ? probe : leader;
     }
@@ -308,7 +341,7 @@ public class LearningManager {
             mapName,
             opponentRecord.getMapSpecificOpenerRecord(),
             opponentRecord.getOpenerRecord(),
-            opponentRecord.totalGames(),
+            opponentRecord.selectionGames(),
             opponentRecord.getGameTimestamps()
         );
     }
@@ -328,13 +361,13 @@ public class LearningManager {
         Map<String, Record> openerRecords = opponentRecord.getOpenerRecord();
         List<Long> gameTimestamps = opponentRecord.getGameTimestamps();
         Record leader = openerRecords.get(ucbWinner);
-        if (leader == null || leader.games() == 0
+        if (leader == null || leader.realGames() == 0
                 || leader.discountedMean(gameTimestamps) >= PROBE_GATE_WIN_RATE) {
             return null;
         }
         for (String opener : playableOpeners) {
             Record record = openerRecords.get(opener);
-            if (record == null || record.games() == 0) {
+            if (record == null || record.realGames() == 0) {
                 continue;
             }
             OpenerSelectionLog log = OpenerSelectionLog.from(record, gameTimestamps, PROBE_DORMANT_GAMES);
@@ -354,7 +387,7 @@ public class LearningManager {
                 continue;
             }
             Record record = openerRecords.get(opener);
-            if (record == null || record.games() == 0) {
+            if (record == null || record.realGames() == 0) {
                 eligible.add(opener);
                 continue;
             }
@@ -371,7 +404,7 @@ public class LearningManager {
         for (String opener : eligible) {
             double score = WeightedUCBCalculator.calculateWeightedScore(opener, mapName,
                     opponentRecord.getMapSpecificOpenerRecord(), openerRecords,
-                    opponentRecord.totalGames(), gameTimestamps);
+                    opponentRecord.selectionGames(), gameTimestamps);
             if (score > bestScore) {
                 bestScore = score;
                 best = opener;
@@ -386,7 +419,7 @@ public class LearningManager {
      */
     static boolean isBenched(String opener, OpponentRecord opponentRecord) {
         Record record = opponentRecord.getOpenerRecord().get(opener);
-        if (record == null || record.games() == 0) {
+        if (record == null || record.realGames() == 0) {
             return false;
         }
         OpenerSelectionLog log = OpenerSelectionLog.from(record,
@@ -406,7 +439,7 @@ public class LearningManager {
      */
     private static boolean isExposureCapped(String opener, OpponentRecord opponentRecord) {
         Record record = opponentRecord.getOpenerRecord().get(opener);
-        if (record == null || record.games() == 0) {
+        if (record == null || record.realGames() == 0) {
             return false;
         }
         OpenerSelectionLog log = OpenerSelectionLog.from(record,
@@ -425,7 +458,7 @@ public class LearningManager {
     private static int recentUnprovenExposure(OpponentRecord opponentRecord) {
         int unprovenExposure = 0;
         for (Record record : opponentRecord.getOpenerRecord().values()) {
-            if (record.games() == 0) {
+            if (record.realGames() == 0) {
                 continue;
             }
             OpenerSelectionLog log = OpenerSelectionLog.from(record, opponentRecord.getGameTimestamps(),
@@ -448,14 +481,16 @@ public class LearningManager {
                                        OpponentRecord opponentRecord,
                                        String mapName,
                                        String openerName) {
-        return WeightedUCBCalculator.findBestStrategy(
+        String picked = WeightedUCBCalculator.findBestStrategy(
             leastPairedCandidates(candidateNames, opponentRecord, openerName),
             mapName,
             opponentRecord.getMapSpecificBuildOrderRecord(),
             opponentRecord.getBuildOrderRecord(),
-            opponentRecord.totalGames(),
+            opponentRecord.selectionGames(),
             opponentRecord.getGameTimestamps()
         );
+        return PriorSafetyNet.apply(picked, candidateNames, opponentRecord.getBuildOrderRecord(),
+                opponentRecord.getGameTimestamps());
     }
 
     private static List<String> leastPairedCandidates(List<String> candidateNames,
@@ -463,7 +498,7 @@ public class LearningManager {
                                                       String openerName) {
         for (String name : candidateNames) {
             Record record = opponentRecord.getBuildOrderRecord().get(name);
-            if (record == null || record.games() == 0 || record.wins() > 0) {
+            if (record == null || record.realGames() == 0 || record.wins() > 0) {
                 return candidateNames;
             }
         }
@@ -519,6 +554,7 @@ public class LearningManager {
                 .collect(Collectors.toList());
         
         String bestBuildOrder = selectBuildOrderName(candidateNames, opponentRecord, currentMapName, openerName());
+        reportBuildPick(bestBuildOrder);
         
         return buildOrderFactory.getByName(bestBuildOrder);
     }

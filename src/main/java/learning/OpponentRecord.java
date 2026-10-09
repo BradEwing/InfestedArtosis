@@ -31,8 +31,18 @@ public class OpponentRecord {
     @Default
     private Map<String, Integer> openerBuildPairs = new HashMap<>();
 
+    @Default
+    private int priorGames = 0;
+
     public int totalGames() {
         return this.wins + this.losses;
+    }
+
+    /**
+     * Returns the games the bandit has evidence from: the real games plus the seeded prior pseudo-games.
+     */
+    public int selectionGames() {
+        return totalGames() + priorGames;
     }
     
     public void ensureMapSpecificRecords() {

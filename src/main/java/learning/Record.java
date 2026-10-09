@@ -24,6 +24,31 @@ public class Record implements UCBRecord {
     private List<Long> winTimestamps = new ArrayList<>();
     @Default
     private List<Long> lossTimestamps = new ArrayList<>();
+    @Default
+    private int priorWins = 0;
+    @Default
+    private int priorGames = 0;
+
+    /**
+     * Returns the games played for real: the recorded games less the seeded prior pseudo-games.
+     */
+    public int realGames() {
+        return games() - priorGames;
+    }
+
+    /**
+     * Returns whether every game on this record is a seeded pseudo-game from the per-race prior.
+     */
+    public boolean isPriorOnly() {
+        return priorGames > 0 && realGames() == 0;
+    }
+
+    /**
+     * Returns the win rate of the seeded pseudo-games, or 0 when none were seeded.
+     */
+    public double priorMean() {
+        return priorGames == 0 ? 0.0 : (double) priorWins / priorGames;
+    }
 
     public int netWins() {
         return wins - losses;
@@ -79,12 +104,12 @@ public class Record implements UCBRecord {
         List<Long> sortedPriorGames = GlobalGameOrder.sortedAscending(priorGames);
         double discountedGames = 0.0;
         for (Long winTimestamp : winTimestamps) {
-            if (winTimestamp < timestamp) {
+            if (winTimestamp < timestamp && winTimestamp != LearningRecordAccumulator.PRIOR_TIMESTAMP) {
                 discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, winTimestamp, sortedPriorGames);
             }
         }
         for (Long lossTimestamp : lossTimestamps) {
-            if (lossTimestamp < timestamp) {
+            if (lossTimestamp < timestamp && lossTimestamp != LearningRecordAccumulator.PRIOR_TIMESTAMP) {
                 discountedGames += GlobalGameOrder.weight(UCBSelectionPolicy.GAMMA, lossTimestamp, sortedPriorGames);
             }
         }
