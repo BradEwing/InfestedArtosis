@@ -229,6 +229,7 @@ public class Bot extends DefaultBWListener {
         planEventLogger = new PlanEventLogger(game, gameState, opener == null ? "" : opener.getName(),
                 bwem.getMap().getStartingLocations().size());
         PlanEvents.register(planEventLogger);
+        PlanEvents.racePrior(learningManager.racePriorLabel());
         gameState.reportClaimedBases();
         gameState.reportTerranMechPrior();
     }
