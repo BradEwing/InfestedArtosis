@@ -4,6 +4,8 @@ import macro.BunkerStance.Status;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import telemetry.BunkerAdvanceEvent;
+import telemetry.BunkerAttackEvent;
+import telemetry.BunkerLossEvent;
 import telemetry.BunkerSink;
 import telemetry.BunkerStanceEvent;
 import telemetry.BunkerTelemetry;
@@ -42,6 +44,14 @@ class BunkerStanceTest {
 
             @Override
             public void onHold(int frame, String event, String reason) {
+            }
+
+            
+            public void onLoss(BunkerLossEvent event) {
+            }
+
+            
+            public void onAttack(BunkerAttackEvent event) {
             }
 
             @Override
@@ -195,13 +205,15 @@ class BunkerStanceTest {
         BunkerStance stance = new BunkerStance();
         DroneRound round = new DroneRound();
 
-        stance.setStatus(Status.ACTIVE);
+        stance.setStatus(Status.ACTIVE, true);
         assertEquals(1, stance.getStanceId());
         round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS));
         stance.record(FRAME, round, DRONES, WORKERS);
+        stance.onRoundDroneMade();
+        stance.onRoundDroneMade();
         round.update(FRAME + 100, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS + 2));
         stance.record(FRAME + 100, round, DRONES + 2, WORKERS + 2);
-        stance.setStatus(Status.ATTACKING);
+        stance.setStatus(Status.ATTACKING, true);
         round.update(FRAME + 200, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS + 2));
         stance.record(FRAME + 200, round, DRONES + 2, WORKERS + 2);
 
@@ -220,20 +232,103 @@ class BunkerStanceTest {
     }
 
     @Test
-    void aStanceThatEndsAndStandsAgainIsANewStance() {
+    void aStanceThatEndsWithItsHoldAndStandsAgainIsANewStance() {
         recordStances();
         BunkerStance stance = new BunkerStance();
         DroneRound round = new DroneRound();
 
-        stance.setStatus(Status.ACTIVE);
+        stance.setStatus(Status.ACTIVE, true);
         stance.record(FRAME, round, DRONES, WORKERS);
-        stance.setStatus(Status.NOT_HELD);
+        stance.setStatus(Status.NOT_HELD, false);
         stance.record(FRAME + 10, round, DRONES, WORKERS);
-        stance.setStatus(Status.ACTIVE);
+        stance.setStatus(Status.ACTIVE, true);
         stance.record(FRAME + 20, round, DRONES, WORKERS);
 
         assertEquals(3, events.size());
         assertEquals(2, events.get(2).getStanceId());
         assertEquals(0, events.get(2).getExtraPlanned());
+    }
+
+    @Test
+    void aStanceThatEndsBecauseTheArmyAttacksAndStandsAgainInTheSameHoldKeepsItsIdAndOpensNoSecondRound() {
+        BunkerStance stance = new BunkerStance();
+        DroneRound round = new DroneRound();
+
+        stance.setStatus(Status.ACTIVE, true);
+        int firstId = stance.getStanceId();
+        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(firstId, WORKERS));
+        round.update(FRAME + 10, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(firstId, WORKERS + 2));
+        stance.setStatus(Status.ATTACKING, true);
+        stance.setStatus(Status.ACTIVE, true);
+        round.update(FRAME + 20, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS + 2));
+
+        assertEquals(firstId, stance.getStanceId());
+        assertFalse(round.isActive());
+    }
+
+    @Test
+    void aHoldThatEndsAndAnotherThatStartsGetOneRoundEach() {
+        BunkerStance stance = new BunkerStance();
+        DroneRound round = new DroneRound();
+
+        stance.setStatus(Status.ACTIVE, true);
+        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS));
+        round.update(FRAME + 10, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS + 2));
+        stance.setStatus(Status.NOT_HELD, false);
+        stance.setStatus(Status.ACTIVE, true);
+        round.update(FRAME + 20, NO_ARMY, DRONES + 2, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS + 2));
+
+        assertEquals(2, stance.getStanceId());
+        assertTrue(round.isActive());
+    }
+
+    @Test
+    void onlyDronesMadeWhileTheStanceRoundIsOpenCountAsMade() {
+        recordStances();
+        BunkerStance stance = new BunkerStance();
+        DroneRound round = new DroneRound();
+
+        stance.setStatus(Status.ACTIVE, true);
+        stance.onRoundDroneMade();
+        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS));
+        stance.record(FRAME, round, DRONES, WORKERS);
+        stance.onRoundDroneMade();
+        round.update(FRAME + 100, NO_ARMY, DRONES + 5, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS + 5));
+        stance.record(FRAME + 100, round, DRONES + 5, WORKERS + 5);
+        stance.onRoundDroneMade();
+
+        BunkerStanceEvent close = events.get(events.size() - 1);
+        assertEquals("ROUND_CLOSE", close.getEvent());
+        assertEquals(1, close.getExtraMade());
+    }
+
+    @Test
+    void anOpenRoundAndStanceAreFlushedWhenTheGameEnds() {
+        recordStances();
+        BunkerStance stance = new BunkerStance();
+        DroneRound round = new DroneRound();
+
+        stance.setStatus(Status.ACTIVE, true);
+        round.update(FRAME, NO_ARMY, DRONES, 0, WANTED, CALM, stance(stance.getStanceId(), WORKERS));
+        stance.record(FRAME, round, DRONES, WORKERS);
+        stance.onRoundDroneMade();
+        stance.flush(FRAME + 500);
+
+        assertEquals(4, events.size());
+        assertEquals("ROUND_CLOSE", events.get(2).getEvent());
+        assertEquals("GAME_END", events.get(2).getReason());
+        assertEquals(1, events.get(2).getExtraMade());
+        assertEquals("STANCE_END", events.get(3).getEvent());
+        assertEquals("GAME_END", events.get(3).getReason());
+        assertEquals(1, events.get(3).getExtraMade());
+    }
+
+    @Test
+    void aFlushWithNothingOpenWritesNothing() {
+        recordStances();
+
+        new BunkerStance().flush(FRAME);
+
+        assertTrue(events.isEmpty());
     }
 }

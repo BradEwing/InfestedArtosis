@@ -45,4 +45,20 @@ public final class BunkerTelemetry {
         }
         current.onStance(event);
     }
+
+    public static void loss(BunkerLossEvent event) {
+        BunkerSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onLoss(event);
+    }
+
+    public static void attack(BunkerAttackEvent event) {
+        BunkerSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onAttack(event);
+    }
 }

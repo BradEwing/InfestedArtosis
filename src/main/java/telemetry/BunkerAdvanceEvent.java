@@ -38,34 +38,61 @@ public final class BunkerAdvanceEvent {
         }
     }
 
+    /**
+     * The squad a decision concerned.
+     */
+    @Getter
+    public static final class Squad {
+        private final String id;
+        private final int size;
+        private final int lingCount;
+        private final int x;
+        private final int y;
+
+        /**
+         * @param id the squad's id
+         * @param size units in the squad
+         * @param lingCount Zerglings in the squad
+         * @param x the squad centre's x in pixels
+         * @param y the squad centre's y in pixels
+         */
+        public Squad(String id, int size, int lingCount, int x, int y) {
+            this.id = id;
+            this.size = size;
+            this.lingCount = lingCount;
+            this.x = x;
+            this.y = y;
+        }
+    }
+
     private final int frame;
-    private final String squadId;
+    private final Squad squad;
     private final BunkerAdvanceReason reason;
     private final double ownStrength;
     private final double bunkerPrice;
     private final double releaseRatio;
-    private final int lingCount;
+    private final BunkerAdvanceEntry entry;
     private final Bunker bunker;
 
     /**
      * @param frame the frame of the decision
-     * @param squadId the squad's id
+     * @param squad the squad
      * @param reason what the gate decided and why
      * @param ownStrength the squad's priced strength
      * @param bunkerPrice the enemy strength the recorded loss was priced against, 0 when no loss is on record
      * @param releaseRatio the strength ratio that releases the record, 0 when no loss is on record
-     * @param lingCount Zerglings in the squad
+     * @param entry the branch where the gate read the squad
      * @param bunker the Bunker the decision concerned
      */
-    public BunkerAdvanceEvent(int frame, String squadId, BunkerAdvanceReason reason, double ownStrength,
-                              double bunkerPrice, double releaseRatio, int lingCount, Bunker bunker) {
+    public BunkerAdvanceEvent(int frame, Squad squad, BunkerAdvanceReason reason, double ownStrength,
+                              double bunkerPrice, double releaseRatio, BunkerAdvanceEntry entry, Bunker bunker) {
         this.frame = frame;
-        this.squadId = squadId;
+        this.squad = squad;
         this.reason = reason;
         this.ownStrength = ownStrength;
         this.bunkerPrice = bunkerPrice;
         this.releaseRatio = releaseRatio;
-        this.lingCount = lingCount;
+        this.entry = entry;
         this.bunker = bunker;
     }
 }

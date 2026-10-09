@@ -27,4 +27,18 @@ public interface BunkerSink {
      * @param event the change
      */
     void onStance(BunkerStanceEvent event);
+
+    /**
+     * A retreat was booked as a loss at a Bunker.
+     *
+     * @param event the loss
+     */
+    void onLoss(BunkerLossEvent event);
+
+    /**
+     * A ground squad was first seen in FIGHT near a living Bunker under its id.
+     *
+     * @param event the attack
+     */
+    void onAttack(BunkerAttackEvent event);
 }

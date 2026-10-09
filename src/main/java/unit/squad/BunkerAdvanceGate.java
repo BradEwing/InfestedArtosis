@@ -4,7 +4,9 @@ import bwapi.Position;
 import telemetry.BunkerAdvanceReason;
 
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Whether a squad may advance into a Bunker it has been priced as unable to break.
@@ -15,7 +17,8 @@ import java.util.List;
  * ratio the sim needs plus {@link #RELEASE_HYSTERESIS}, when the Bunker is seen damaged by
  * {@link #DAMAGE_RELEASE_HIT_POINTS} or more, when the Bunker is no longer a living observed Bunker, or when
  * {@link #HOLD_TIMEOUT_FRAMES} pass since the retreat. The gate never applies to the first attack on a Bunker, which
- * has no loss on record, and never while the sim reads the squad as breaking the Bunker.
+ * has no loss on record, and never while the sim reads the squad as breaking the Bunker with the squad at least as
+ * strong as the strength the loss was priced against.
  */
 public final class BunkerAdvanceGate {
 
@@ -61,6 +64,42 @@ public final class BunkerAdvanceGate {
             }
         }
         return false;
+    }
+
+    /**
+     * Picks the Bunkers a retreat is booked as a loss against: the living Bunkers the sim priced, away from our own
+     * bases, that units of ours died at within the last {@link #HOLD_TIMEOUT_FRAMES} frames. A retreat on sight, with
+     * nothing lost at the Bunker, books nothing.
+     *
+     * @param living the living observed Bunkers
+     * @param priced where the Bunkers the sim priced stand
+     * @param ownBases the centres of our bases
+     * @param casualties the deaths of ours at Bunkers
+     * @param frame the frame of the retreat
+     * @return each Bunker to book, mapped to the units of ours lost at it, in the order of {@code living}
+     */
+    static Map<Bunker, Integer> lostAt(Collection<Bunker> living, Collection<Position> priced,
+                                       Collection<Position> ownBases, BunkerCasualties casualties, int frame) {
+        Map<Bunker, Integer> lost = new LinkedHashMap<>();
+        for (Bunker bunker : living) {
+            if (!priced.contains(bunker.getPosition()) || nearAny(bunker.getPosition(), ownBases)) {
+                continue;
+            }
+            int units = casualties.lostSince(bunker.getPosition(), frame - HOLD_TIMEOUT_FRAMES);
+            if (units > 0) {
+                lost.put(bunker, units);
+            }
+        }
+        return lost;
+    }
+
+    /**
+     * @param living the living observed Bunkers
+     * @param center a position
+     * @return the Bunker nearest the position within {@link #RELEVANT_RANGE}, or null when none stands there
+     */
+    static Bunker nearestLiving(Collection<Bunker> living, Position center) {
+        return nearest(living, center);
     }
 
     /**
@@ -200,7 +239,7 @@ public final class BunkerAdvanceGate {
         if (!melee) {
             return verdict(BunkerAdvanceReason.NOT_MELEE, find(living, first), first);
         }
-        if (simBreaks) {
+        if (simBreaks && ownStrength >= first.getPrice()) {
             return verdict(BunkerAdvanceReason.SIM_BREAKS, find(living, first), first);
         }
         Verdict released = null;

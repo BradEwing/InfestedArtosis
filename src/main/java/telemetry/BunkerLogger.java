@@ -20,8 +20,9 @@ import java.util.Map;
  * ALLOWED and reason names why, see {@link BunkerAdvanceReason}. own_strength is the squad's priced strength,
  * bunker_price the enemy strength the recorded loss was priced against, ratio their quotient and release_ratio the
  * ratio at which the record ends; price, ratio and release_ratio are blank while no loss is on record. ling_count is
- * the Zerglings in the squad, bunker_id, bunker_x, bunker_y and bunker_hp the Bunker, blank when none is known. A
- * squad's row repeats only when its reason or Bunker changes or {@link #ADVANCE_REPEAT_FRAMES} pass.
+ * the Zerglings in the squad, squad_size the units, squad_x and squad_y the squad centre, entry the branch that read
+ * the squad, see {@link BunkerAdvanceEntry}, bunker_id, bunker_x, bunker_y and bunker_hp the Bunker, blank when none
+ * is known. A squad's row repeats only when its reason or Bunker changes or {@link #ADVANCE_REPEAT_FRAMES} pass.
  *
  * <p>BUNKER_ENGAGEMENT: one row per closed engagement of ours at a Bunker, see {@link BunkerEngagements}.
  * start_frame and end_frame bound it, our_lost counts our units that died in it, lings_lost the Zerglings among
@@ -31,10 +32,20 @@ import java.util.Map;
  * <p>BUNKER_HOLD: one row each time the Bunker hold of the enemy natural or main starts (event HOLD_START, reason
  * NATURAL, MAIN or NATURAL+MAIN) or ends (event HOLD_END, reason BROKEN or CLEARED).
  *
+ * <p>LOSS_RECORDED: one row each time a retreat is booked as a loss at a Bunker, which needs units of ours to have
+ * died at it. squad_id and squad_size name the retreating squad, units_lost the units that died at the Bunker in the
+ * window the loss counts, bunker_price the enemy strength the retreat was priced against and bunker_id, bunker_x,
+ * bunker_y and bunker_hp the Bunker.
+ *
+ * <p>BUNKER_ATTACK: one row per ground squad id the first frame it is in FIGHT within the gate's range of a living
+ * Bunker. event is GATED when the gate read the squad, or a squad it was formed from, and entry names the branch that
+ * read it, see {@link BunkerAdvanceEntry}; event is UNREAD otherwise. squad_x and squad_y are the squad centre.
+ *
  * <p>BUNKER_ECON: one row per change of a Bunker stance, see the Drone round it opens. event is STANCE_START,
- * ROUND_OPEN, ROUND_CLOSE or STANCE_END, stance_id numbers the game's stances from 1, drones counts Drones hatched or
- * in an egg, workers the workers gathering, extra_planned the Drones the stance's rounds were set to add so far and
- * extra_made the Drones its closed rounds added so far.
+ * ROUND_OPEN, ROUND_CLOSE or STANCE_END. stance_id numbers the game's Bunker holds from 1, and a stance that re-forms
+ * inside one hold keeps the id. drones counts Drones hatched or in an egg, workers the workers gathering,
+ * extra_planned the Drones the hold's rounds were set to add so far and extra_made the Drones queued at
+ * {@link macro.plan.UnitPlan#DRONE_ROUND_PRIORITY} that were made so far.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -46,7 +57,8 @@ public class BunkerLogger implements BunkerSink {
         "game_id", "frame", "row_type", "event", "squad_id", "reason", "own_strength", "bunker_price", "ratio",
         "release_ratio", "ling_count", "bunker_id", "bunker_x", "bunker_y", "bunker_hp", "engagement_id",
         "start_frame", "end_frame", "our_lost", "lings_lost", "enemy_lost", "hp_start", "hp_end", "broken",
-        "stance_id", "drones", "workers", "extra_planned", "extra_made"
+        "stance_id", "drones", "workers", "extra_planned", "extra_made", "squad_size", "squad_x", "squad_y", "entry",
+        "units_lost"
     };
 
     static final String HEADER = String.join(",", COLUMNS);
@@ -134,6 +146,7 @@ public class BunkerLogger implements BunkerSink {
         }
 
         try {
+            gameState.getBunkerStance().flush(game.getFrameCount());
             writeEngagements(engagements.finish(game.getFrameCount()));
             writer.flush();
         } catch (RuntimeException e) {
@@ -148,14 +161,40 @@ public class BunkerLogger implements BunkerSink {
         }
 
         try {
-            AdvanceKey last = lastAdvance.get(event.getSquadId());
+            AdvanceKey last = lastAdvance.get(event.getSquad().getId());
             if (last != null && last.reason == event.getReason() && last.bunkerId == event.getBunker().getId()
                     && event.getFrame() - last.frame < ADVANCE_REPEAT_FRAMES) {
                 return;
             }
-            lastAdvance.put(event.getSquadId(),
+            lastAdvance.put(event.getSquad().getId(),
                     new AdvanceKey(event.getReason(), event.getBunker().getId(), event.getFrame()));
             writer.append(advanceRow(gameId, event));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onLoss(BunkerLossEvent event) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(lossRow(gameId, event));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onAttack(BunkerAttackEvent event) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(attackRow(gameId, event));
         } catch (RuntimeException e) {
             disable();
         }
@@ -258,7 +297,7 @@ public class BunkerLogger implements BunkerSink {
     static String advanceRow(String gameId, BunkerAdvanceEvent event) {
         String[] cells = blankRow(gameId, event.getFrame(), "BUNKER_ADVANCE",
                 event.getReason().isHeld() ? "HELD" : "ALLOWED");
-        set(cells, "squad_id", Csv.sanitize(event.getSquadId()));
+        set(cells, "squad_id", Csv.sanitize(event.getSquad().getId()));
         set(cells, "reason", event.getReason().name());
         set(cells, "own_strength", Csv.format(event.getOwnStrength()));
         if (event.getBunkerPrice() > 0) {
@@ -266,7 +305,11 @@ public class BunkerLogger implements BunkerSink {
             set(cells, "ratio", Csv.format(event.getOwnStrength() / event.getBunkerPrice()));
             set(cells, "release_ratio", Csv.format(event.getReleaseRatio()));
         }
-        set(cells, "ling_count", String.valueOf(event.getLingCount()));
+        set(cells, "ling_count", String.valueOf(event.getSquad().getLingCount()));
+        set(cells, "squad_size", String.valueOf(event.getSquad().getSize()));
+        set(cells, "squad_x", String.valueOf(event.getSquad().getX()));
+        set(cells, "squad_y", String.valueOf(event.getSquad().getY()));
+        set(cells, "entry", event.getEntry().name());
         set(cells, "bunker_id", known(event.getBunker().getId()));
         set(cells, "bunker_x", known(event.getBunker().getX()));
         set(cells, "bunker_y", known(event.getBunker().getY()));
@@ -320,6 +363,47 @@ public class BunkerLogger implements BunkerSink {
         set(cells, "workers", String.valueOf(event.getWorkers()));
         set(cells, "extra_planned", String.valueOf(event.getExtraPlanned()));
         set(cells, "extra_made", String.valueOf(event.getExtraMade()));
+        return String.join(",", cells);
+    }
+
+    /**
+     * Builds a LOSS_RECORDED row in {@link #HEADER} order.
+     *
+     * @return the row
+     */
+    static String lossRow(String gameId, BunkerLossEvent event) {
+        String[] cells = blankRow(gameId, event.getFrame(), "LOSS_RECORDED", "RECORDED");
+        set(cells, "squad_id", Csv.sanitize(event.getSquadId()));
+        set(cells, "squad_size", String.valueOf(event.getSquadSize()));
+        set(cells, "units_lost", String.valueOf(event.getUnitsLost()));
+        set(cells, "bunker_price", Csv.format(event.getPrice()));
+        set(cells, "bunker_id", known(event.getBunker().getId()));
+        set(cells, "bunker_x", known(event.getBunker().getX()));
+        set(cells, "bunker_y", known(event.getBunker().getY()));
+        set(cells, "bunker_hp", known(event.getBunker().getHitPoints()));
+        return String.join(",", cells);
+    }
+
+    /**
+     * Builds a BUNKER_ATTACK row in {@link #HEADER} order. event is GATED when the gate read the squad or a squad it
+     * was formed from, UNREAD otherwise.
+     *
+     * @return the row
+     */
+    static String attackRow(String gameId, BunkerAttackEvent event) {
+        String[] cells = blankRow(gameId, event.getFrame(), "BUNKER_ATTACK",
+                event.getGateRead() == null ? "UNREAD" : "GATED");
+        set(cells, "squad_id", Csv.sanitize(event.getSquadId()));
+        set(cells, "squad_size", String.valueOf(event.getSquadSize()));
+        set(cells, "squad_x", String.valueOf(event.getSquadX()));
+        set(cells, "squad_y", String.valueOf(event.getSquadY()));
+        if (event.getGateRead() != null) {
+            set(cells, "entry", event.getGateRead().name());
+        }
+        set(cells, "bunker_id", known(event.getBunker().getId()));
+        set(cells, "bunker_x", known(event.getBunker().getX()));
+        set(cells, "bunker_y", known(event.getBunker().getY()));
+        set(cells, "bunker_hp", known(event.getBunker().getHitPoints()));
         return String.join(",", cells);
     }
 }

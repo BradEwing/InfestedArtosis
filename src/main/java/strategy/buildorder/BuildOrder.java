@@ -212,7 +212,8 @@ public abstract class BuildOrder {
         boolean threatened = DroneRound.isThreatened(rushed, gameState.isAllIn(), enemiesAtBases);
         int frame = gameState.getGameTime().getFrames();
         BunkerStance bunkerStance = gameState.getBunkerStance();
-        bunkerStance.setStatus(bunkerStanceStatus(gameState));
+        StrategyTracker tracker = gameState.getStrategyTracker();
+        bunkerStance.setStatus(bunkerStanceStatus(gameState), tracker != null && tracker.isBunkerHeld());
         gameState.getDroneRound().update(frame, livingArmy, drones, droneRoundDroneCap(gameState),
                 gameState.workersWanted(), threatened, containHeld(gameState, frame));
         bunkerStance.record(frame, gameState.getDroneRound(), drones, gameState.numWorkers());
@@ -224,7 +225,22 @@ public abstract class BuildOrder {
                 strategyTracker != null && strategyTracker.isBunkerHeld(),
                 strategyTracker != null && strategyTracker.isBunkerBroken(),
                 gameState.isArmyAttacking(),
-                allowsBunkerEcon(gameState));
+                bunkerEconAllowed(this, gameState.getSelectedStrategy(), gameState));
+    }
+
+    /**
+     * Whether the Bunker economy answer may run under a build and the strategy selected for the game. Either one
+     * opting out, see {@link #allowsBunkerEcon}, turns it off, so an all-in strategy chosen before the opener hands
+     * over keeps its economy through the opener.
+     *
+     * @param active the active build order
+     * @param selectedStrategy the strategy selected for the game, or null when none is yet
+     * @param gameState current game state
+     * @return true when neither opts out
+     */
+    static boolean bunkerEconAllowed(BuildOrder active, BuildOrder selectedStrategy, GameState gameState) {
+        return active.allowsBunkerEcon(gameState)
+                && (selectedStrategy == null || selectedStrategy.allowsBunkerEcon(gameState));
     }
 
     /**

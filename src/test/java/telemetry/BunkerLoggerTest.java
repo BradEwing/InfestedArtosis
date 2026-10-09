@@ -39,7 +39,8 @@ class BunkerLoggerTest {
     }
 
     private static BunkerAdvanceEvent advance(int frame, String squad, BunkerAdvanceReason reason) {
-        return new BunkerAdvanceEvent(frame, squad, reason, 150, 100, 1.69, 30, BUNKER);
+        return new BunkerAdvanceEvent(frame, new BunkerAdvanceEvent.Squad(squad, 40, 30, 640, 720), reason, 150, 100,
+                1.69, BunkerAdvanceEntry.ADVANCE, BUNKER);
     }
 
     @Test
@@ -64,8 +65,8 @@ class BunkerLoggerTest {
 
     @Test
     void anAllowedAdvanceWithNoLossOnRecordLeavesThePriceColumnsBlank() {
-        BunkerAdvanceEvent event = new BunkerAdvanceEvent(7000, "squad-a", BunkerAdvanceReason.NO_LOSS, 150, 0, 0, 30,
-                BunkerAdvanceEvent.Bunker.NONE);
+        BunkerAdvanceEvent event = new BunkerAdvanceEvent(7000, new BunkerAdvanceEvent.Squad("squad-a", 40, 30, 640, 720),
+                BunkerAdvanceReason.NO_LOSS, 150, 0, 0, BunkerAdvanceEntry.FIGHT_LOCK, BunkerAdvanceEvent.Bunker.NONE);
 
         String[] fields = fields(BunkerLogger.advanceRow("game-1", event));
 
@@ -144,5 +145,43 @@ class BunkerLoggerTest {
         List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
         assertEquals(BunkerLogger.HEADER, lines.get(0));
         assertEquals(5, lines.size());
+    }
+
+    @Test
+    void anAdvanceRowCarriesTheSquadSizeCentreAndTheBranchThatReadIt() {
+        String[] fields = fields(BunkerLogger.advanceRow("game-1", advance(7000, "squad-a",
+                BunkerAdvanceReason.HELD_LOSS)));
+
+        assertEquals("40", fields[columnIndex("squad_size")]);
+        assertEquals("640", fields[columnIndex("squad_x")]);
+        assertEquals("720", fields[columnIndex("squad_y")]);
+        assertEquals("ADVANCE", fields[columnIndex("entry")]);
+    }
+
+    @Test
+    void aLossRowCarriesTheSquadTheUnitsLostAndThePrice() {
+        String[] fields = fields(BunkerLogger.lossRow("game-1",
+                new BunkerLossEvent(7000, "squad-a", 18, 5, 120, BUNKER)));
+
+        assertEquals("LOSS_RECORDED", fields[columnIndex("row_type")]);
+        assertEquals("squad-a", fields[columnIndex("squad_id")]);
+        assertEquals("18", fields[columnIndex("squad_size")]);
+        assertEquals("5", fields[columnIndex("units_lost")]);
+        assertEquals("120.0000", fields[columnIndex("bunker_price")]);
+        assertEquals("7", fields[columnIndex("bunker_id")]);
+    }
+
+    @Test
+    void anAttackRowIsGatedWhenTheGateReadTheSquadAndUnreadOtherwise() {
+        String[] gated = fields(BunkerLogger.attackRow("game-1",
+                new BunkerAttackEvent(7000, "squad-a", 18, 640, 720, BunkerAdvanceEntry.FIGHT_LOCK, BUNKER)));
+        String[] unread = fields(BunkerLogger.attackRow("game-1",
+                new BunkerAttackEvent(7000, "squad-b", 18, 640, 720, null, BUNKER)));
+
+        assertEquals("BUNKER_ATTACK", gated[columnIndex("row_type")]);
+        assertEquals("GATED", gated[columnIndex("event")]);
+        assertEquals("FIGHT_LOCK", gated[columnIndex("entry")]);
+        assertEquals("UNREAD", unread[columnIndex("event")]);
+        assertEquals("", unread[columnIndex("entry")]);
     }
 }

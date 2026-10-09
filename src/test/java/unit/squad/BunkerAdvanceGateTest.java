@@ -300,4 +300,22 @@ class BunkerAdvanceGateTest {
                 ownBases));
         assertFalse(BunkerAdvanceGate.nearAny(BUNKER, Collections.emptyList()));
     }
+
+    @Test
+    void anEngageBelowThePricedStrengthIsNotSimBreaksAndIsHeld() {
+        BunkerAdvanceGate.Verdict verdict = evaluate(ledgerWithLoss(), living(FULL_HIT_POINTS), PRICE - 1, true, true,
+                LOSS_FRAME + 10);
+
+        assertTrue(verdict.isHeld());
+        assertEquals(BunkerAdvanceReason.HELD_LOSS, verdict.getReason());
+    }
+
+    @Test
+    void anEngageAtOrAboveThePricedStrengthButBelowTheReleaseIsSimBreaks() {
+        BunkerAdvanceGate.Verdict verdict = evaluate(ledgerWithLoss(), living(FULL_HIT_POINTS), PRICE, true, true,
+                LOSS_FRAME + 10);
+
+        assertFalse(verdict.isHeld());
+        assertEquals(BunkerAdvanceReason.SIM_BREAKS, verdict.getReason());
+    }
 }

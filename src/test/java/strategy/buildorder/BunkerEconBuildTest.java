@@ -33,4 +33,20 @@ class BunkerEconBuildTest {
         assertTrue(new ThreeHatchLurker().allowsBunkerEcon(null));
         assertTrue(new TwoHatchMuta().allowsBunkerEcon(null));
     }
+
+    @Test
+    void anAllInStrategySelectedBeforeTheOpenerHandsOverTurnsTheEconomyAnswerOffThroughTheOpener() {
+        assertFalse(BuildOrder.bunkerEconAllowed(new ThreeHatchBeforePool(), new SpeedlingAllIn(), null));
+    }
+
+    @Test
+    void anAllInOpenerTurnsTheEconomyAnswerOffWhateverStrategyIsSelected() {
+        assertFalse(BuildOrder.bunkerEconAllowed(new FourPool(), new TwoHatchMuta(), null));
+    }
+
+    @Test
+    void withNoAllInOnEitherSideTheEconomyAnswerRuns() {
+        assertTrue(BuildOrder.bunkerEconAllowed(new ThreeHatchBeforePool(), new TwoHatchMuta(), null));
+        assertTrue(BuildOrder.bunkerEconAllowed(new ThreeHatchBeforePool(), null, null));
+    }
 }

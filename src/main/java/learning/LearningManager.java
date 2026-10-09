@@ -117,6 +117,15 @@ public class LearningManager {
         decisions.setTerranWallPersists(terranWallPersists);
         decisions.setTerranMechPersists(terranMechPersists);
         decisions.setOpener(determineOpener());
+        decisions.setStrategy(forcedStrategy());
+    }
+
+    private BuildOrder forcedStrategy() {
+        if (config.strategyOverride == null) {
+            return null;
+        }
+        BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);
+        return forced != null && !forced.isOpener() ? forced : null;
     }
 
     /**

@@ -6,6 +6,8 @@ import bwapi.UnitType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import telemetry.BunkerAdvanceEvent;
+import telemetry.BunkerAttackEvent;
+import telemetry.BunkerLossEvent;
 import telemetry.BunkerSink;
 import telemetry.BunkerStanceEvent;
 import telemetry.BunkerTelemetry;
@@ -36,6 +38,14 @@ class BunkerHoldTest {
             @Override
             public void onHold(int frame, String event, String reason) {
                 holds.add(frame + ":" + event + ":" + reason);
+            }
+
+            
+            public void onLoss(BunkerLossEvent event) {
+            }
+
+            
+            public void onAttack(BunkerAttackEvent event) {
             }
 
             @Override
