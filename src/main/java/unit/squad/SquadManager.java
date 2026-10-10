@@ -90,6 +90,7 @@ public class SquadManager {
 
     private Squad overlords = new Squad();
     private final Map<Integer, Position> overlordAnchors = new HashMap<>();
+    private List<Position> overlordSpores = new ArrayList<>();
 
     public HashSet<Squad> fightSquads = new HashSet<>();
 
@@ -1053,8 +1054,9 @@ public class SquadManager {
             byId.put(overlord.getID(), managedUnit);
         }
 
-        List<OverlordParking.Decision> decisions = OverlordParking.plan(positions, overlordAnchors, spores, main,
-                naturalCenter(), (id, anchor) -> byId.get(id).getUnit().getDistance(anchor));
+        List<OverlordParking.Decision> decisions = OverlordParking.plan(positions, overlordAnchors, spores,
+                overlordSpores, main, naturalCenter(), (id, anchor) -> byId.get(id).getUnit().getDistance(anchor));
+        overlordSpores = spores;
         for (OverlordParking.Decision decision: decisions) {
             ManagedUnit managedUnit = byId.get(decision.unitId);
             if (decision.changed()) {

@@ -20,9 +20,11 @@ public final class OverlordParking {
     public enum Reason {
         /** The Overlord had no anchor yet. */
         ASSIGNED,
-        /** The anchor was the main base and a Spore Colony completed. */
+        /** The anchor was the main base and the new anchor's Spore Colony completed since the last frame. */
         SPORE_COMPLETED,
-        /** The previous Spore Colony still stands and another is now preferred. */
+        /** The anchor was the main base and a Spore Colony that already stood came within reach. */
+        IN_REACH,
+        /** The previous Spore Colony still stands and another is now preferred, by reach or by distance. */
         NEARER_SPORE,
         /** The previous Spore Colony no longer stands. */
         SPORE_LOST,
@@ -97,20 +99,21 @@ public final class OverlordParking {
      * @param parked position of each parked Overlord by unit id
      * @param anchors the anchor each Overlord had last frame by unit id
      * @param spores centers of our completed Spore Colonies
+     * @param previousSpores centers of our completed Spore Colonies last frame
      * @param main the main base position
      * @param natural the natural's center, or null when it is not known
      * @param distanceToAnchor the distance from the Overlord with the given id to a position
      * @return one decision per parked Overlord, in the order of the parked map
      */
     public static List<Decision> plan(Map<Integer, Position> parked, Map<Integer, Position> anchors,
-                                      List<Position> spores, Position main, Position natural,
-                                      ToDoubleBiFunction<Integer, Position> distanceToAnchor) {
+                                      List<Position> spores, List<Position> previousSpores,
+                                      Position main, Position natural, ToDoubleBiFunction<Integer, Position> distanceToAnchor) {
         List<Decision> decisions = new ArrayList<>();
         for (Map.Entry<Integer, Position> entry : parked.entrySet()) {
             int id = entry.getKey();
             Position anchor = pickAnchor(entry.getValue(), spores, main, natural);
             Position previous = anchors.put(id, anchor);
-            Reason reason = anchor.equals(previous) ? null : reason(previous, anchor, spores, main);
+            Reason reason = anchor.equals(previous) ? null : reason(previous, anchor, spores, previousSpores, main);
             boolean idle = distanceToAnchor.applyAsDouble(id, anchor) < ARRIVE_DISTANCE;
             decisions.add(new Decision(id, entry.getValue(), anchor, previous, reason, idle));
         }
@@ -155,10 +158,12 @@ public final class OverlordParking {
      * @param previous the anchor the Overlord had, or null for none
      * @param anchor the anchor it has now
      * @param spores centers of our completed Spore Colonies
+     * @param previousSpores centers of our completed Spore Colonies last frame
      * @param main the main base position
      * @return why the anchor changed
      */
-    public static Reason reason(Position previous, Position anchor, List<Position> spores, Position main) {
+    public static Reason reason(Position previous, Position anchor, List<Position> spores,
+                                List<Position> previousSpores, Position main) {
         if (previous == null) {
             return Reason.ASSIGNED;
         }
@@ -166,7 +171,7 @@ public final class OverlordParking {
             return anchor.equals(main) ? Reason.OUT_OF_REACH : Reason.NEARER_SPORE;
         }
         if (previous.equals(main)) {
-            return Reason.SPORE_COMPLETED;
+            return previousSpores.contains(anchor) ? Reason.IN_REACH : Reason.SPORE_COMPLETED;
         }
         return Reason.SPORE_LOST;
     }

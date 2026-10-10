@@ -13,7 +13,7 @@ import java.util.List;
  *
  * <p>ANCHOR rows are written when a parked Overlord's anchor changes: x and y are where the Overlord is, from_x and
  * from_y the previous anchor, -1 for none, to_x and to_y the new anchor, and reason one of ASSIGNED,
- * SPORE_COMPLETED, NEARER_SPORE, SPORE_LOST or OUT_OF_REACH. role is the Overlord's role, and spore_distance and
+ * SPORE_COMPLETED, IN_REACH, NEARER_SPORE, SPORE_LOST or OUT_OF_REACH. role is the Overlord's role, and spore_distance and
  * parked are -1 and -1 on these rows.
  *
  * <p>DIED rows are written for every Overlord of ours that dies: x and y are the death position, role its role,

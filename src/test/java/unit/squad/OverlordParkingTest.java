@@ -44,14 +44,15 @@ class OverlordParkingTest {
     @Test
     void reasonNamesWhyTheAnchorChanged() {
         List<Position> spores = Collections.singletonList(NEAR);
-        assertEquals(OverlordParking.Reason.ASSIGNED, OverlordParking.reason(null, NEAR, spores, MAIN));
-        assertEquals(OverlordParking.Reason.SPORE_COMPLETED, OverlordParking.reason(MAIN, NEAR, spores, MAIN));
-        assertEquals(OverlordParking.Reason.NEARER_SPORE, OverlordParking.reason(NEAR, new Position(550, 550), spores, MAIN));
+        assertEquals(OverlordParking.Reason.ASSIGNED, OverlordParking.reason(null, NEAR, spores, spores, MAIN));
+        assertEquals(OverlordParking.Reason.SPORE_COMPLETED, OverlordParking.reason(MAIN, NEAR, spores, Collections.emptyList(), MAIN));
+        assertEquals(OverlordParking.Reason.NEARER_SPORE, OverlordParking.reason(NEAR, new Position(550, 550), spores, spores, MAIN));
         assertEquals(OverlordParking.Reason.SPORE_LOST,
-                OverlordParking.reason(FAR, NEAR, spores, MAIN));
+                OverlordParking.reason(FAR, NEAR, spores, spores, MAIN));
         assertEquals(OverlordParking.Reason.SPORE_LOST,
-                OverlordParking.reason(FAR, MAIN, Collections.emptyList(), MAIN));
-        assertEquals(OverlordParking.Reason.OUT_OF_REACH, OverlordParking.reason(NEAR, MAIN, spores, MAIN));
+                OverlordParking.reason(FAR, MAIN, Collections.emptyList(), Collections.emptyList(), MAIN));
+        assertEquals(OverlordParking.Reason.IN_REACH, OverlordParking.reason(MAIN, NEAR, spores, spores, MAIN));
+        assertEquals(OverlordParking.Reason.OUT_OF_REACH, OverlordParking.reason(NEAR, MAIN, spores, spores, MAIN));
     }
 
     @Test
@@ -63,7 +64,7 @@ class OverlordParkingTest {
 
     private static List<OverlordParking.Decision> plan(Map<Integer, Position> parked, Map<Integer, Position> anchors,
                                                        List<Position> spores) {
-        return OverlordParking.plan(parked, anchors, spores, MAIN, null, (id, anchor) -> parked.get(id).getDistance(anchor));
+        return OverlordParking.plan(parked, anchors, spores, spores, MAIN, null, (id, anchor) -> parked.get(id).getDistance(anchor));
     }
 
     @Test
@@ -152,7 +153,7 @@ class OverlordParkingTest {
     @Test
     void theNaturalsSporeIsReachableFromTheMainBeyondTheCap() {
         Position overlord = new Position(100, 100);
-        assertTrue(overlord.getDistance(NATURAL_SPORE) > 0);
+        assertTrue(overlord.getDistance(NATURAL_SPORE) > OverlordParking.MAX_ANCHOR_DISTANCE);
         assertEquals(NATURAL_SPORE,
                 OverlordParking.pickAnchor(overlord, Collections.singletonList(NATURAL_SPORE), MAIN, NATURAL));
     }
@@ -191,5 +192,21 @@ class OverlordParkingTest {
         assertFalse(OverlordParking.isParked(false, UnitRole.IDLE));
         assertTrue(OverlordParking.isParked(true, UnitRole.IDLE));
         assertTrue(OverlordParking.isParked(true, UnitRole.RALLY));
+    }
+
+    @Test
+    void planPrefersTheNaturalsSporeAndLabelsAnInReachSwitch() {
+        Position overlord = new Position(1000, 700);
+        List<Position> spores = Arrays.asList(THIRD_SPORE, NATURAL_SPORE);
+        Map<Integer, Position> parked = new LinkedHashMap<>();
+        parked.put(1, overlord);
+        Map<Integer, Position> anchors = new HashMap<>();
+        anchors.put(1, MAIN);
+
+        OverlordParking.Decision decision = OverlordParking.plan(parked, anchors, spores, spores, MAIN, NATURAL,
+                (id, anchor) -> parked.get(id).getDistance(anchor)).get(0);
+
+        assertEquals(NATURAL_SPORE, decision.anchor);
+        assertEquals(OverlordParking.Reason.IN_REACH, decision.reason);
     }
 }
