@@ -64,6 +64,19 @@ class NinePoolGasHatchSpeed8DTest {
     }
 
     @Test
+    void aTerranOrProtossRaceEndsTheOpenerOnceSpeedAndTheOpeningPairsAreQueued() {
+        int opening = NinePoolGasHatchSpeed8D.FIRST_ZERGLING_PLANS + NinePoolGasHatchSpeed8D.SECOND_ZERGLING_PLANS;
+
+        for (Race race : new Race[]{Race.Terran, Race.Protoss}) {
+            assertTrue(NinePoolGasHatchSpeed8D.earlyHandOver(race, true, opening), race.toString());
+            assertFalse(NinePoolGasHatchSpeed8D.earlyHandOver(race, false, opening), race.toString());
+            assertFalse(NinePoolGasHatchSpeed8D.earlyHandOver(race, true, opening - 1), race.toString());
+        }
+        assertFalse(NinePoolGasHatchSpeed8D.earlyHandOver(Race.Zerg, true, opening));
+        assertFalse(NinePoolGasHatchSpeed8D.earlyHandOver(Race.Unknown, true, opening));
+    }
+
+    @Test
     void theHandOverAfterTheRaceResolvesIsLegalForEachRace() {
         for (Race race : new Race[]{Race.Terran, Race.Protoss, Race.Zerg}) {
             Set<BuildOrder> next = OpenerTransitions.forRace(race);
