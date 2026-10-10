@@ -3,7 +3,9 @@ package unit.squad;
 import bwapi.Position;
 import telemetry.BunkerAdvanceReason;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -149,12 +151,15 @@ public final class BunkerAdvanceGate {
         private final Bunker bunker;
         private final double price;
         private final double releaseRatio;
+        private final List<Position> evaluated;
 
-        Verdict(BunkerAdvanceReason reason, Bunker bunker, double price, double releaseRatio) {
+        Verdict(BunkerAdvanceReason reason, Bunker bunker, double price, double releaseRatio,
+                List<Position> evaluated) {
             this.reason = reason;
             this.bunker = bunker;
             this.price = price;
             this.releaseRatio = releaseRatio;
+            this.evaluated = evaluated;
         }
 
         public BunkerAdvanceReason getReason() {
@@ -184,6 +189,13 @@ public final class BunkerAdvanceGate {
          */
         public double getReleaseRatio() {
             return releaseRatio;
+        }
+
+        /**
+         * @return where the Bunkers stand whose records the decision weighed, in the order it weighed them
+         */
+        public List<Position> getEvaluated() {
+            return evaluated;
         }
     }
 
@@ -228,7 +240,7 @@ public final class BunkerAdvanceGate {
     public static Verdict evaluate(boolean gateOn, BunkerLossLedger ledger, Collection<Bunker> living,
                                    Situation squad, int frame) {
         if (!gateOn) {
-            return new Verdict(BunkerAdvanceReason.NO_BUNKER, null, 0, 0);
+            return new Verdict(BunkerAdvanceReason.NO_BUNKER, null, 0, 0, Collections.emptyList());
         }
         Position squadCenter = squad.center;
         double ownStrength = squad.ownStrength;
@@ -239,30 +251,33 @@ public final class BunkerAdvanceGate {
         Bunker nearestLiving = nearest(living, squadCenter);
         if (relevant.isEmpty()) {
             return nearestLiving == null
-                    ? new Verdict(BunkerAdvanceReason.NO_BUNKER, null, 0, 0)
-                    : new Verdict(BunkerAdvanceReason.NO_LOSS, nearestLiving, 0, 0);
+                    ? new Verdict(BunkerAdvanceReason.NO_BUNKER, null, 0, 0, Collections.emptyList())
+                    : new Verdict(BunkerAdvanceReason.NO_LOSS, nearestLiving, 0, 0, Collections.emptyList());
         }
         BunkerLossLedger.Entry first = relevant.get(0);
         if (!melee) {
-            return verdict(BunkerAdvanceReason.NOT_MELEE, find(living, first), first);
+            return verdict(BunkerAdvanceReason.NOT_MELEE, find(living, first), first, positions(relevant));
         }
         if (simBreaks && ownStrength >= first.getPrice()) {
-            return verdict(BunkerAdvanceReason.SIM_BREAKS, find(living, first), first);
+            return verdict(BunkerAdvanceReason.SIM_BREAKS, find(living, first), first,
+                    Collections.singletonList(first.getPosition()));
         }
         Verdict released = null;
+        List<Position> examined = new ArrayList<>();
         for (BunkerLossLedger.Entry entry : relevant) {
+            examined.add(entry.getPosition());
             Bunker bunker = find(living, entry);
             BunkerAdvanceReason reason = releaseReason(entry, bunker, ownStrength, frame);
             if (reason == null) {
                 double releaseStrength = entry.getPrice() * entry.getReleaseRatio();
                 if (!squad.latched && ownStrength >= releaseStrength * (1 - REHOLD_HYSTERESIS)) {
-                    return verdict(BunkerAdvanceReason.IN_PRICE_BAND, bunker, entry);
+                    return verdict(BunkerAdvanceReason.IN_PRICE_BAND, bunker, entry, examined);
                 }
-                return verdict(BunkerAdvanceReason.HELD_LOSS, bunker, entry);
+                return verdict(BunkerAdvanceReason.HELD_LOSS, bunker, entry, examined);
             }
             ledger.remove(entry);
             if (released == null) {
-                released = verdict(reason, bunker, entry);
+                released = verdict(reason, bunker, entry, examined);
             }
         }
         return released;
@@ -285,8 +300,17 @@ public final class BunkerAdvanceGate {
         return null;
     }
 
-    private static Verdict verdict(BunkerAdvanceReason reason, Bunker bunker, BunkerLossLedger.Entry entry) {
-        return new Verdict(reason, bunker, entry.getPrice(), entry.getReleaseRatio());
+    private static Verdict verdict(BunkerAdvanceReason reason, Bunker bunker, BunkerLossLedger.Entry entry,
+                                   List<Position> evaluated) {
+        return new Verdict(reason, bunker, entry.getPrice(), entry.getReleaseRatio(), evaluated);
+    }
+
+    private static List<Position> positions(List<BunkerLossLedger.Entry> entries) {
+        List<Position> positions = new ArrayList<>();
+        for (BunkerLossLedger.Entry entry : entries) {
+            positions.add(entry.getPosition());
+        }
+        return positions;
     }
 
     private static Bunker find(Collection<Bunker> living, BunkerLossLedger.Entry entry) {

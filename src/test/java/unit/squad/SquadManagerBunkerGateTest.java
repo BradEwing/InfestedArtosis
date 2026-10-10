@@ -7,6 +7,7 @@ import telemetry.BunkerAdvanceEntry;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -15,6 +16,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SquadManagerBunkerGateTest {
+
+    private static final Position X = new Position(1000, 1000);
+    private static final Position Y = new Position(1500, 1000);
 
     @Test
     void theGateReadsAnAdvanceIntoFightOnlyFromASquadNotAlreadyFighting() {
@@ -92,7 +96,7 @@ class SquadManagerBunkerGateTest {
     void aSquadFormedFromASquadTheGateReadTakesTheRead() {
         Set<String> held = new HashSet<>();
         BunkerGateReads reads = new BunkerGateReads();
-        reads.record("a", BunkerAdvanceEntry.ADVANCE, 100);
+        reads.record("a", BunkerAdvanceEntry.ADVANCE, 100, Collections.singletonList(X), true);
 
         SquadManager.carryBunkerGate(held, reads, Arrays.asList("a", "b"), "merged", true);
 
@@ -102,97 +106,120 @@ class SquadManagerBunkerGateTest {
     }
 
     @Test
-    void aMergeTakesTheLatestReadOfItsSources() {
+    void aMergeTakesTheLatestReadAndTheLatestWeighingOfEachBunker() {
         BunkerGateReads reads = new BunkerGateReads();
-        reads.record("a", BunkerAdvanceEntry.ADVANCE, 100);
-        reads.record("b", BunkerAdvanceEntry.FIGHT_LOCK, 300);
+        reads.record("a", BunkerAdvanceEntry.ADVANCE, 100, Arrays.asList(X, Y), true);
+        reads.record("b", BunkerAdvanceEntry.FIGHT_LOCK, 300, Collections.singletonList(X), true);
 
         SquadManager.carryBunkerGate(new HashSet<>(), reads, Arrays.asList("a", "b"), "merged", true);
 
         assertEquals(300, reads.get("merged").getFrame());
         assertEquals(BunkerAdvanceEntry.FIGHT_LOCK, reads.get("merged").getEntry());
+        assertTrue(reads.readSince("merged", losses(X, 250), true));
+        assertFalse(reads.readSince("merged", losses(Y, 250), true));
+        assertTrue(reads.readSince("merged", losses(Y, 50), true));
     }
 
     @Test
     void aHeldSquadMergedWithASquadThatWasReadStaysUnreadSoTheGateReadsItsFightLock() {
         Set<String> held = new HashSet<>(Collections.singleton("held"));
         BunkerGateReads reads = new BunkerGateReads();
-        reads.record("held", BunkerAdvanceEntry.ADVANCE, 100);
-        reads.record("other", BunkerAdvanceEntry.ADVANCE, 100);
+        reads.record("held", BunkerAdvanceEntry.ADVANCE, 100, Collections.singletonList(X), true);
+        reads.record("other", BunkerAdvanceEntry.ADVANCE, 100, Collections.singletonList(X), true);
 
         SquadManager.carryBunkerGate(held, reads, Arrays.asList("held", "other"), "merged", true);
 
-        assertFalse(SquadManager.bunkerGateAlreadyRead(reads, held, "merged", BunkerLossLedger.NONE));
+        assertFalse(SquadManager.bunkerGateAlreadyRead(reads, held, "merged", Collections.emptyMap(), true));
     }
 
     @Test
     void aSquadTheGateReadAndDidNotHoldIsAlreadyReadWhileNoLossIsOnRecordAfterTheRead() {
         Set<String> held = new HashSet<>();
         BunkerGateReads reads = new BunkerGateReads();
-        reads.record("squad", BunkerAdvanceEntry.ENGAGE, 100);
+        reads.record("squad", BunkerAdvanceEntry.ENGAGE, 100, Collections.singletonList(X), true);
 
-        assertTrue(SquadManager.bunkerGateAlreadyRead(reads, held, "squad", BunkerLossLedger.NONE));
-        assertTrue(SquadManager.bunkerGateAlreadyRead(reads, held, "squad", 99));
-        assertFalse(SquadManager.bunkerGateAlreadyRead(reads, held, "unseen", BunkerLossLedger.NONE));
+        assertTrue(SquadManager.bunkerGateAlreadyRead(reads, held, "squad", Collections.emptyMap(), true));
+        assertTrue(SquadManager.bunkerGateAlreadyRead(reads, held, "squad", losses(X, 99), true));
+        assertFalse(SquadManager.bunkerGateAlreadyRead(reads, held, "unseen", Collections.emptyMap(), true));
     }
 
     @Test
     void aSquadReadNoLossThenAMergedChildFightLockedTowardABunkerWithALaterLossIsGated() {
         Set<String> held = new HashSet<>();
         BunkerGateReads reads = new BunkerGateReads();
-        reads.record("parent", BunkerAdvanceEntry.ADVANCE, 100);
-        int lossFrame = 200;
+        reads.record("parent", BunkerAdvanceEntry.ADVANCE, 100, Collections.emptyList(), true);
 
         SquadManager.carryBunkerGate(held, reads, Arrays.asList("parent", "other"), "child", true);
+        boolean alreadyRead = SquadManager.bunkerGateAlreadyRead(reads, held, "child", losses(X, 200), true);
 
-        assertFalse(SquadManager.bunkerGateAlreadyRead(reads, held, "child", lossFrame));
-        assertTrue(SquadManager.bunkerGateReadsFightLock(SquadStatus.FIGHT, true, false, false, false,
-                SquadManager.bunkerGateAlreadyRead(reads, held, "child", lossFrame)));
+        assertFalse(alreadyRead);
+        assertTrue(SquadManager.bunkerGateReadsFightLock(SquadStatus.FIGHT, true, false, false, false, alreadyRead));
     }
 
     @Test
     void aSplitChildOfASquadReadBeforeALossIsGatedAndOneReadAfterItIsNot() {
         Set<String> held = new HashSet<>();
         BunkerGateReads reads = new BunkerGateReads();
-        reads.record("parent", BunkerAdvanceEntry.FIGHT_LOCK, 300);
+        reads.record("parent", BunkerAdvanceEntry.FIGHT_LOCK, 300, Collections.singletonList(X), true);
 
         SquadManager.carryBunkerGate(held, reads, Collections.singletonList("parent"), "child", false);
 
-        assertFalse(SquadManager.bunkerGateAlreadyRead(reads, held, "child", 400));
-        assertTrue(SquadManager.bunkerGateAlreadyRead(reads, held, "child", 200));
+        assertFalse(SquadManager.bunkerGateAlreadyRead(reads, held, "child", losses(X, 400), true));
+        assertTrue(SquadManager.bunkerGateAlreadyRead(reads, held, "child", losses(X, 200), true));
     }
 
     @Test
-    void aReadInTheSameFrameAsALossDoesNotStandForIt() {
+    void aReadNearOneBunkerDoesNotStandForALossAtAnotherItNeverWeighed() {
         BunkerGateReads reads = new BunkerGateReads();
-        reads.record("squad", BunkerAdvanceEntry.ADVANCE, 500);
+        reads.record("squad", BunkerAdvanceEntry.ADVANCE, 500, Collections.singletonList(X), true);
 
-        assertFalse(reads.readSince("squad", 500));
-        assertTrue(reads.readSince("squad", 499));
+        assertFalse(reads.readSince("squad", losses(Y, 100), true));
     }
 
     @Test
-    void theLedgerReportsTheLatestLossFrameNearAPositionAndAtABunker() {
+    void aReadThatWeighedASquadAsNotMostlyMeleeDoesNotStandForTheSquadOnceItIsMostlyMelee() {
+        BunkerGateReads reads = new BunkerGateReads();
+        reads.record("squad", BunkerAdvanceEntry.ADVANCE, 500, Collections.singletonList(X), false);
+
+        assertTrue(reads.readSince("squad", losses(X, 100), false));
+        assertFalse(reads.readSince("squad", losses(X, 100), true));
+    }
+
+    @Test
+    void aReadInTheSameFrameAsALossDoesNotStandForItButTheTelemetryCountsIt() {
+        BunkerGateReads reads = new BunkerGateReads();
+        reads.record("squad", BunkerAdvanceEntry.ADVANCE, 500, Collections.singletonList(X), true);
+
+        assertFalse(reads.readSince("squad", losses(X, 500), true));
+        assertTrue(reads.readSince("squad", losses(X, 499), true));
+        assertTrue(reads.weighedAtOrAfter("squad", X, 500, true));
+        assertFalse(reads.weighedAtOrAfter("squad", X, 501, true));
+    }
+
+    @Test
+    void theLedgerReportsTheLossFramesNearAPositionAndAtABunker() {
         BunkerLossLedger ledger = new BunkerLossLedger();
-        Position near = new Position(1000, 1000);
         Position far = new Position(9000, 9000);
-        ledger.record(near, 1, 300, 350, 100, 1.0);
+        ledger.record(X, 1, 300, 350, 100, 1.0);
         ledger.record(far, 2, 900, 350, 100, 1.0);
 
-        assertEquals(300, ledger.latestFrame(new Position(800, 1000), BunkerAdvanceGate.RELEVANT_RANGE));
-        assertEquals(BunkerLossLedger.NONE,
-                ledger.latestFrame(new Position(5000, 5000), BunkerAdvanceGate.RELEVANT_RANGE));
-        assertEquals(300, ledger.frameAt(near));
+        assertEquals(losses(X, 300),
+                ledger.framesNear(new Position(800, 1000), BunkerAdvanceGate.RELEVANT_RANGE));
+        assertTrue(ledger.framesNear(new Position(5000, 5000), BunkerAdvanceGate.RELEVANT_RANGE).isEmpty());
+        assertEquals(300, ledger.frameAt(X));
         assertEquals(BunkerLossLedger.NONE, ledger.frameAt(new Position(1, 1)));
     }
 
     @Test
     void aRepeatedRetreatAtABunkerMovesItsLossFrameForward() {
         BunkerLossLedger ledger = new BunkerLossLedger();
-        Position bunker = new Position(1000, 1000);
-        ledger.record(bunker, 1, 300, 350, 100, 1.0);
-        ledger.record(bunker, 1, 700, 350, 100, 1.0);
+        ledger.record(X, 1, 300, 350, 100, 1.0);
+        ledger.record(X, 1, 700, 350, 100, 1.0);
 
-        assertEquals(700, ledger.frameAt(bunker));
+        assertEquals(700, ledger.frameAt(X));
+    }
+
+    private static Map<Position, Integer> losses(Position bunker, int frame) {
+        return Collections.singletonMap(bunker, frame);
     }
 }

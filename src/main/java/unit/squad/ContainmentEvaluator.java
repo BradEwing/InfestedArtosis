@@ -4,12 +4,10 @@ import bwapi.Position;
 import bwapi.Race;
 import bwapi.UnitType;
 import bwem.Base;
-import config.Config;
 import info.GameState;
 import info.tracking.BunkerGarrison;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
-import info.tracking.StrategyTracker;
 import info.tracking.terran.TerranMech;
 import unit.managed.ManagedUnit;
 
@@ -182,16 +180,7 @@ public class ContainmentEvaluator {
     }
 
     private boolean bunkerHeld() {
-        return bunkerHeld(Config.bunkerGate, gameState.getStrategyTracker());
-    }
-
-    /**
-     * @param gateOn whether the Bunker gates are switched on, see Config.bunkerGate
-     * @param strategyTracker the strategy tracker, or null before one exists
-     * @return whether a Bunker hold counts against a squad's makeup: never with the gates off
-     */
-    static boolean bunkerHeld(boolean gateOn, StrategyTracker strategyTracker) {
-        return gateOn && strategyTracker != null && strategyTracker.isBunkerHeld();
+        return gameState.getStrategyTracker() != null && gameState.getStrategyTracker().isBunkerHeld();
     }
 
     /**

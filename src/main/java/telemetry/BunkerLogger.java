@@ -38,13 +38,14 @@ import java.util.Map;
  * strength the retreat was priced against and bunker_id, bunker_x, bunker_y and bunker_hp the Bunker.
  *
  * <p>BUNKER_ATTACK: one row per ground squad id the first frame it is in FIGHT within 288 px of a living Bunker, and
- * another each time the loss on record at the nearest Bunker changes while it stays there. ledger_frame is the frame
- * of the latest loss on record at the nearest Bunker, blank when none is, and read_frame the frame of the gate's
- * latest read of the squad or a squad it was formed from, blank when it never read one. event is GATED when the read
- * is later than the loss, or when no loss is on record and the squad was read, and entry names the branch that read
- * it, see {@link BunkerAdvanceEntry}; event is UNREAD otherwise. squad_x and squad_y are the squad centre. The
- * share of contacts at a Bunker with a loss on record that the gate evaluated is the GATED rows over all rows with a
- * ledger_frame.
+ * another for each new combination of nearest Bunker, loss on record there and whether the gate weighed it.
+ * ledger_frame is the frame of the latest loss on record at the nearest Bunker, blank when none is, and read_frame the
+ * frame of the gate's latest read of the squad or a squad it was formed from, blank when it never read one. event is
+ * EXEMPT when the build is exempt from the gate, GATED when the gate weighed that Bunker's record on or after the
+ * frame of its loss, and entry names the branch of the latest read, see {@link BunkerAdvanceEntry}; event is UNREAD
+ * otherwise, which includes a Bunker the sim did not price against the squad, since the gate reads a fight lock only
+ * against a priced Bunker. squad_x and squad_y are the squad centre. The share of contacts at a Bunker with a loss on
+ * record that the gate evaluated is the GATED rows over the GATED and UNREAD rows with a ledger_frame.
  *
  * <p>BUNKER_ECON: one row per change of a Bunker stance, see the Drone round it opens. event is STANCE_START,
  * ROUND_OPEN, ROUND_CLOSE or STANCE_END. stance_id numbers the game's Bunker holds from 1, and a stance that re-forms
@@ -393,15 +394,21 @@ public class BunkerLogger implements BunkerSink {
         return String.join(",", cells);
     }
 
+    private static String attackEvent(BunkerAttackEvent event) {
+        if (event.isExempt()) {
+            return "EXEMPT";
+        }
+        return event.getGateRead() == null ? "UNREAD" : "GATED";
+    }
+
     /**
-     * Builds a BUNKER_ATTACK row in {@link #HEADER} order. event is GATED when the gate read the squad or a squad it
-     * was formed from, UNREAD otherwise.
+     * Builds a BUNKER_ATTACK row in {@link #HEADER} order. event is EXEMPT under a build the gate does not apply to,
+     * GATED when the gate weighed the loss on record at the Bunker after it was booked, UNREAD otherwise.
      *
      * @return the row
      */
     static String attackRow(String gameId, BunkerAttackEvent event) {
-        String[] cells = blankRow(gameId, event.getFrame(), "BUNKER_ATTACK",
-                event.getGateRead() == null ? "UNREAD" : "GATED");
+        String[] cells = blankRow(gameId, event.getFrame(), "BUNKER_ATTACK", attackEvent(event));
         set(cells, "squad_id", Csv.sanitize(event.getSquadId()));
         set(cells, "squad_size", String.valueOf(event.getSquadSize()));
         set(cells, "squad_x", String.valueOf(event.getSquadX()));

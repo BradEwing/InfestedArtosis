@@ -206,10 +206,10 @@ class BunkerLoggerTest {
     void anAttackRowIsGatedWhenTheGateReadTheSquadAndUnreadOtherwise() {
         String[] gated = fields(BunkerLogger.attackRow("game-1",
                 new BunkerAttackEvent(7000, new BunkerAdvanceEvent.Squad("squad-a", 18, 12, 640, 720),
-                        BunkerAdvanceEntry.FIGHT_LOCK, 6900, 6800, BUNKER)));
+                        BunkerAdvanceEntry.FIGHT_LOCK, 6900, 6800, false, BUNKER)));
         String[] unread = fields(BunkerLogger.attackRow("game-1",
                 new BunkerAttackEvent(7000, new BunkerAdvanceEvent.Squad("squad-b", 18, 12, 640, 720), null, 6000,
-                        6800, BUNKER)));
+                        6800, false, BUNKER)));
 
         assertEquals("BUNKER_ATTACK", gated[columnIndex("row_type")]);
         assertEquals("GATED", gated[columnIndex("event")]);
@@ -219,5 +219,16 @@ class BunkerLoggerTest {
         assertEquals("UNREAD", unread[columnIndex("event")]);
         assertEquals("", unread[columnIndex("entry")]);
         assertEquals("6000", unread[columnIndex("read_frame")]);
+    }
+
+    @Test
+    void anAttackRowUnderAnExemptBuildIsExemptWhateverTheGateRead() {
+        String[] exempt = fields(BunkerLogger.attackRow("game-1",
+                new BunkerAttackEvent(7000, new BunkerAdvanceEvent.Squad("squad-a", 18, 12, 640, 720), null, -1,
+                        6800, true, BUNKER)));
+
+        assertEquals("EXEMPT", exempt[columnIndex("event")]);
+        assertEquals("", exempt[columnIndex("read_frame")]);
+        assertEquals("6800", exempt[columnIndex("ledger_frame")]);
     }
 }

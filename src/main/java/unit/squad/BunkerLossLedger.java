@@ -113,17 +113,17 @@ public final class BunkerLossLedger {
     /**
      * @param center a position
      * @param range the farthest distance, in pixels
-     * @return the frame of the latest retreat on record at a Bunker within the range of the position, or
-     *     {@link #NONE} when none is
+     * @return where each Bunker on record within the range of the position stands, mapped to the frame of its latest
+     *     retreat
      */
-    public int latestFrame(Position center, double range) {
-        int latest = NONE;
+    public Map<Position, Integer> framesNear(Position center, double range) {
+        Map<Position, Integer> frames = new LinkedHashMap<>();
         for (Entry entry : entries.values()) {
             if (center.getDistance(entry.position) <= range) {
-                latest = Math.max(latest, entry.frame);
+                frames.put(entry.position, entry.frame);
             }
         }
-        return latest;
+        return frames;
     }
 
     /**

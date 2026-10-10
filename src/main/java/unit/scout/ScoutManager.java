@@ -880,7 +880,7 @@ public class ScoutManager {
         }
         TilePosition main = locationOf(gameState.getBaseData().getMainEnemyBase());
         TilePosition natural = locationOf(gameState.getBaseData().getEnemyNaturalBase());
-        boolean may = BunkerScoutGate.mayRouteToBase(Config.bunkerGate, strategyTracker.isBunkerNaturalHeld(),
+        boolean may = BunkerScoutGate.mayRouteToBase(strategyTracker.isBunkerNaturalHeld(),
                 strategyTracker.isBunkerMainHeld(), base.getLocation(), main, natural);
         if (may) {
             bunkerSkipsRecorded.remove(BunkerScoutGate.destination(base.getLocation(), main, natural));

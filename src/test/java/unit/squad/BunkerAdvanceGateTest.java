@@ -360,4 +360,20 @@ class BunkerAdvanceGateTest {
         assertFalse(verdict.isHeld());
         assertEquals(BunkerAdvanceReason.SIM_BREAKS, verdict.getReason());
     }
+
+    @Test
+    void theVerdictNamesTheBunkerRecordsItWeighed() {
+        BunkerLossLedger ledger = ledgerWithLoss();
+
+        BunkerAdvanceGate.Verdict held = evaluate(ledger, living(FULL_HIT_POINTS), WEAK, true, false,
+                LOSS_FRAME + 10);
+        BunkerAdvanceGate.Verdict notMelee = evaluate(ledger, living(FULL_HIT_POINTS), WEAK, false, false,
+                LOSS_FRAME + 11);
+        BunkerAdvanceGate.Verdict noLoss = evaluate(new BunkerLossLedger(), living(FULL_HIT_POINTS), WEAK, true,
+                false, LOSS_FRAME + 12);
+
+        assertEquals(Collections.singletonList(BUNKER), held.getEvaluated());
+        assertEquals(Collections.singletonList(BUNKER), notMelee.getEvaluated());
+        assertTrue(noLoss.getEvaluated().isEmpty());
+    }
 }

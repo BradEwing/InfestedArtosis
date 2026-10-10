@@ -36,7 +36,8 @@ public interface BunkerSink {
     void onLoss(BunkerLossEvent event);
 
     /**
-     * A ground squad was first seen in FIGHT near a living Bunker under its id.
+     * A ground squad is in FIGHT near a living Bunker, for the first time under its id or with a new loss on record
+     * or read of it.
      *
      * @param event the attack
      */

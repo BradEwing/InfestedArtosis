@@ -25,8 +25,8 @@ public final class Config {
      */
     public static boolean lurkerFireAware = true;
     /**
-     * Whether any Bunker gate runs: ground scouts kept off a held route, melee contain squads kept out of a held
-     * Bunker, and the repeat-advance gate on a Bunker priced as a loss. On unless IA_BUNKER_GATE is set to false.
+     * Whether the repeat-advance gate runs: a mostly melee squad held back from a Bunker priced as a loss after it
+     * retreated from it. On unless IA_BUNKER_GATE is set to false.
      */
     public static boolean bunkerGate = true;
     /**

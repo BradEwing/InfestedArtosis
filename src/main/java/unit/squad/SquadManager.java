@@ -93,7 +93,7 @@ public class SquadManager {
     private final BunkerCasualties bunkerCasualties = new BunkerCasualties();
     private final Set<String> bunkerHeldSquads = new HashSet<>();
     private final BunkerGateReads bunkerReads = new BunkerGateReads();
-    private final Map<String, Integer> bunkerAttackLogged = new HashMap<>();
+    private final Set<String> bunkerAttackLogged = new HashSet<>();
     private final Set<String> bunkerExemptLogged = new HashSet<>();
     private ContainmentEvaluator containmentEvaluator;
     private final ContainmentEscalation containmentEscalation = new ContainmentEscalation();
@@ -2767,17 +2767,18 @@ public class SquadManager {
 
     /**
      * Whether the repeat-advance gate reads a FIGHT squad that only its fight lock holds in FIGHT: no collapse,
-     * committed collapse or cornered fight holds it, no base is threatened, and the gate has not read the squad or a
-     * squad it was formed from. A squad that entered FIGHT under an id the gate never read, as a merge or a split
-     * makes, is gated instead of staying committed into a Bunker priced as a loss; a squad the gate already let
-     * through is not gated again.
+     * committed collapse or cornered fight holds it, no base is threatened, and the gate has not weighed the losses
+     * on record near the squad since they were booked, as the squad or a squad it was formed from. A squad that
+     * entered FIGHT under an id the gate never read, as a merge or a split makes, or that the gate read before a
+     * loss was booked, is gated instead of staying committed into a Bunker priced as a loss; a squad the gate
+     * already let through since the loss is not gated again.
      *
      * @param status the squad's status entering this tick
      * @param fightLockHolds whether the squad's fight lock holds against this frame's verdict
      * @param collapseHeld whether a collapse holds the squad in FIGHT
      * @param corneredHeld whether a cornered fight holds the squad in FIGHT
      * @param baseThreatened whether a mobile ground combat unit is on one of our bases
-     * @param alreadyRead whether the gate has read the squad, or a squad it was formed from
+     * @param alreadyRead whether the gate has weighed the losses on record near the squad since they were booked
      * @return true when the gate decides the squad's fight lock
      */
     static boolean bunkerGateReadsFightLock(SquadStatus status, boolean fightLockHolds, boolean collapseHeld,
@@ -2832,22 +2833,24 @@ public class SquadManager {
     }
 
     /**
-     * Whether the gate has read a squad since the latest loss on record near it and may leave the squad alone: the
-     * read is later than that loss, and the squad is not latched. A read made before a loss is booked does not stand
-     * for it, so a squad the gate let through as a first attack is gated once a loss is on record. A latched squad is
-     * read again whatever its status, so a merge with a squad that is already fighting does not hide a held squad
-     * from the gate.
+     * Whether the gate has weighed every loss on record near a squad since it was booked and may leave the squad
+     * alone: the squad, or a squad it was formed from, was read after each of those losses and the read weighed that
+     * Bunker's record, and the squad is not latched. A read made before a loss was booked, or before the Bunker was
+     * in range, does not stand for it, so a squad the gate let through as a first attack is gated once a loss is on
+     * record. A latched squad is read again whatever its status, so a merge with a squad that is already fighting
+     * does not hide a held squad from the gate.
      *
      * @param reads the reads the gate made of squads
      * @param held the ids of the squads the gate latched
      * @param squadId the squad's id
-     * @param latestLossFrame the frame of the latest loss on record near the squad, or
-     *     {@link BunkerLossLedger#NONE}
+     * @param losses where each Bunker with a loss on record near the squad stands, mapped to the frame of its latest
+     *     loss
+     * @param squadMelee whether the squad is mostly melee now
      * @return true when the gate does not read the squad's fight lock
      */
     static boolean bunkerGateAlreadyRead(BunkerGateReads reads, Set<String> held, String squadId,
-                                         int latestLossFrame) {
-        return reads.readSince(squadId, latestLossFrame) && !held.contains(squadId);
+                                         Map<Position, Integer> losses, boolean squadMelee) {
+        return reads.readSince(squadId, losses, squadMelee) && !held.contains(squadId);
     }
 
     private boolean bunkerFightLockAlreadyRead(Squad squad, boolean lockHolds) {
@@ -2855,7 +2858,8 @@ public class SquadManager {
             return true;
         }
         return bunkerGateAlreadyRead(bunkerReads, bunkerHeldSquads, squad.getId(),
-                bunkerLosses.latestFrame(squad.getCenter(), BunkerAdvanceGate.RELEVANT_RANGE));
+                bunkerLosses.framesNear(squad.getCenter(), BunkerAdvanceGate.RELEVANT_RANGE),
+                ContainmentGate.isMostlyMelee(squad.getComposition()));
     }
 
     private boolean pricesLedgeredBunker(HorizonCombatSimulator.DebugSnapshot snapshot) {
@@ -2930,7 +2934,8 @@ public class SquadManager {
         BunkerAdvanceGate.Verdict verdict = BunkerAdvanceGate.evaluate(Config.bunkerGate, bunkerLosses,
                 livingBunkers(), situation, now);
         if (verdict.getReason() != BunkerAdvanceReason.NO_BUNKER) {
-            bunkerReads.record(squad.getId(), entry, now);
+            bunkerReads.record(squad.getId(), entry, now, verdict.getEvaluated(),
+                    verdict.getReason() != BunkerAdvanceReason.NOT_MELEE);
             Position center = squad.getCenter();
             BunkerAdvanceEvent.Squad reported = new BunkerAdvanceEvent.Squad(squad.getId(), squad.size(),
                     squad.getCountOf(UnitType.Zerg_Zergling), center.getX(), center.getY());
@@ -2970,9 +2975,10 @@ public class SquadManager {
 
     /**
      * Writes a BUNKER_ATTACK row the first frame a ground squad id is in FIGHT within
-     * {@link BunkerCasualties#RADIUS} of a living Bunker, and again when the loss on record at the nearest Bunker
-     * changes, so the share of contacts at a Bunker with a loss on record that the gate evaluated can be counted.
-     * The row carries the frame of that loss and of the gate's latest read of the squad.
+     * {@link BunkerCasualties#RADIUS} of a living Bunker, and again for each new combination of nearest Bunker, loss
+     * on record there and whether the gate weighed that loss, so the share of contacts at a Bunker with a loss on
+     * record that the gate evaluated can be counted. The row carries the frame of that loss and of the latest read
+     * of the squad, and is marked exempt when the build is exempt from the gate.
      *
      * @param squad the squad, after this frame's decision
      * @param now current frame
@@ -2986,19 +2992,23 @@ public class SquadManager {
         if (nearest == null || center.getDistance(nearest.getPosition()) > BunkerCasualties.RADIUS) {
             return;
         }
-        int ledgerFrame = bunkerLosses.frameAt(nearest.getPosition());
-        Integer logged = bunkerAttackLogged.get(squad.getId());
-        if (logged != null && logged == ledgerFrame) {
+        Position bunker = nearest.getPosition();
+        int ledgerFrame = bunkerLosses.frameAt(bunker);
+        BunkerGateReads.Read read = bunkerReads.get(squad.getId());
+        boolean ledgered = ledgerFrame != BunkerLossLedger.NONE;
+        boolean evaluated = ledgered
+                ? bunkerReads.weighedAtOrAfter(squad.getId(), bunker, ledgerFrame,
+                        ContainmentGate.isMostlyMelee(squad.getComposition()))
+                : read != null;
+        String key = squad.getId() + "|" + bunker.getX() + "|" + bunker.getY() + "|" + ledgerFrame + "|" + evaluated;
+        if (!bunkerAttackLogged.add(key)) {
             return;
         }
-        bunkerAttackLogged.put(squad.getId(), ledgerFrame);
-        BunkerGateReads.Read read = bunkerReads.get(squad.getId());
-        boolean evaluated = read != null && read.getFrame() > ledgerFrame;
         BunkerAdvanceEvent.Squad reported = new BunkerAdvanceEvent.Squad(squad.getId(), squad.size(),
                 squad.getCountOf(UnitType.Zerg_Zergling), center.getX(), center.getY());
         BunkerTelemetry.attack(new BunkerAttackEvent(now, reported, evaluated ? read.getEntry() : null,
-                read == null ? -1 : read.getFrame(), ledgerFrame == BunkerLossLedger.NONE ? -1 : ledgerFrame,
-                reportedBunker(nearest)));
+                read == null ? -1 : read.getFrame(), ledgered ? ledgerFrame : -1,
+                Config.bunkerGate && !BuildOrder.bunkerGateAllowed(gameState), reportedBunker(nearest)));
     }
 
     /**

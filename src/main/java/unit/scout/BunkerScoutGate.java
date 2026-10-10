@@ -47,23 +47,6 @@ public final class BunkerScoutGate {
     }
 
     /**
-     * Whether a ground scout may route to a base, as {@link #mayRouteToBase(boolean, boolean, TilePosition,
-     * TilePosition, TilePosition)}, with the Bunker gates switched off letting every route open.
-     *
-     * @param gateOn whether the Bunker gates are switched on, see Config.bunkerGate
-     * @param bunkerNaturalHeld whether BunkerNatural holds
-     * @param bunkerMainHeld whether BunkerMain holds
-     * @param target the base the scout is headed to
-     * @param enemyMain the enemy main's location, null when unknown
-     * @param enemyNatural the enemy natural's location, null when unknown
-     * @return true with the gates off, otherwise false while a Bunker holds the route to the base
-     */
-    public static boolean mayRouteToBase(boolean gateOn, boolean bunkerNaturalHeld, boolean bunkerMainHeld,
-                                         TilePosition target, TilePosition enemyMain, TilePosition enemyNatural) {
-        return !gateOn || mayRouteToBase(bunkerNaturalHeld, bunkerMainHeld, target, enemyMain, enemyNatural);
-    }
-
-    /**
      * Whether a ground scout may route to a base, given its tile and the enemy main's and natural's.
      *
      * @param bunkerNaturalHeld whether BunkerNatural holds

@@ -277,6 +277,12 @@ public abstract class BuildOrder {
         return bunkerGateAllowed(gameState.getActiveBuildOrder(), gameState.getSelectedStrategy(), gameState);
     }
 
+    /**
+     * @param active the active build order, or null when none is yet
+     * @param selectedStrategy the strategy selected for the game, or null when none is yet
+     * @param gameState current game state
+     * @return true when neither opts out of the repeat-advance gate
+     */
     static boolean bunkerGateAllowed(BuildOrder active, BuildOrder selectedStrategy, GameState gameState) {
         return (active == null || active.allowsBunkerGate(gameState))
                 && (selectedStrategy == null || selectedStrategy.allowsBunkerGate(gameState));
