@@ -453,10 +453,10 @@ def non_result_label(game, outcome, run_stopped=False):
     STOPPED: the manifest never recorded an outcome for the attempt, so run.py was killed while it was in
     flight; either the run is known stopped, or a result.json already exists that run.py never classified.
     STALEMATE: our frames.csv reached the frame cap.
+    OPPONENT_CRASH: the opponent's side explains the outcome, checked before NO_RESULT and TIMEOUT: its log
+    asserts, or its scores.json shows a crash while ours does not.
     NO_RESULT: the game never produced a result.json or never left the lobby (launch failure).
     TIMEOUT: the realtime limit ended a game that had started.
-    OPPONENT_CRASH: the opponent's side explains a draw or crash: its log asserts, or its scores.json shows
-    a crash while ours does not.
     JVM_DIED: scored CRASH, the opponent's side does not explain it, and our bot.log shows the JVM's
     uncaught-exception marker or has no end line. A killed container also leaves no end line, so a missing
     end line counts as a JVM death only after the stop, stalemate and opponent checks have passed.
@@ -470,12 +470,12 @@ def non_result_label(game, outcome, run_stopped=False):
         return LABEL_STOPPED
     if is_frame_cap_stalemate(gdir):
         return LABEL_STALEMATE
+    if opponent_at_fault(gdir):
+        return LABEL_OPPONENT_CRASH
     if outcome in ("NO_RESULT", "STALL"):
         return LABEL_NO_RESULT
     if outcome == "TIMEOUT":
         return LABEL_TIMEOUT
-    if opponent_at_fault(gdir):
-        return LABEL_OPPONENT_CRASH
     if outcome == "CRASH":
         if jvm_died(gdir) or bot_log_ended_cleanly(gdir) is False:
             return LABEL_JVM_DIED

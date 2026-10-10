@@ -37,7 +37,7 @@ def collect(manifest, run_stopped=False):
     in_progress = not manifest.get("finished_at") and not run_stopped
     for game in manifest.get("games", []):
         outcome, game_time, row = bl.classify(game)
-        if outcome == "NO_RESULT" and in_progress:
+        if outcome == "NO_RESULT" and in_progress and "outcome" not in game:
             outcome = "RUNNING"
         label = bl.non_result_label(game, outcome, run_stopped)
         results.append({**game, "outcome": outcome, "game_time": game_time, "row": row, "label": label})
@@ -105,8 +105,9 @@ def frames_of(game_name, side):
 
 
 def non_result_rows(results):
-    """Every attempt that is not a WIN, a LOSS or still running, replayed attempts included, in play order."""
-    return [r for r in results if r["label"]]
+    """Every attempt that is not a WIN, a LOSS or still running, replayed attempts included, by map index
+    then attempt."""
+    return sorted((r for r in results if r["label"]), key=lambda r: (r["index"], r.get("retry", 0)))
 
 
 def print_non_results(results):

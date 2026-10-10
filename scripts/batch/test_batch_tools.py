@@ -304,6 +304,19 @@ class NonResultsReportTest(GamesDirTestCase):
         self.assertNotIn("CAPR1", rows)
 
 
+class RecordedLaunchFailureTest(GamesDirTestCase):
+    def test_recorded_no_result_stays_labelled_while_the_run_is_in_progress(self):
+        (self.root / "GAME_NEVER" / "logs_0").mkdir(parents=True)
+        make_game_dir(self.root, "LIVE", None, None, 500, LOG_UNFINISHED)
+        games = [
+            {"index": 0, "game_name": "NEVER", "opponent": "o", "map": "m", "outcome": "NO_RESULT", "retried": True},
+            {"index": 1, "game_name": "LIVE", "opponent": "o", "map": "m"},
+        ]
+        results = report.collect({"games": games})
+        self.assertEqual([(r["outcome"], r["label"]) for r in results],
+                         [("NO_RESULT", bl.LABEL_NO_RESULT), ("RUNNING", None)])
+
+
 class GamesDirOptionTest(unittest.TestCase):
     def test_missing_games_dir_exits_with_a_message(self):
         saved = bl.GAMES_DIR
