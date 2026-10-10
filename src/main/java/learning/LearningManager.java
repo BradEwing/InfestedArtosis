@@ -9,9 +9,11 @@ import info.tracking.terran.TerranMech;
 import info.tracking.terran.TerranWall;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
+import telemetry.PlanEvents;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -80,6 +82,10 @@ public class LearningManager {
     private boolean terranWallPersists;
     private boolean terranMechPersists;
     private String lastGameOpener = "";
+    private int historyGames = Integer.MAX_VALUE;
+    private RacePrior.Report racePriorReport = new RacePrior.Report(false, RacePrior.raceKey(Race.Unknown), 0, 0);
+    private final RacePrior racePrior = RacePrior.load();
+    private int lazilySeededBuilds;
 
     private BuildOrderFactory buildOrderFactory;
     private LearningHistoryRepository historyRepository;
@@ -100,6 +106,7 @@ public class LearningManager {
         try {
             LearningHistory history = historyRepository.load();
             this.opponentRecord = recordAccumulator.reconstruct(history);
+            historyGames = history.games().size();
             GameRecord lastGame = history.lastGame();
             if (lastGame != null) {
                 lastGameDetectedStrategies = lastGame.getDetectedStrategies();
@@ -114,9 +121,33 @@ public class LearningManager {
         }
 
         ensureOpenersInOpponentRecord();
+        seedRacePrior();
         decisions.setTerranWallPersists(terranWallPersists);
         decisions.setTerranMechPersists(terranMechPersists);
         decisions.setOpener(determineOpener());
+        decisions.setStrategy(forcedStrategy());
+    }
+
+    private BuildOrder forcedStrategy() {
+        if (config.strategyOverride == null) {
+            return null;
+        }
+        BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);
+        return forced != null && !forced.isOpener() ? forced : null;
+    }
+
+    private void seedRacePrior() {
+        racePriorReport = racePrior.seedIfNew(Config.racePrior, historyGames, opponentRecord,
+                recordAccumulator, RacePrior.raceKey(opponentRace));
+    }
+
+    /**
+     * Returns the telemetry label for the game start: whether the prior applied, the race key and the arms seeded,
+     * then the chosen opener and whether its record was prior-only.
+     */
+    public String racePriorLabel() {
+        return racePriorReport.label() + ";opener=" + openerName() + ";prior_only="
+                + (currentOpener != null && currentOpener.isPriorOnly() ? "y" : "n");
     }
 
     /**
@@ -192,6 +223,44 @@ public class LearningManager {
                 .losses(0)
                 .build());
         }
+    }
+
+    /**
+     * Creates a record for every named build order the opponent record lacks, and seeds each new record from the
+     * race's prior when the prior is active, so a record is seeded exactly once. Returns how many it seeded.
+     */
+    static int ensureBuildRecords(Collection<String> names,
+                                  OpponentRecord opponentRecord,
+                                  RacePrior prior,
+                                  LearningRecordAccumulator accumulator,
+                                  boolean priorActive,
+                                  String race) {
+        int seeded = 0;
+        Map<String, Record> records = opponentRecord.getBuildOrderRecord();
+        for (String name : names) {
+            if (records.containsKey(name)) {
+                continue;
+            }
+            records.put(name, Record.builder()
+                    .opener(name)
+                    .wins(0)
+                    .losses(0)
+                    .build());
+            if (priorActive && prior.seedBuild(race, name, opponentRecord, accumulator)) {
+                seeded++;
+            }
+        }
+        return seeded;
+    }
+
+    private void reportBuildPick(String buildOrderName) {
+        if (!racePriorReport.applied() && lazilySeededBuilds == 0) {
+            return;
+        }
+        Record record = opponentRecord.getBuildOrderRecord().get(buildOrderName);
+        PlanEvents.racePrior("build=" + buildOrderName + ";prior_only="
+                + (record != null && record.isPriorOnly() ? "y" : "n")
+                + ";builds_seeded=" + (racePriorReport.builds() + lazilySeededBuilds));
     }
 
     private BuildOrder determineOpener() {
@@ -279,6 +348,11 @@ public class LearningManager {
             return null;
         }
         String leader = selectableLeader(ucbWinner, playableOpeners, opponentRecord, mapName);
+        String seeded = PriorSafetyNet.apply(leader, playableOpeners, opponentRecord.getOpenerRecord(),
+                opponentRecord.getGameTimestamps());
+        if (!seeded.equals(leader)) {
+            return seeded;
+        }
         String probe = selectForcedReprobe(leader, playableOpeners, opponentRecord, mapName);
         return probe != null ? probe : leader;
     }
@@ -308,7 +382,7 @@ public class LearningManager {
             mapName,
             opponentRecord.getMapSpecificOpenerRecord(),
             opponentRecord.getOpenerRecord(),
-            opponentRecord.totalGames(),
+            opponentRecord.selectionGames(),
             opponentRecord.getGameTimestamps()
         );
     }
@@ -371,7 +445,7 @@ public class LearningManager {
         for (String opener : eligible) {
             double score = WeightedUCBCalculator.calculateWeightedScore(opener, mapName,
                     opponentRecord.getMapSpecificOpenerRecord(), openerRecords,
-                    opponentRecord.totalGames(), gameTimestamps);
+                    opponentRecord.selectionGames(), gameTimestamps);
             if (score > bestScore) {
                 bestScore = score;
                 best = opener;
@@ -448,14 +522,16 @@ public class LearningManager {
                                        OpponentRecord opponentRecord,
                                        String mapName,
                                        String openerName) {
-        return WeightedUCBCalculator.findBestStrategy(
+        String picked = WeightedUCBCalculator.findBestStrategy(
             leastPairedCandidates(candidateNames, opponentRecord, openerName),
             mapName,
             opponentRecord.getMapSpecificBuildOrderRecord(),
             opponentRecord.getBuildOrderRecord(),
-            opponentRecord.totalGames(),
+            opponentRecord.selectionGames(),
             opponentRecord.getGameTimestamps()
         );
+        return PriorSafetyNet.apply(picked, candidateNames, opponentRecord.getBuildOrderRecord(),
+                opponentRecord.getGameTimestamps());
     }
 
     private static List<String> leastPairedCandidates(List<String> candidateNames,
@@ -489,15 +565,9 @@ public class LearningManager {
             return null;
         }
 
-        for (BuildOrder candidate : candidates) {
-            if (!opponentRecord.getBuildOrderRecord().containsKey(candidate.getName())) {
-                opponentRecord.getBuildOrderRecord().put(candidate.getName(), Record.builder()
-                    .opener(candidate.getName())
-                    .wins(0)
-                    .losses(0)
-                    .build());
-            }
-        }
+        lazilySeededBuilds += ensureBuildRecords(candidates.stream().map(BuildOrder::getName).collect(Collectors.toList()),
+                opponentRecord, racePrior, recordAccumulator, RacePrior.isActive(Config.racePrior, historyGames),
+                RacePrior.raceKey(opponentRace));
 
         if (config.strategyOverride != null) {
             BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);
@@ -519,6 +589,7 @@ public class LearningManager {
                 .collect(Collectors.toList());
         
         String bestBuildOrder = selectBuildOrderName(candidateNames, opponentRecord, currentMapName, openerName());
+        reportBuildPick(bestBuildOrder);
         
         return buildOrderFactory.getByName(bestBuildOrder);
     }

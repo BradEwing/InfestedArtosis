@@ -287,6 +287,7 @@ public class SquadManager {
         holdLurkersOutOfFire(now);
         recordFlockSamples(now);
         gameState.getContainHeldTimer().update(now, anyGroundSquadContaining(fightSquads));
+        gameState.setArmyAttacking(anyGroundSquadAttacking(fightSquads));
     }
 
     /**
@@ -746,6 +747,19 @@ public class SquadManager {
         int mapPixelWidth = game.mapWidth() * 32;
         int mapPixelHeight = game.mapHeight() * 32;
         return point -> isWalkable(point, accessible, mapPixelWidth, mapPixelHeight);
+    }
+
+    /**
+     * @param squads the fight squads
+     * @return true when any ground squad is in FIGHT
+     */
+    static boolean anyGroundSquadAttacking(Collection<Squad> squads) {
+        for (Squad squad : squads) {
+            if (squad.isGroundSquad() && squad.getStatus() == SquadStatus.FIGHT) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

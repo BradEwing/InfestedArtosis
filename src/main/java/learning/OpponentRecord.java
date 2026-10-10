@@ -31,8 +31,17 @@ public class OpponentRecord {
     @Default
     private Map<String, Integer> openerBuildPairs = new HashMap<>();
 
+    private boolean priorSeeded;
+
     public int totalGames() {
         return this.wins + this.losses;
+    }
+
+    /**
+     * Returns the real games, counting a seeded prior as one game so the index is not random before the first real game.
+     */
+    public int selectionGames() {
+        return totalGames() + (priorSeeded ? 1 : 0);
     }
     
     public void ensureMapSpecificRecords() {

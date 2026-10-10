@@ -42,6 +42,24 @@ final class LearningRecordAccumulator {
     }
 
     /**
+     * Seeds prior evidence onto an existing arm record: a bandit observation only. The opponent's totals, game
+     * clock, map records and opener-build pairs are untouched, and the record keeps no timestamp for it. The
+     * evidence decays by GAMMA per real game played. Does nothing when the arm has no record or no games, and
+     * returns whether it seeded.
+     */
+    boolean applyPrior(OpponentRecord opponent, boolean opener, String arm, double pseudoWins, double pseudoGames) {
+        Map<String, Record> records = opener ? opponent.getOpenerRecord() : opponent.getBuildOrderRecord();
+        Record record = records.get(arm);
+        if (record == null || pseudoGames <= 0) {
+            return false;
+        }
+        record.setPriorWins(record.getPriorWins() + Math.max(0.0, Math.min(pseudoWins, pseudoGames)));
+        record.setPriorGames(record.getPriorGames() + pseudoGames);
+        opponent.setPriorSeeded(true);
+        return true;
+    }
+
+    /**
      * Credits the game result to every distinct build order in the row's semicolon separated
      * chain, skipping blank segments and values equal to the opener, so one game contributes at
      * most one observation per build order. The first credited build of the game is also counted

@@ -169,6 +169,16 @@ public interface PlanEventSink {
     }
 
     /**
+     * The per-race learning prior was applied or declined at game start, or a build order was picked while it
+     * applied.
+     *
+     * @param priorLabel semicolon separated key=value pairs, e.g.
+     *     applied=y;race=Terran;openers=7;builds=5;opener=3HatchBeforePool;prior_only=y
+     */
+    default void onRacePrior(String priorLabel) {
+    }
+
+    /**
      * A ground scout was withheld from, or recalled off, a route a detected Bunker holds.
      *
      * @param skipLabel the reason and the destination, e.g. BUNKER:ENEMY_MAIN

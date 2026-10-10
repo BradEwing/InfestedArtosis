@@ -60,7 +60,7 @@ final class OpenerSelectionPolicy {
                 mapName,
                 opponentRecord.getMapSpecificOpenerRecord(),
                 opponentRecord.getOpenerRecord(),
-                opponentRecord.totalGames(),
+                opponentRecord.selectionGames(),
                 opponentRecord.getGameTimestamps());
         return LearningManager.applyDormantReprobePolicy(winner, playableOpeners, opponentRecord, mapName);
     }

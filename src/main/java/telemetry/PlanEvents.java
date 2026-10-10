@@ -213,6 +213,14 @@ public final class PlanEvents {
         current.onBuildOrderTransition(transitionLabel);
     }
 
+    public static void racePrior(String priorLabel) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onRacePrior(priorLabel);
+    }
+
     public static void scoutSkipped(String skipLabel) {
         PlanEventSink current = sink;
         if (current == null) {
