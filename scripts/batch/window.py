@@ -1,7 +1,7 @@
 """Per-opponent window comparison of two batch runs, aligned on map index.
 
 Usage:
-  py scripts/batch/window.py <run-a> <run-b> [--count-nonwins]
+  py scripts/batch/window.py <run-a> <run-b> [--count-nonwins] [--games-dir DIR]
 
 Each run contributes only the final attempt of every game index, so a replayed index counts once and the
 two runs line up on the index (and so on the map) rather than on position in a filtered list. An index is
@@ -14,7 +14,9 @@ modes. Outcomes are the manifest's, with no relabelling of stalemates or stopped
 printed when indices name different opponents in the two runs or the runs differ in opponents or
 games_per_opponent, as when a one-opponent A/B run is compared with a full batch.
 
-Outcomes come from the manifests, so no game dirs are read. The p value is a two-sided Fisher exact test on
+Outcomes come from the manifests, so no game dirs are read; --games-dir is accepted so one command line
+serves report.py and window.py, and exits non-zero when DIR is not an existing directory. The delta column is
+B's win rate minus A's, in percentage points. The p value is a two-sided Fisher exact test on
 the 2x2 table of wins and non-wins. Pure read.
 """
 
@@ -36,6 +38,7 @@ def parse_args():
     p.add_argument("run_b", help="run id for the second arm (the beta)")
     p.add_argument("--count-nonwins", action="store_true",
                    help="pair every index with a final result and count draws and non-results as non-wins")
+    p.add_argument("--games-dir", help="directory holding the GAME_* dirs; must exist when given")
     return p.parse_args()
 
 
@@ -146,7 +149,7 @@ def format_row(name, summary, width):
     ra = wa / k if k else 0.0
     rb = wb / k if k else 0.0
     return (f"  {name:<{width}} {k:>5}  {wa:>3}/{k:<4} {ra:>6.1%}  {wb:>3}/{k:<4} {rb:>6.1%}  "
-            f"{(rb - ra) * 100:>+6.1f}pp  {p_value(summary):>6.3f}  {summary['maps_same']:>4}/{k:<4}  "
+            f"{(rb - ra) * 100:>+7.1f}pp  {p_value(summary):>6.3f}  {summary['maps_same']:>4}/{k:<4}  "
             f"{summary['miss']:>4}  {summary['inc_a']:>3}/{summary['inc_b']:<3}")
 
 
@@ -159,7 +162,7 @@ def render(run_a, run_b, manifest_a, manifest_b, count_nonwins=False):
         scoring = "k = indices where both final attempts are a WIN or LOSS; a draw or non-result drops the index"
     lines = [f"Window {run_a} (A) vs {run_b} (B): final attempt per map index"]
     lines.extend(f"warning: {w}" for w in warnings(manifest_a, manifest_b))
-    lines.append(f"  {'':<{width}} {'k':>5}  {'A W/k':>8} {'':>6}  {'B W/k':>8} {'':>6}  {'delta':>8}  {'p':>6}  "
+    lines.append(f"  {'':<{width}} {'k':>5}  {'A W/k':>8} {'':>6}  {'B W/k':>8} {'':>6}  {'delta B-A':>9}  {'p':>6}  "
                  f"{'maps':>9}  {'miss':>4}  inc A/B")
     lines.extend(format_row(name, summary, width) for name, summary in rows)
     lines.append(f"  {scoring}.")
@@ -171,6 +174,8 @@ def render(run_a, run_b, manifest_a, manifest_b, count_nonwins=False):
 
 def main():
     args = parse_args()
+    if args.games_dir:
+        bl.set_games_dir(args.games_dir)
     run_a = bl.resolve_run_id(args.run_a)
     run_b = bl.resolve_run_id(args.run_b)
     print(render(run_a, run_b, bl.load_manifest(run_a), bl.load_manifest(run_b), args.count_nonwins))
