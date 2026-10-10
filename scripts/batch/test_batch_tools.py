@@ -1,3 +1,5 @@
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -179,14 +181,10 @@ class LabelTest(GamesDirTestCase):
         make_game_dir(self.root, "MJ3IG09G", RESULT_CRASHED, SCORES_CRASHED, 6648, LOG_UNFINISHED)
         self.assertEqual(self.label({"game_name": "MJ3IG09G"}), bl.LABEL_STOPPED)
 
-    def test_in_flight_game_without_a_result_is_not_labelled_while_the_run_lives(self):
-        make_game_dir(self.root, "LIVE", None, None, 500, LOG_UNFINISHED)
-        self.assertIsNone(self.label({"game_name": "LIVE"}, "NO_RESULT"))
-
     def test_recorded_crash_is_not_stopped(self):
         make_game_dir(self.root, "RECORDED", RESULT_CRASHED, SCORES_CRASHED, 30000, LOG_FINISHED)
         game = {"game_name": "RECORDED", "outcome": "CRASH"}
-        self.assertIsNone(self.label(game, run_stopped=True))
+        self.assertEqual(self.label(game, run_stopped=True), bl.LABEL_CRASH)
 
     def test_real_crash_is_jvm_died_when_the_log_has_no_end(self):
         make_game_dir(self.root, "DIED", RESULT_CRASHED, SCORES_CRASHED, 30000, LOG_UNFINISHED)
@@ -200,23 +198,44 @@ class LabelTest(GamesDirTestCase):
         gdir = make_game_dir(self.root, "THEIRS", RESULT_CRASHED, SCORES_CLEAN, 30000, LOG_UNFINISHED)
         (gdir / "logs_1").mkdir()
         (gdir / "logs_1" / "scores.json").write_text(json.dumps(SCORES_CRASHED), encoding="utf-8")
-        self.assertIsNone(self.label({"game_name": "THEIRS", "outcome": "CRASH"}))
+        self.assertEqual(self.label({"game_name": "THEIRS", "outcome": "CRASH"}), bl.LABEL_OPPONENT_CRASH)
+
+    def test_draw_from_an_opponent_crash_is_opponent_crash(self):
+        scores = {**SCORES_CLEAN, "is_winner": True}
+        gdir = make_game_dir(self.root, "DRAWN", RESULT_CRASHED, scores, 27672, LOG_FINISHED)
+        (gdir / "logs_1").mkdir()
+        (gdir / "logs_1" / "scores.json").write_text(json.dumps(SCORES_CRASHED), encoding="utf-8")
+        game = {"game_name": "DRAWN", "outcome": "DRAW"}
+        self.assertEqual(bl.classify(game)[0], "DRAW")
+        self.assertEqual(self.label(game, "DRAW"), bl.LABEL_OPPONENT_CRASH)
+
+    def test_realtime_timeout_is_timeout_even_when_both_scores_crashed(self):
+        result = {**RESULT_CRASHED, "is_crashed": None, "is_realtime_outed": True}
+        make_game_dir(self.root, "SLOW", result, SCORES_CRASHED, 72696, LOG_UNFINISHED)
+        game = {"game_name": "SLOW", "outcome": "TIMEOUT"}
+        self.assertEqual(bl.classify(game)[0], "TIMEOUT")
+        self.assertEqual(self.label(game, "TIMEOUT"), bl.LABEL_TIMEOUT)
+
+    def test_launch_failure_without_a_result_is_no_result(self):
+        (self.root / "GAME_NEVER" / "logs_0").mkdir(parents=True)
+        game = {"game_name": "NEVER", "outcome": "NO_RESULT"}
+        self.assertEqual(self.label(game, "NO_RESULT"), bl.LABEL_NO_RESULT)
 
     def test_opponent_assert_is_not_jvm_died(self):
         gdir = make_game_dir(self.root, "FROZE", RESULT_CRASHED, SCORES_CRASHED, 30000, LOG_UNFINISHED)
         (gdir / "logs_1").mkdir()
         (gdir / "logs_1" / "bot.log").write_text("Assertion failed\n", encoding="utf-8")
-        self.assertIsNone(self.label({"game_name": "FROZE", "outcome": "CRASH"}))
+        self.assertEqual(self.label({"game_name": "FROZE", "outcome": "CRASH"}), bl.LABEL_OPPONENT_CRASH)
 
     def test_crash_with_a_clean_log_keeps_its_plain_outcome(self):
         make_game_dir(self.root, "CLEAN", RESULT_CRASHED, SCORES_CRASHED, 30000, LOG_FINISHED)
-        self.assertIsNone(self.label({"game_name": "CLEAN", "outcome": "CRASH"}))
+        self.assertEqual(self.label({"game_name": "CLEAN", "outcome": "CRASH"}), bl.LABEL_CRASH)
 
-    def test_draw_below_the_frame_cap_is_unlabelled(self):
+    def test_draw_below_the_frame_cap_is_draw(self):
         make_game_dir(self.root, "MIP91099", RESULT_CRASHED, SCORES_CLEAN, 30768, LOG_FINISHED)
         game = {"game_name": "MIP91099", "outcome": "DRAW"}
         self.assertEqual(bl.classify(game)[0], "DRAW")
-        self.assertIsNone(self.label(game, "DRAW"))
+        self.assertEqual(self.label(game, "DRAW"), bl.LABEL_DRAW)
 
     def test_conclusive_outcomes_are_never_labelled(self):
         make_game_dir(self.root, "WON", {"winner": bl.BOT_NAME, "is_crashed": False}, None, 90000, LOG_UNFINISHED)
@@ -224,7 +243,11 @@ class LabelTest(GamesDirTestCase):
 
     def test_missing_log_is_not_jvm_died(self):
         make_game_dir(self.root, "NOLOG", RESULT_CRASHED, SCORES_CRASHED, 30000, None)
-        self.assertIsNone(self.label({"game_name": "NOLOG", "outcome": "CRASH"}))
+        self.assertEqual(self.label({"game_name": "NOLOG", "outcome": "CRASH"}), bl.LABEL_CRASH)
+
+    def test_in_flight_game_is_not_labelled_while_the_run_lives(self):
+        make_game_dir(self.root, "LIVE", None, None, 500, LOG_UNFINISHED)
+        self.assertIsNone(self.label({"game_name": "LIVE"}, "RUNNING"))
 
     def test_stdout_log_end_line(self):
         text = "Batch 20261007-012752 stopped-by-owner-rule after 493 games\n"
@@ -241,6 +264,85 @@ class LabelTest(GamesDirTestCase):
         self.assertIsNone(live[0]["label"])
         self.assertEqual(stopped[0]["outcome"], "NO_RESULT")
         self.assertEqual(stopped[0]["label"], bl.LABEL_STOPPED)
+
+
+class NonResultsReportTest(GamesDirTestCase):
+    def fixture_manifest(self):
+        make_game_dir(self.root, "WON", {"winner": bl.BOT_NAME, "is_crashed": False}, None, 20000, LOG_FINISHED)
+        make_game_dir(self.root, "LOST", {"loser": bl.BOT_NAME, "is_crashed": False}, None, 20000, LOG_FINISHED)
+        make_game_dir(self.root, "CAP", RESULT_CRASHED, SCORES_CRASHED, 89616, LOG_UNFINISHED)
+        slow = {**RESULT_CRASHED, "is_crashed": None, "is_realtime_outed": True}
+        make_game_dir(self.root, "SLOW", slow, SCORES_CRASHED, 72696, LOG_UNFINISHED)
+        (self.root / "GAME_NEVER" / "logs_0").mkdir(parents=True)
+        scores = {**SCORES_CLEAN, "is_winner": True}
+        theirs = make_game_dir(self.root, "THEIRS", RESULT_CRASHED, scores, 27672, LOG_FINISHED)
+        (theirs / "logs_1").mkdir()
+        (theirs / "logs_1" / "scores.json").write_text(json.dumps(SCORES_CRASHED), encoding="utf-8")
+        (theirs / "logs_1" / "frames.csv").write_text(f"{FRAMES_HEADER}27000,1,1\n", encoding="utf-8")
+        make_game_dir(self.root, "OURS", RESULT_CRASHED, SCORES_CRASHED, 30000, LOG_UNFINISHED)
+        make_game_dir(self.root, "CLEANCRASH", RESULT_CRASHED, SCORES_CRASHED, 30000, LOG_FINISHED)
+        make_game_dir(self.root, "CUT", None, None, 500, LOG_UNFINISHED)
+        make_game_dir(self.root, "CAPR1", {"winner": bl.BOT_NAME, "is_crashed": False}, None, 20000, LOG_FINISHED)
+        names = ["WON", "LOST", "CAP", "SLOW", "NEVER", "THEIRS", "OURS", "CLEANCRASH", "CUT"]
+        games = [{"index": i, "game_name": n, "opponent": "o", "map": "m"} for i, n in enumerate(names)]
+        for game in games:
+            if game["game_name"] not in ("CUT", "NEVER"):
+                game["outcome"] = bl.classify(game)[0]
+        games[4]["outcome"] = "NO_RESULT"
+        games[2]["retried"] = True
+        games.append({"index": 2, "game_name": "CAPR1", "opponent": "o", "map": "m", "retry_of": "CAP",
+                      "retry": 1, "outcome": "WIN"})
+        return {"games": games}
+
+    def test_lists_one_of_each_kind_and_skips_wins_and_losses(self):
+        results = report.collect(self.fixture_manifest(), run_stopped=True)
+        labels = {r["game_name"]: r["label"] for r in report.non_result_rows(results)}
+        self.assertEqual(labels, {
+            "CAP": bl.LABEL_STALEMATE,
+            "SLOW": bl.LABEL_TIMEOUT,
+            "NEVER": bl.LABEL_NO_RESULT,
+            "THEIRS": bl.LABEL_OPPONENT_CRASH,
+            "OURS": bl.LABEL_JVM_DIED,
+            "CLEANCRASH": bl.LABEL_CRASH,
+            "CUT": bl.LABEL_STOPPED,
+        })
+
+    def test_printed_rows_carry_index_frames_and_replayed_flag(self):
+        results = report.collect(self.fixture_manifest(), run_stopped=True)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            report.print_non_results(results)
+        rows = {line.split()[0]: line.split() for line in out.getvalue().splitlines() if line.startswith("  ")}
+        self.assertEqual(rows["CAP"][1:], ["o", "m", "2", "STALEMATE", "89616/-", "y"])
+        self.assertEqual(rows["THEIRS"][1:], ["o", "m", "5", "OPPONENT_CRASH", "27672/27000", "n"])
+        self.assertEqual(rows["NEVER"][1:], ["o", "m", "4", "NO_RESULT", "-/-", "n"])
+        self.assertNotIn("WON", rows)
+        self.assertNotIn("CAPR1", rows)
+
+
+class RecordedLaunchFailureTest(GamesDirTestCase):
+    def test_recorded_no_result_stays_labelled_while_the_run_is_in_progress(self):
+        (self.root / "GAME_NEVER" / "logs_0").mkdir(parents=True)
+        make_game_dir(self.root, "LIVE", None, None, 500, LOG_UNFINISHED)
+        games = [
+            {"index": 0, "game_name": "NEVER", "opponent": "o", "map": "m", "outcome": "NO_RESULT", "retried": True},
+            {"index": 1, "game_name": "LIVE", "opponent": "o", "map": "m"},
+        ]
+        results = report.collect({"games": games})
+        self.assertEqual([(r["outcome"], r["label"]) for r in results],
+                         [("NO_RESULT", bl.LABEL_NO_RESULT), ("RUNNING", None)])
+
+
+class GamesDirOptionTest(unittest.TestCase):
+    def test_missing_games_dir_exits_with_a_message(self):
+        saved = bl.GAMES_DIR
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                with self.assertRaises(SystemExit) as raised:
+                    bl.set_games_dir(Path(tmp) / "absent")
+            self.assertIn("--games-dir", str(raised.exception.code))
+        finally:
+            bl.GAMES_DIR = saved
 
 
 class HistoryRowTest(unittest.TestCase):
