@@ -2696,4 +2696,20 @@ class ProductionManagerTest {
 
         assertEquals(3, expansion.getPriority());
     }
+
+    @Test
+    void noOverlordIsInsertedWhileSupplyProvidedIsAtTheCap() {
+        List<Plan> queued = Collections.<Plan>singletonList(new UnitPlan(UnitType.Zerg_Zergling, 5));
+
+        assertTrue(ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), queued, 1, 0, SupplyCapacity.MAX_SUPPLY - 1).isEmpty());
+    }
+
+    @Test
+    void overlordsAreInsertedBelowTheCapWhenSupplyIsTight() {
+        List<Plan> queued = Collections.<Plan>singletonList(new UnitPlan(UnitType.Zerg_Zergling, 5));
+
+        assertEquals(1, ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), queued, 1, 0, 100).size());
+    }
 }

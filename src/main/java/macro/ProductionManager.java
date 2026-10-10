@@ -57,7 +57,7 @@ public class ProductionManager {
     /** Raw supply headroom the overlord planner keeps ahead of the queue it is walking. */
     static final int SUPPLY_BUFFER = 4;
 
-    private static final int MAX_SUPPLY = 400;
+    private static final int MAX_SUPPLY = SupplyCapacity.MAX_SUPPLY;
 
     /** Raw supply used, 9 in game terms, at which the first-Overlord rule queues an Overlord. */
     private static final int FIRST_OVERLORD_SUPPLY_USED = 18;
@@ -223,6 +223,9 @@ public class ProductionManager {
             return;
         }
         int supplyInFlight = gameState.getUnitTypeCount().plannedCount(UnitType.Zerg_Overlord) * OVERLORD_SUPPLY;
+        if (!SupplyCapacity.mayQueueOverlord(self.supplyTotal(), supplyInFlight, 0)) {
+            return;
+        }
         if (!techWave.needsOverlord(self.supplyTotal() - self.supplyUsed(), supplyInFlight)) {
             return;
         }
@@ -756,7 +759,8 @@ public class ProductionManager {
                 SupplyCapacity.cheapestUnitSupply(scheduledPlans));
         boolean supplyBlocked = SupplyCapacity.isBlocked(
                 self.supplyTotal(), self.supplyUsed(), cheapestWaitingUnit);
-        if (supplyBlocked && self.minerals() > 700 && supplyAfterInserts < 80) {
+        if (supplyBlocked && self.minerals() > 700 && supplyAfterInserts < 80
+                && SupplyCapacity.mayQueueOverlord(self.supplyTotal(), supplyAfterInserts, 0)) {
             addUnitToQueue(UnitType.Zerg_Overlord, 1);
             gameState.getResourceCount().setPlannedSupply(supplyAfterInserts + OVERLORD_SUPPLY);
         }
@@ -861,7 +865,8 @@ public class ProductionManager {
             availableSupply -= SupplyCapacity.morphSupplyCost(unitType);
 
             while (availableSupply < SUPPLY_BUFFER
-                    && supplyUsed + plannedSupply + OVERLORD_SUPPLY * insertPriorities.size() < MAX_SUPPLY) {
+                    && SupplyCapacity.mayQueueOverlord(
+                            freeSupply + supplyUsed, plannedSupply, insertPriorities.size())) {
                 insertPriorities.add(Math.max(1, plan.getPriority() - 1));
                 availableSupply += OVERLORD_SUPPLY;
             }

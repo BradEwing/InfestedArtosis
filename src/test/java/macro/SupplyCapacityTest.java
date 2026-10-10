@@ -100,4 +100,27 @@ class SupplyCapacityTest {
         assertTrue(SupplyCapacity.isBlocked(54, 51, cheapest));
         assertFalse(SupplyCapacity.isBlocked(54, 50, cheapest));
     }
+
+    @Test
+    void noOverlordIsQueuedOnceSupplyProvidedReachesTheCap() {
+        assertFalse(SupplyCapacity.mayQueueOverlord(SupplyCapacity.MAX_SUPPLY, 0, 0));
+        assertFalse(SupplyCapacity.mayQueueOverlord(SupplyCapacity.MAX_SUPPLY - 16, 16, 0));
+        assertFalse(SupplyCapacity.mayQueueOverlord(SupplyCapacity.MAX_SUPPLY - 16, 0, 1));
+    }
+
+    @Test
+    void exactlyOneOverlordIsQueuedOneOverlordShortOfTheCap() {
+        int overlordSupply = UnitType.Zerg_Overlord.supplyProvided();
+        int total = SupplyCapacity.MAX_SUPPLY - overlordSupply;
+
+        assertTrue(SupplyCapacity.mayQueueOverlord(total, 0, 0));
+        assertFalse(SupplyCapacity.mayQueueOverlord(total, 0, 1));
+        assertFalse(SupplyCapacity.mayQueueOverlord(total, overlordSupply, 0));
+    }
+
+    @Test
+    void overlordsAreQueuedAsBeforeFarBelowTheCap() {
+        assertTrue(SupplyCapacity.mayQueueOverlord(18, 0, 0));
+        assertTrue(SupplyCapacity.mayQueueOverlord(200, 32, 3));
+    }
 }
