@@ -83,6 +83,11 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
     }
 
     @Override
+    public boolean allowsBunkerEcon(GameState gameState) {
+        return false;
+    }
+
+    @Override
     protected boolean openerComplete(GameState gameState) {
         return openerComplete(zerglingPlans, gameState.isLingFloodHold(), gameState.getGameTime());
     }

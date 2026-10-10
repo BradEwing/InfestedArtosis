@@ -150,6 +150,11 @@ public class SpeedlingAllIn extends BuildOrder {
         return runsContainHeldRounds(gameState.ourLivingUnitCount(UnitType.Zerg_Zergling));
     }
 
+    @Override
+    public boolean allowsBunkerEcon(GameState gameState) {
+        return false;
+    }
+
     /**
      * @param livingZerglings zerglings alive now
      * @return true once {@link #ZERGLINGS_FOR_CONTAIN_HELD_ROUND} zerglings are alive

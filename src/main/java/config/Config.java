@@ -29,6 +29,10 @@ public final class Config {
      * IA_RACE_PRIOR is set to false.
      */
     public static boolean racePrior = true;
+    /**
+     * Whether Drones are added while an enemy Bunker stance stands. On unless IA_BUNKER_ECON is set to false.
+     */
+    public static boolean bunkerEcon = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -119,6 +123,7 @@ public final class Config {
         baseChecks = enabledUnlessFalse(setting(dotenv, "IA_BASE_CHECKS"));
         lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
         racePrior = enabledUnlessFalse(setting(dotenv, "IA_RACE_PRIOR"));
+        bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
     }
 
     /**

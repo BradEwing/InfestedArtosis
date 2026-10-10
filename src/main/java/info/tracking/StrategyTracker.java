@@ -2,6 +2,7 @@ package info.tracking;
 
 import bwapi.Game;
 import bwapi.Race;
+import bwapi.UnitType;
 import bwem.BWMap;
 import info.BaseData;
 import info.ScoutData;
@@ -93,6 +94,12 @@ public class StrategyTracker {
     @Getter
     private boolean bunkerMainHeld;
 
+    /**
+     * Whether an enemy Bunker that was seen completed has been seen destroyed.
+     */
+    @Getter
+    private boolean bunkerBroken;
+
     public StrategyTracker(Game game, Race opponentRace, ObservedUnitTracker tracker, BaseData baseData, GameMap gameMap,
                            BWMap bwMap, ScoutData scoutData) {
         this.game = game;
@@ -153,8 +160,20 @@ public class StrategyTracker {
         }
 
         recordDetections(newlyDetected);
-        bunkerNaturalHeld = isDetectedStrategy(BunkerNatural.NAME) && bunkerNatural.isDetected(context);
-        bunkerMainHeld = isDetectedStrategy(BunkerMain.NAME) && bunkerMain.isDetected(context);
+        applyBunkerHolds(isDetectedStrategy(BunkerNatural.NAME) && bunkerNatural.isDetected(context),
+                isDetectedStrategy(BunkerMain.NAME) && bunkerMain.isDetected(context));
+    }
+
+    /**
+     * Sets the Bunker holds and whether a Bunker has been broken.
+     *
+     * @param natural whether a Bunker holds the enemy natural
+     * @param main whether a Bunker holds the enemy main
+     */
+    public void applyBunkerHolds(boolean natural, boolean main) {
+        bunkerNaturalHeld = natural;
+        bunkerMainHeld = main;
+        bunkerBroken = tracker.getCountOfDestroyedCompletedUnits(UnitType.Terran_Bunker) > 0;
     }
 
     /**

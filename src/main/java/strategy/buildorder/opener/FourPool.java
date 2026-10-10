@@ -20,6 +20,11 @@ public class FourPool extends BuildOrder {
     }
 
     @Override
+    public boolean allowsBunkerEcon(GameState gameState) {
+        return false;
+    }
+
+    @Override
     protected List<Plan> buildPlans(GameState gameState) {
         Time currentTime = gameState.getGameTime();
         TechProgression techProgression = gameState.getTechProgression();

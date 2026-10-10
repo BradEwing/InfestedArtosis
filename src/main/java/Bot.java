@@ -31,6 +31,8 @@ import telemetry.HarassTelemetry;
 import telemetry.RunbyLogger;
 import telemetry.BurrowLogger;
 import telemetry.BurrowTelemetry;
+import telemetry.BunkerLogger;
+import telemetry.BunkerTelemetry;
 import telemetry.ReachLogger;
 import telemetry.ReachTelemetry;
 import telemetry.RunbyTelemetry;
@@ -76,6 +78,7 @@ public class Bot extends DefaultBWListener {
     private AirReinforcementLogger airReinforcementLogger;
     private FlockLogger flockLogger;
     private ReachLogger reachLogger;
+    private BunkerLogger bunkerLogger;
     private BurrowLogger burrowLogger;
     private FixedFireLogger fixedFireLogger;
 
@@ -115,6 +118,7 @@ public class Bot extends DefaultBWListener {
         startAirReinforcementLogging();
         startFlockLogging();
         startReachLogging();
+        startBunkerLogging();
         startBurrowLogging();
         startFixedFireLogging();
         startPlanEventLogging(decisions.getOpener());
@@ -203,6 +207,15 @@ public class Bot extends DefaultBWListener {
         ReachTelemetry.register(reachLogger);
     }
 
+    private void startBunkerLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        bunkerLogger = new BunkerLogger(game, gameState, combatTelemetry.getGameId());
+        BunkerTelemetry.register(bunkerLogger);
+    }
+
     private void startBurrowLogging() {
         if (!gameState.getConfig().telemetryCombat) {
             return;
@@ -271,6 +284,9 @@ public class Bot extends DefaultBWListener {
         }
         if (reachLogger != null) {
             reachLogger.onFrame();
+        }
+        if (bunkerLogger != null) {
+            bunkerLogger.onFrame();
         }
         if (burrowLogger != null) {
             burrowLogger.onFrame();
@@ -370,6 +386,9 @@ public class Bot extends DefaultBWListener {
         }
         if (reachLogger != null) {
             reachLogger.onEnd();
+        }
+        if (bunkerLogger != null) {
+            bunkerLogger.onEnd();
         }
         if (burrowLogger != null) {
             burrowLogger.onEnd();
