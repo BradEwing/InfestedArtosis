@@ -13,11 +13,12 @@ import java.util.List;
  *
  * <p>ANCHOR rows are written when a parked Overlord's anchor changes: x and y are where the Overlord is, from_x and
  * from_y the previous anchor, -1 for none, to_x and to_y the new anchor, and reason one of ASSIGNED,
- * SPORE_COMPLETED, NEARER_SPORE or SPORE_LOST. role, spore_distance and parked are NONE, -1 and -1 on these rows.
+ * SPORE_COMPLETED, NEARER_SPORE, SPORE_LOST or OUT_OF_REACH. role is the Overlord's role, and spore_distance and
+ * parked are -1 and -1 on these rows.
  *
  * <p>DIED rows are written for every Overlord of ours that dies: x and y are the death position, role its role,
  * spore_distance the pixels to the nearest completed own Spore Colony, -1 with none, and parked 1 when it was in the
- * Overlord squad and 0 otherwise. from_x, from_y, to_x, to_y and reason are -1, -1, -1, -1 and NONE on these rows.
+ * Overlord squad holding the IDLE or RALLY role and 0 otherwise. from_x, from_y, to_x, to_y and reason are -1, -1, -1, -1 and NONE on these rows.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -70,13 +71,13 @@ public class OverlordParkLogger implements OverlordParkSink {
 
     @Override
     public void onAnchorChanged(int frame, int unitId, Position position, Position from, Position to,
-                                OverlordParking.Reason reason) {
+                                OverlordParking.Reason reason, UnitRole role) {
         if (disabled) {
             return;
         }
 
         try {
-            writer.append(gameId + "," + anchorRow(frame, unitId, position, from, to, reason));
+            writer.append(gameId + "," + anchorRow(frame, unitId, position, from, to, reason, role));
         } catch (Exception e) {
             disabled = true;
         }
@@ -97,7 +98,7 @@ public class OverlordParkLogger implements OverlordParkSink {
     }
 
     static String anchorRow(int frame, int unitId, Position position, Position from, Position to,
-                            OverlordParking.Reason reason) {
+                            OverlordParking.Reason reason, UnitRole role) {
         List<String> fields = new ArrayList<>();
         fields.add(String.valueOf(frame));
         fields.add("ANCHOR");
@@ -109,7 +110,7 @@ public class OverlordParkLogger implements OverlordParkSink {
         fields.add(String.valueOf(to.getX()));
         fields.add(String.valueOf(to.getY()));
         fields.add(Csv.name(reason));
-        fields.add("NONE");
+        fields.add(Csv.name(role));
         fields.add("-1");
         fields.add("-1");
         return String.join(",", fields);

@@ -12,16 +12,16 @@ class OverlordParkLoggerTest {
     @Test
     void anchorRowHasOneFieldPerHeaderColumnOnceTheGameIdIsPrefixed() {
         String row = "g," + OverlordParkLogger.anchorRow(900, 7, new Position(10, 20), null, new Position(30, 40),
-                OverlordParking.Reason.ASSIGNED);
+                OverlordParking.Reason.ASSIGNED, UnitRole.IDLE);
         assertEquals(OverlordParkLogger.HEADER.split(",").length, row.split(",").length);
-        assertEquals("g,900,ANCHOR,7,10,20,-1,-1,30,40,ASSIGNED,NONE,-1,-1", row);
+        assertEquals("g,900,ANCHOR,7,10,20,-1,-1,30,40,ASSIGNED,IDLE,-1,-1", row);
     }
 
     @Test
     void anchorRowCarriesThePreviousAnchor() {
         String row = OverlordParkLogger.anchorRow(900, 7, new Position(10, 20), new Position(1, 2),
-                new Position(30, 40), OverlordParking.Reason.SPORE_LOST);
-        assertEquals("900,ANCHOR,7,10,20,1,2,30,40,SPORE_LOST,NONE,-1,-1", row);
+                new Position(30, 40), OverlordParking.Reason.SPORE_LOST, UnitRole.RALLY);
+        assertEquals("900,ANCHOR,7,10,20,1,2,30,40,SPORE_LOST,RALLY,-1,-1", row);
     }
 
     @Test

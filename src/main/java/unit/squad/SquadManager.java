@@ -11,6 +11,7 @@ import bwapi.WalkPosition;
 import bwem.Base;
 import bwem.CPPath;
 import config.Config;
+import info.BaseData;
 import info.GameState;
 import info.ScoutData;
 import info.map.BaseArea;
@@ -1029,8 +1030,9 @@ public class SquadManager {
     }
 
     /**
-     * Parks each Overlord of the Overlord squad at the center of the nearest completed Spore Colony we own,
-     * measured from the Overlord, or at the main base position when there is none.
+     * Parks each IDLE or RALLY Overlord of the Overlord squad at the center of a completed Spore Colony we own
+     * within {@link OverlordParking#MAX_ANCHOR_DISTANCE}, preferring the natural's, else the nearest, or at the main
+     * base position when there is none. Overlords with any other role are left alone.
      */
     public void updateOverlordSquad() {
         Position main = gameState.getBaseData().mainBasePosition().toPosition();
@@ -1043,18 +1045,21 @@ public class SquadManager {
         Map<Integer, Position> positions = new LinkedHashMap<>();
         Map<Integer, ManagedUnit> byId = new HashMap<>();
         for (ManagedUnit managedUnit: overlords.getMembers()) {
+            if (!OverlordParking.isParkedRole(managedUnit.getRole())) {
+                continue;
+            }
             Unit overlord = managedUnit.getUnit();
             positions.put(overlord.getID(), overlord.getPosition());
             byId.put(overlord.getID(), managedUnit);
         }
 
         List<OverlordParking.Decision> decisions = OverlordParking.plan(positions, overlordAnchors, spores, main,
-                (id, anchor) -> byId.get(id).getUnit().getDistance(anchor));
+                naturalCenter(), (id, anchor) -> byId.get(id).getUnit().getDistance(anchor));
         for (OverlordParking.Decision decision: decisions) {
             ManagedUnit managedUnit = byId.get(decision.unitId);
             if (decision.changed()) {
                 OverlordParks.anchorChanged(now, decision.unitId, decision.position, decision.previous,
-                        decision.anchor, decision.reason);
+                        decision.anchor, decision.reason, managedUnit.getRole());
             }
 
             if (decision.idle) {
@@ -1065,6 +1070,15 @@ public class SquadManager {
             managedUnit.setRole(UnitRole.RALLY);
             managedUnit.setRallyPoint(decision.anchor);
         }
+    }
+
+    private Position naturalCenter() {
+        BaseData baseData = gameState.getBaseData();
+        Base inferred = baseData.getInferredNaturalBase();
+        if (inferred != null) {
+            return inferred.getCenter();
+        }
+        return baseData.hasNaturalExpansion() ? baseData.naturalExpansionPosition().toPosition() : null;
     }
 
     private List<Position> completedSporePositions() {
@@ -1089,7 +1103,8 @@ public class SquadManager {
         Unit unit = overlord.getUnit();
         double sporeDistance = OverlordParking.nearestSporeDistance(unit.getPosition(), completedSporePositions());
         OverlordParks.died(game.getFrameCount(), unit.getID(), unit.getPosition(), overlord.getRole(),
-                sporeDistance, overlords.containsManagedUnit(overlord));
+                sporeDistance, OverlordParking.isParked(overlords.containsManagedUnit(overlord),
+                overlord.getRole()));
     }
 
 

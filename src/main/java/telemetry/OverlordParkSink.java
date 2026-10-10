@@ -19,9 +19,10 @@ public interface OverlordParkSink {
      * @param from the previous anchor, or null for none
      * @param to the new anchor
      * @param reason why it changed
+     * @param role the Overlord's role
      */
     void onAnchorChanged(int frame, int unitId, Position position, Position from, Position to,
-                         OverlordParking.Reason reason);
+                         OverlordParking.Reason reason, UnitRole role);
 
     /**
      * One of our Overlords died.
@@ -31,7 +32,7 @@ public interface OverlordParkSink {
      * @param position where it died
      * @param role its role when it died
      * @param sporeDistance pixels to the nearest completed own Spore Colony, or -1 with none
-     * @param parked whether it was in the Overlord squad
+     * @param parked whether it was in the Overlord squad holding a parked role
      */
     void onOverlordDied(int frame, int unitId, Position position, UnitRole role, double sporeDistance,
                         boolean parked);

@@ -30,12 +30,12 @@ public final class OverlordParks {
     }
 
     public static void anchorChanged(int frame, int unitId, Position position, Position from, Position to,
-                                     OverlordParking.Reason reason) {
+                                     OverlordParking.Reason reason, UnitRole role) {
         OverlordParkSink current = sink;
         if (current == null) {
             return;
         }
-        current.onAnchorChanged(frame, unitId, position, from, to, reason);
+        current.onAnchorChanged(frame, unitId, position, from, to, reason, role);
     }
 
     public static void died(int frame, int unitId, Position position, UnitRole role, double sporeDistance,

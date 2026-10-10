@@ -2,6 +2,7 @@ package unit.squad;
 
 import bwapi.Position;
 import org.junit.jupiter.api.Test;
+import unit.managed.UnitRole;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -24,32 +25,33 @@ class OverlordParkingTest {
     @Test
     void picksTheNearerOfTwoSpores() {
         List<Position> spores = Arrays.asList(FAR, NEAR);
-        assertEquals(NEAR, OverlordParking.pickAnchor(new Position(600, 600), spores, MAIN));
-        assertEquals(FAR, OverlordParking.pickAnchor(new Position(1900, 1900), spores, MAIN));
+        assertEquals(NEAR, OverlordParking.pickAnchor(new Position(600, 600), spores, MAIN, null));
+        assertEquals(FAR, OverlordParking.pickAnchor(new Position(1900, 1900), spores, MAIN, null));
     }
 
     @Test
     void fallsBackToTheMainWithNoSpore() {
-        assertEquals(MAIN, OverlordParking.pickAnchor(new Position(600, 600), Collections.emptyList(), MAIN));
+        assertEquals(MAIN, OverlordParking.pickAnchor(new Position(600, 600), Collections.emptyList(), MAIN, null));
     }
 
     @Test
     void aTieGoesToTheFirstListedSpore() {
         Position a = new Position(0, 100);
         Position b = new Position(200, 100);
-        assertEquals(a, OverlordParking.pickAnchor(new Position(100, 100), Arrays.asList(a, b), MAIN));
+        assertEquals(a, OverlordParking.pickAnchor(new Position(100, 100), Arrays.asList(a, b), MAIN, null));
     }
 
     @Test
     void reasonNamesWhyTheAnchorChanged() {
         List<Position> spores = Collections.singletonList(NEAR);
-        assertEquals(OverlordParking.Reason.ASSIGNED, OverlordParking.reason(null, spores, MAIN));
-        assertEquals(OverlordParking.Reason.SPORE_COMPLETED, OverlordParking.reason(MAIN, spores, MAIN));
-        assertEquals(OverlordParking.Reason.NEARER_SPORE, OverlordParking.reason(NEAR, spores, MAIN));
+        assertEquals(OverlordParking.Reason.ASSIGNED, OverlordParking.reason(null, NEAR, spores, MAIN));
+        assertEquals(OverlordParking.Reason.SPORE_COMPLETED, OverlordParking.reason(MAIN, NEAR, spores, MAIN));
+        assertEquals(OverlordParking.Reason.NEARER_SPORE, OverlordParking.reason(NEAR, new Position(550, 550), spores, MAIN));
         assertEquals(OverlordParking.Reason.SPORE_LOST,
-                OverlordParking.reason(FAR, spores, MAIN));
+                OverlordParking.reason(FAR, NEAR, spores, MAIN));
         assertEquals(OverlordParking.Reason.SPORE_LOST,
-                OverlordParking.reason(FAR, Collections.emptyList(), MAIN));
+                OverlordParking.reason(FAR, MAIN, Collections.emptyList(), MAIN));
+        assertEquals(OverlordParking.Reason.OUT_OF_REACH, OverlordParking.reason(NEAR, MAIN, spores, MAIN));
     }
 
     @Test
@@ -61,7 +63,7 @@ class OverlordParkingTest {
 
     private static List<OverlordParking.Decision> plan(Map<Integer, Position> parked, Map<Integer, Position> anchors,
                                                        List<Position> spores) {
-        return OverlordParking.plan(parked, anchors, spores, MAIN, (id, anchor) -> parked.get(id).getDistance(anchor));
+        return OverlordParking.plan(parked, anchors, spores, MAIN, null, (id, anchor) -> parked.get(id).getDistance(anchor));
     }
 
     @Test
@@ -86,11 +88,12 @@ class OverlordParkingTest {
         Map<Integer, Position> parked = new LinkedHashMap<>();
         parked.put(1, new Position(600, 600));
 
-        OverlordParking.Decision toOther = plan(parked, anchors, Collections.singletonList(FAR)).get(0);
-        assertEquals(FAR, toOther.anchor);
+        Position other = new Position(900, 700);
+        OverlordParking.Decision toOther = plan(parked, anchors, Collections.singletonList(other)).get(0);
+        assertEquals(other, toOther.anchor);
         assertEquals(OverlordParking.Reason.SPORE_LOST, toOther.reason);
 
-        anchors.put(1, FAR);
+        anchors.put(1, other);
         OverlordParking.Decision toMain = plan(parked, anchors, Collections.emptyList()).get(0);
         assertEquals(MAIN, toMain.anchor);
         assertEquals(OverlordParking.Reason.SPORE_LOST, toMain.reason);
@@ -119,5 +122,74 @@ class OverlordParkingTest {
 
         assertTrue(decisions.get(0).idle);
         assertFalse(decisions.get(1).idle);
+    }
+
+    private static final Position NATURAL = new Position(900, 100);
+    private static final Position NATURAL_SPORE = new Position(1000, 150);
+    private static final Position THIRD_SPORE = new Position(1000, 900);
+
+    @Test
+    void aSporeBeyondTheCapIsNotAnAnchor() {
+        Position farBase = new Position(100 + (int) OverlordParking.MAX_ANCHOR_DISTANCE + 200, 100);
+        Position overlord = new Position(150, 120);
+        assertEquals(MAIN, OverlordParking.pickAnchor(overlord, Collections.singletonList(farBase), MAIN, null));
+    }
+
+    @Test
+    void aSporeJustWithinTheCapIsAnAnchor() {
+        Position edge = new Position(100 + (int) OverlordParking.MAX_ANCHOR_DISTANCE - 10, 100);
+        assertEquals(edge, OverlordParking.pickAnchor(MAIN, Collections.singletonList(edge), MAIN, null));
+    }
+
+    @Test
+    void theNaturalsSporeIsPreferredOverANearerThirdBaseSpore() {
+        Position overlord = new Position(1000, 700);
+        List<Position> spores = Arrays.asList(THIRD_SPORE, NATURAL_SPORE);
+        assertTrue(overlord.getDistance(THIRD_SPORE) < overlord.getDistance(NATURAL_SPORE));
+        assertEquals(NATURAL_SPORE, OverlordParking.pickAnchor(overlord, spores, MAIN, NATURAL));
+    }
+
+    @Test
+    void theNaturalsSporeIsReachableFromTheMainBeyondTheCap() {
+        Position overlord = new Position(100, 100);
+        assertTrue(overlord.getDistance(NATURAL_SPORE) > 0);
+        assertEquals(NATURAL_SPORE,
+                OverlordParking.pickAnchor(overlord, Collections.singletonList(NATURAL_SPORE), MAIN, NATURAL));
+    }
+
+    @Test
+    void theNaturalsSporeIsCappedForAnOverlordFarFromTheMainAndTheNatural() {
+        Position overlord = new Position(100 + 4000, 4000);
+        assertEquals(MAIN,
+                OverlordParking.pickAnchor(overlord, Collections.singletonList(NATURAL_SPORE), MAIN, NATURAL));
+    }
+
+    @Test
+    void whenTheNaturalsSporeDiesTheNearestSporeWithinTheCapIsPickedElseTheMain() {
+        Position overlord = new Position(1000, 700);
+        assertEquals(THIRD_SPORE,
+                OverlordParking.pickAnchor(overlord, Collections.singletonList(THIRD_SPORE), MAIN, NATURAL));
+        assertEquals(MAIN,
+                OverlordParking.pickAnchor(new Position(100, 100), Collections.singletonList(THIRD_SPORE), MAIN,
+                        NATURAL));
+    }
+
+    @Test
+    void aSporeAtAFarBaseLeavesAnOverlordBesideTheMainAtTheMain() {
+        Position farSpore = new Position(3000, 3000);
+        Map<Integer, Position> parked = new LinkedHashMap<>();
+        parked.put(1, new Position(120, 120));
+        OverlordParking.Decision decision = plan(parked, new HashMap<>(), Collections.singletonList(farSpore)).get(0);
+        assertEquals(MAIN, decision.anchor);
+        assertEquals(OverlordParking.Reason.ASSIGNED, decision.reason);
+    }
+
+    @Test
+    void aPerchOverlordInTheSquadIsNotParked() {
+        assertFalse(OverlordParking.isParked(true, UnitRole.PERCH));
+        assertFalse(OverlordParking.isParked(true, UnitRole.SCOUT));
+        assertFalse(OverlordParking.isParked(false, UnitRole.IDLE));
+        assertTrue(OverlordParking.isParked(true, UnitRole.IDLE));
+        assertTrue(OverlordParking.isParked(true, UnitRole.RALLY));
     }
 }
