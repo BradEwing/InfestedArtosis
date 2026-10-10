@@ -975,6 +975,7 @@ public class InformationManager {
         Set<BuildOrder> candidates = active.transition(gameState);
         BuildOrder transition = learningManager.determineBuildOrder(candidates);
         if (transition != null) {
+            active.onTransitioned(transition);
             gameState.getBuildOrderChain().add(transition.getName());
         }
         return transition;

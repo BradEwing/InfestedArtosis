@@ -133,7 +133,7 @@ public final class SunkenTargets {
      * Sunkens per base the enemy's Barracks count asks for, in every matchup.
      * <p>
      * Race agnostic on purpose. The Terran matchup prices Barracks inside its own threat ordered
-     * chain, but the build orders that never reach a matchup class - SpeedlingAllIn, which plays
+     * chain, but the build orders that never reach a matchup class - Speedling, which plays
      * every race, and every opener - would otherwise see nothing at all off three Barracks. The
      * count is zero against a non Terran opponent, so this is inert in the matchups it does not
      * describe, and it reads before the opponent's race is even revealed.

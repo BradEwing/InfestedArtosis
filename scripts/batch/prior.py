@@ -20,7 +20,8 @@ A build equal to the opener is no transition and is not rated as a build.
 
 Race is Terran, Protoss, Zerg or Unknown (a Random opponent). The legacy build SpeedlingAllIn is written under
 the IA-470 per-race name SpeedlingT, SpeedlingP or SpeedlingZ by the race the game resolved to (the race column),
-which for a Random bot is the rolled race; with no resolved race it counts toward all four names, SpeedlingR included.
+which for a Random bot is the rolled race; with no resolved race it counts toward no name, as the bot's load path leaves
+such a row unmapped.
 
 Command line used for the committed file (run from the repository root):
 
@@ -34,7 +35,7 @@ from pathlib import Path
 
 RANDOM_RACES = {"Random", "Unknown"}
 RANDOM_BOTS = {"Dave Churchill", "Randomhammer"}
-SPEEDLING_BY_RACE = {"Terran": "SpeedlingT", "Protoss": "SpeedlingP", "Zerg": "SpeedlingZ", "Unknown": "SpeedlingR"}
+SPEEDLING_BY_RACE = {"Terran": "SpeedlingT", "Protoss": "SpeedlingP", "Zerg": "SpeedlingZ"}
 LEGACY_SPEEDLING = "SpeedlingAllIn"
 KINDS = (("opener", "opener"), ("build", "build"))
 RACE_ORDER = ("Terran", "Protoss", "Zerg", "Unknown")
@@ -49,13 +50,13 @@ def race_key(row, random_bots=RANDOM_BOTS):
 
 def arm_names(kind, name, race, resolved=""):
     """Returns the arm names a row counts toward. SpeedlingAllIn follows the race the game resolved to; a Random
-    row whose resolved race is unknown counts toward all four per-race names."""
+    row whose resolved race is unknown counts toward none."""
     if kind == "build" and name == LEGACY_SPEEDLING:
         if race != "Unknown":
             return [SPEEDLING_BY_RACE[race]]
-        if resolved in SPEEDLING_BY_RACE and resolved != "Unknown":
+        if resolved in SPEEDLING_BY_RACE:
             return [SPEEDLING_BY_RACE[resolved]]
-        return list(SPEEDLING_BY_RACE.values())
+        return []
     return [name]
 
 

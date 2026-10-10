@@ -48,9 +48,9 @@ class ArmNameTest(unittest.TestCase):
     def test_random_row_maps_by_resolved_race(self):
         self.assertEqual(["SpeedlingT"], prior.arm_names("build", "SpeedlingAllIn", "Unknown", "Terran"))
 
-    def test_random_row_without_resolved_race_counts_toward_all_four(self):
-        self.assertEqual(["SpeedlingT", "SpeedlingP", "SpeedlingZ", "SpeedlingR"],
-                         prior.arm_names("build", "SpeedlingAllIn", "Unknown", "Random"))
+    def test_random_row_without_resolved_race_counts_toward_no_name(self):
+        self.assertEqual([], prior.arm_names("build", "SpeedlingAllIn", "Unknown", "Random"))
+        self.assertEqual([], prior.arm_names("build", "SpeedlingAllIn", "Unknown", "Unknown"))
 
     def test_other_names_and_openers_are_unchanged(self):
         self.assertEqual(["3HatchMuta"], prior.arm_names("build", "3HatchMuta", "Protoss"))

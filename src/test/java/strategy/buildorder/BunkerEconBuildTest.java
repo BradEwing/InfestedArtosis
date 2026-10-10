@@ -18,7 +18,9 @@ class BunkerEconBuildTest {
 
     @Test
     void buildsThatAreAllInsByDesignKeepTheirEconomy() {
-        assertFalse(new SpeedlingAllIn().allowsBunkerEcon(null));
+        assertFalse(new SpeedlingT().allowsBunkerEcon(null));
+        assertFalse(new SpeedlingP().allowsBunkerEcon(null));
+        assertFalse(new SpeedlingZ().allowsBunkerEcon(null));
         assertFalse(new FourPool().allowsBunkerEcon(null));
         assertFalse(new NinePoolSpeed().allowsBunkerEcon(null));
         assertFalse(new NinePoolGasHatchSpeed8D().allowsBunkerEcon(null));
@@ -36,7 +38,7 @@ class BunkerEconBuildTest {
 
     @Test
     void anAllInStrategySelectedBeforeTheOpenerHandsOverTurnsTheEconomyAnswerOffThroughTheOpener() {
-        assertFalse(BuildOrder.bunkerEconAllowed(new ThreeHatchBeforePool(), new SpeedlingAllIn(), null));
+        assertFalse(BuildOrder.bunkerEconAllowed(new ThreeHatchBeforePool(), new SpeedlingT(), null));
     }
 
     @Test

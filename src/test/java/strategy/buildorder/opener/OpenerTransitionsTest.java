@@ -4,7 +4,10 @@ import bwapi.Race;
 import config.Config;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.StrategyTracker;
+import info.tracking.terran.BunkerMain;
+import info.tracking.terran.BunkerNatural;
 import info.tracking.terran.TerranMech;
+import info.tracking.terran.TerranWallNatural;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
@@ -52,16 +55,71 @@ class OpenerTransitionsTest {
     }
 
     @Test
-    void terranTransitionsOfferSpeedlingAllInWithoutAWall() {
+    void terranTransitionsOfferSpeedlingTWithoutAWall() {
         Set<String> names = transitionNames(Race.Terran, false);
-        assertTrue(names.contains("SpeedlingAllIn"), "Terran without a wall must offer SpeedlingAllIn: " + names);
+        assertTrue(names.contains("SpeedlingT"), "Terran without a wall must offer SpeedlingT: " + names);
     }
 
     @Test
-    void aTerranWallBarsSpeedlingAllInAndKeepsTheOtherTransitions() {
+    void aTerranWallBarsSpeedlingTAndKeepsTheOtherTransitions() {
         Set<String> names = transitionNames(Race.Terran, true);
-        assertFalse(names.contains("SpeedlingAllIn"), "a Terran wall must bar SpeedlingAllIn: " + names);
+        assertFalse(names.contains("SpeedlingT"), "a Terran wall must bar SpeedlingT: " + names);
         assertEquals(new HashSet<>(Arrays.asList("CrazyZerg", "3HatchLurker", "2HatchMuta")), names);
+    }
+
+    @Test
+    void eachRaceIsOfferedItsOwnSpeedlingVariantOnly() {
+        assertEquals(1, speedlingNames(Race.Protoss).size());
+        assertTrue(speedlingNames(Race.Protoss).contains("SpeedlingP"));
+        assertEquals(1, speedlingNames(Race.Zerg).size());
+        assertTrue(speedlingNames(Race.Zerg).contains("SpeedlingZ"));
+        assertEquals(1, speedlingNames(Race.Terran).size());
+        assertTrue(speedlingNames(Race.Terran).contains("SpeedlingT"));
+    }
+
+    @Test
+    void noSpeedlingVariantIsOfferedWhileTheRaceIsUnknown() {
+        assertTrue(speedlingNames(Race.Unknown).isEmpty());
+        assertTrue(speedlingNames(Race.Random).isEmpty());
+    }
+
+    @Test
+    void terranWithoutSpeedlingOffersNoSpeedlingVariant() {
+        Set<String> names = names(OpenerTransitions.forRace(Race.Terran, true));
+        assertTrue(speedlingOnly(names).isEmpty());
+        assertFalse(names.isEmpty());
+    }
+
+    @Test
+    void onlyAWallThisGameOrPersistedBarsSpeedlingT() {
+        StrategyTracker cold = terranTracker();
+        StrategyTracker bunkerMain = terranTracker();
+        bunkerMain.getDetectedStrategies().add(new BunkerMain());
+        StrategyTracker bunkerNatural = terranTracker();
+        bunkerNatural.getDetectedStrategies().add(new BunkerNatural());
+        StrategyTracker persistedWall = terranTracker();
+        persistedWall.setTerranWallPersists(true);
+
+        assertFalse(OpenerTransitions.barsSpeedlingT(null));
+        assertFalse(OpenerTransitions.barsSpeedlingT(cold));
+        assertFalse(OpenerTransitions.barsSpeedlingT(bunkerMain));
+        assertFalse(OpenerTransitions.barsSpeedlingT(bunkerNatural));
+        StrategyTracker both = terranTracker();
+        both.getDetectedStrategies().add(new BunkerMain());
+        both.getDetectedStrategies().add(new BunkerNatural());
+        assertFalse(OpenerTransitions.barsSpeedlingT(both));
+        StrategyTracker detectedWall = terranTracker();
+        detectedWall.getDetectedStrategies().add(new TerranWallNatural());
+        assertTrue(OpenerTransitions.barsSpeedlingT(detectedWall));
+        assertTrue(OpenerTransitions.barsSpeedlingT(persistedWall));
+    }
+
+    private static Set<String> speedlingNames(Race race) {
+        return speedlingOnly(names(OpenerTransitions.forRace(race)));
+    }
+
+    private static Set<String> speedlingOnly(Set<String> names) {
+        return names.stream().filter(n -> n.startsWith("Speedling")).collect(Collectors.toSet());
     }
 
     @Test

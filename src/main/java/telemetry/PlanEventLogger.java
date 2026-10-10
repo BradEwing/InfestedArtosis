@@ -188,7 +188,8 @@ public class PlanEventLogger implements PlanEventSink {
      * BUILD_ORDER_TRANSITION rows are written on the frame a build order decides to hand over, and
      * leave every plan column empty. item is the build handing over, the build taking over and the
      * trigger, as 2HatchMuta>LurkerDefilerUltra:GOLIATHS; build_order is still the chain before the
-     * handover.
+     * handover. SpeedlingT writes one when it bails out of a Terran wall, as
+     * SpeedlingT>3HatchLurker:TERRAN_WALL.
      * <p>
      * SCOUT_SKIPPED rows are written when a ground scout is withheld from, or recalled off, a route a detected
      * Bunker holds, and leave every plan column empty. item is the reason and the destination, as

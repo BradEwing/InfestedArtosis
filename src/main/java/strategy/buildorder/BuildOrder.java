@@ -140,6 +140,15 @@ public abstract class BuildOrder {
     }
 
     /**
+     * Called once on the frame this build hands over, with the build picked from
+     * {@link #transition}. Does nothing unless a build overrides it.
+     *
+     * @param next the build taking over
+     */
+    public void onTransitioned(BuildOrder next) {
+    }
+
+    /**
      * The plans the build order asks for this frame.
      *
      * <p>Final: the build's own plans come from {@link #buildPlans}, and the shared larva-bound
@@ -573,7 +582,7 @@ public abstract class BuildOrder {
      * Sunkens per base the bot wants: the matchup term under the race agnostic floors.
      * <p>
      * The floors are applied here rather than in each matchup because a matchup class is not
-     * always in play. SpeedlingAllIn plays every race and every opener extends this class
+     * always in play. Speedling plays every race and every opener extends this class
      * directly, so for those builds {@link #matchupSunkens(GameState)} is the zero default and a
      * floor is the only thing that can answer a threat. Applying them once here also means every
      * reader of this number - the defense path, the default colony helper and each build order's
@@ -672,7 +681,7 @@ public abstract class BuildOrder {
     }
 
     /**
-     * Defense reachable from every build order, including the openers and SpeedlingAllIn that
+     * Defense reachable from every build order, including the openers and Speedling that
      * never plan colonies of their own.
      *
      * <p>The static defense half runs on any frame the target is unmet, not only while the bot is
@@ -891,12 +900,23 @@ public abstract class BuildOrder {
      * @param preferGas whether a base with no geyser is skipped while a base with one is available
      */
     protected Plan planNewBase(GameState gameState, boolean preferGas) {
+        return planNewBase(gameState, preferGas, behindOnBases(gameState));
+    }
+
+    /**
+     * Plans a hatchery that claims a base and records the base parity rule the build asked under.
+     *
+     * @param preferGas whether a base with no geyser is skipped while a base with one is available
+     * @param behindOnBases whether the build's own base parity rule asked for this base, which is the base parity
+     *     half of the recorded {@link HatcheryRequestReason}
+     */
+    protected Plan planNewBase(GameState gameState, boolean preferGas, boolean behindOnBases) {
         if (!gameState.mayQueueExpansionHatchery()) {
             return null;
         }
 
         HatcheryRequestReason reason = HatcheryRequestReason.forExpansion(gameState.isFloatingMinerals(),
-                behindOnBases(gameState));
+                behindOnBases);
         Base base = gameState.reserveBase(preferGas);
         if (base == null) {
             return null;
@@ -1248,7 +1268,7 @@ public abstract class BuildOrder {
      * whose bar is scaled to unfinished hatcheries because it exists to decide expansions. A build that
      * has met every unit target it knows how to ask for is not short of hatcheries, it is short of
      * things to spend on, and the same reasoning is written out at
-     * {@link SpeedlingAllIn#shouldPlanHatchery}.
+     * {@link Speedling#shouldPlanHatchery}.
      *
      * <p>The bound is on plans already waiting in the queue rather than on army size, so the
      * surplus drains at a fixed rate instead of stacking a plan every frame it stays true.

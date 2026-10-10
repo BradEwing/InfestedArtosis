@@ -12,7 +12,7 @@ import java.util.function.ToIntFunction;
  * Spore Colony targets shared by the build order layer.
  *
  * <p>Each race's target is a pure function of what has been observed, so a build order that does
- * not extend that race's base class can ask for the same number. SpeedlingAllIn plays every
+ * not extend that race's base class can ask for the same number. Speedling plays every
  * matchup and extends {@link BuildOrder} directly, so without a shared home it would either
  * duplicate the numbers or have none at all.
  *

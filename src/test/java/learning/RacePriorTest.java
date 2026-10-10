@@ -28,7 +28,7 @@ class RacePriorTest {
             "Terran,build,SpeedlingT,1,3",
             "Unknown,opener,9PoolSpeed,3,3",
             "Unknown,opener,12Pool,0,3",
-            "Unknown,build,SpeedlingR,2,3");
+            "Unknown,build,SpeedlingZ,2,3");
 
     private static RacePrior parse(String csv) throws IOException {
         return RacePrior.parse(new ByteArrayInputStream(csv.getBytes(StandardCharsets.UTF_8)));
@@ -161,7 +161,7 @@ class RacePriorTest {
     @Test
     void unknownRaceUsesTheUnknownRows() throws IOException {
         OpponentRecord record = freshRecord(Arrays.asList("9PoolSpeed", "12Pool", "9Hatch"),
-                Arrays.asList("SpeedlingR"));
+                Arrays.asList("SpeedlingZ"));
 
         RacePrior.Report report = seed(record, RacePrior.raceKey(Race.Random));
 
@@ -171,7 +171,7 @@ class RacePriorTest {
         assertEquals(2, report.openers());
         assertEquals(3.0, record.getOpenerRecord().get("9PoolSpeed").getPriorWins(), 1e-9);
         assertEquals(0, record.getOpenerRecord().get("9Hatch").games());
-        assertEquals(2.0, record.getBuildOrderRecord().get("SpeedlingR").getPriorWins(), 1e-9);
+        assertEquals(2.0, record.getBuildOrderRecord().get("SpeedlingZ").getPriorWins(), 1e-9);
     }
 
     @Test

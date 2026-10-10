@@ -113,7 +113,7 @@ public class DroneRound {
     /**
      * Why a round closed. BUILD_CAP is the build's own Drone cap, which army milestone and calm-economy rounds read.
      * INELIGIBLE is a contain-held round whose matchup or build no longer allows it, such as a switch to a
-     * build that runs none or too few Zerglings left alive for SpeedlingAllIn. BUNKER_STANCE_ENDED is a Bunker stance
+     * build that runs none or too few Zerglings left alive for Speedling. BUNKER_STANCE_ENDED is a Bunker stance
      * round whose stance stopped standing: the Bunker hold cleared, a Bunker was broken, the army attacks or the build
      * no longer takes the round.
      */

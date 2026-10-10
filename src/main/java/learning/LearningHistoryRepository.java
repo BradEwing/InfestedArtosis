@@ -13,12 +13,23 @@ final class LearningHistoryRepository {
 
     private final File readFile;
     private final File writeFile;
+    private final String fileRace;
 
-    LearningHistoryRepository(String opponentFileName) {
-        this.readFile = new File("bwapi-data/read/" + opponentFileName);
-        this.writeFile = new File("bwapi-data/write/" + opponentFileName);
+    LearningHistoryRepository(String opponentFileName, String fileRace) {
+        this(new File("bwapi-data/read/" + opponentFileName), new File("bwapi-data/write/" + opponentFileName),
+                fileRace);
     }
 
+    LearningHistoryRepository(File readFile, File writeFile, String fileRace) {
+        this.readFile = readFile;
+        this.writeFile = writeFile;
+        this.fileRace = fileRace;
+    }
+
+    /**
+     * Loads the games in the read file, with a legacy Speedling build order mapped to the variant of the
+     * file's race or the row's resolved race, see {@link LegacyBuildOrderNames}. The file itself is not rewritten.
+     */
     LearningHistory load() throws IOException {
         List<GameRecord> games = new ArrayList<>();
         if (!readFile.exists()) {
@@ -26,7 +37,11 @@ final class LearningHistoryRepository {
         }
         List<String> lines = Files.readAllLines(readFile.toPath());
         for (int i = 1; i < lines.size(); i++) {
-            games.add(GameRecord.fromCsvRow(lines.get(i)));
+            GameRecord game = GameRecord.fromCsvRow(lines.get(i));
+            String variantRace = LegacyBuildOrderNames.variantRace(fileRace, game.getOpponentRace());
+            game.setBuildOrder(LegacyBuildOrderNames.resolveChain(game.getBuildOrder(), variantRace));
+            game.setOpener(LegacyBuildOrderNames.resolve(game.getOpener(), variantRace));
+            games.add(game);
         }
         return new LearningHistory(games);
     }
