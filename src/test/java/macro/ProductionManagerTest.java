@@ -2712,4 +2712,16 @@ class ProductionManagerTest {
         assertEquals(1, ProductionManager.overlordInsertPriorities(
                 Collections.<Plan>emptyList(), queued, 1, 0, 100).size());
     }
+
+    @Test
+    void exactlyOneOverlordIsInsertedOneOverlordShortOfTheCap() {
+        List<Plan> queued = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            queued.add(new UnitPlan(UnitType.Zerg_Zergling, 5));
+        }
+        int total = SupplyCapacity.MAX_SUPPLY - UnitType.Zerg_Overlord.supplyProvided();
+
+        assertEquals(1, ProductionManager.overlordInsertPriorities(
+                Collections.<Plan>emptyList(), queued, 4, 0, total - 4).size());
+    }
 }
