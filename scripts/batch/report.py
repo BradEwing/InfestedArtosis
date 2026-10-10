@@ -100,27 +100,40 @@ def print_field_table(label, rows, field, sep=None):
         print(f"      {name:<24} {c['WIN']:>3}W {c['LOSS']:>3}L  {c['WIN'] / total:>5.0%}")
 
 
-def print_non_results(results):
-    """Report every attempt that produced no WIN or LOSS, with why.
+def frames_of(game_name, side):
+    return bl.last_frame(bl.game_dir(game_name) / f"logs_{side}" / "frames.csv")
 
-    STALEMATE: our bot played to the frame cap. STOPPED: the stop rule or an owner kill ended the run while
-    the game was in flight. JVM_DIED: the bot's JVM died mid-game, which result.json hides because StarCraft
-    exits normally. Other crashes keep their CRASH outcome.
+
+def non_result_rows(results):
+    """Every attempt that is not a WIN, a LOSS or still running, replayed attempts included, in play order."""
+    return [r for r in results if r["label"]]
+
+
+def print_non_results(results):
+    """List every attempt that produced no WIN or LOSS, with its label and whether the index was replayed.
+
+    Labels come from bl.non_result_label: STALEMATE, TIMEOUT, NO_RESULT, OPPONENT_CRASH, CRASH, JVM_DIED,
+    STOPPED and DRAW. Attempts later replayed on the same map index are listed too, with replayed y; the
+    index's final attempt is the one the tables count. Frames are the last frame_count in each side's
+    logs_N/frames.csv, "-" when the side wrote none.
 
     A failure the bot catches and survives is not reported here. The guard suppresses it silently, because the
     bot must not write to stdout or stderr, so nothing distinguishes a degraded game from a clean one.
     """
-    flagged = [r for r in results if r["label"] or r["outcome"] == "CRASH"]
+    flagged = non_result_rows(results)
     if not flagged:
         return
-    counts = Counter(r["label"] or r["outcome"] for r in flagged)
+    counts = Counter(r["label"] for r in flagged)
     summary = ", ".join(f"{n} {name}" for name, n in sorted(counts.items()))
-    print(f"\nNon-results (logs_0/frames.csv, logs_0/bot.log): {summary}")
+    print(f"\nNon-results (logs_N/frames.csv, logs_0/bot.log): {len(flagged)} attempts: {summary}")
+    print(f"  {'game':<14} {'opponent':<20} {'map':<24} {'idx':>4}  {'label':<15} {'frames ours/opp':>15}  replayed")
     for r in flagged:
-        frame = bl.last_frame(bl.game_dir(r["game_name"]) / "logs_0" / "frames.csv")
-        at = "no frames" if frame is None else f"frame {frame} (~{frame / 1440:.1f} min)"
-        print(f"  {r['game_name']:<18} vs {r['opponent']:<20} {r['label'] or r['outcome']:<10} "
-              f"{at}, scored {r['outcome']}")
+        ours = frames_of(r["game_name"], 0)
+        theirs = frames_of(r["game_name"], 1)
+        frames = f"{'-' if ours is None else ours}/{'-' if theirs is None else theirs}"
+        replayed = "y" if r.get("retried") else "n"
+        print(f"  {r['game_name']:<14} {r['opponent']:<20} {r['map']:<24} {r['index']:>4}  {r['label']:<15} "
+              f"{frames:>15}  {replayed}")
 
 
 def print_retry_line(results, opponent):

@@ -65,8 +65,13 @@ BOT_EXITED_MARKER = "Bot exited."
 FRAME_CAP_FRAMES = 85000
 
 LABEL_STALEMATE = "STALEMATE"
-LABEL_STOPPED = "STOPPED"
+LABEL_TIMEOUT = "TIMEOUT"
+LABEL_NO_RESULT = "NO_RESULT"
+LABEL_OPPONENT_CRASH = "OPPONENT_CRASH"
+LABEL_CRASH = "CRASH"
 LABEL_JVM_DIED = "JVM_DIED"
+LABEL_STOPPED = "STOPPED"
+LABEL_DRAW = "DRAW"
 
 
 def now_id():
@@ -387,8 +392,13 @@ def jvm_died(gdir):
 
 
 def set_games_dir(path):
-    """Point game_dir at an archived games directory so read-side tools work on runs moved off the scbw root."""
+    """Point game_dir at an archived games directory so read-side tools work on runs moved off the scbw root.
+
+    Exits with a message when path is not an existing directory, so a mistyped archive cannot silently turn
+    every game into a NO_RESULT."""
     global GAMES_DIR
+    if not Path(path).is_dir():
+        sys.exit(f"error: --games-dir {path} is not an existing directory")
     GAMES_DIR = Path(path)
 
 
@@ -437,26 +447,40 @@ def opponent_at_fault(gdir):
 
 
 def non_result_label(game, outcome, run_stopped=False):
-    """Report-side label for a game that produced no WIN or LOSS, or None for a plain outcome.
+    """Report-side label for an attempt that produced no WIN or LOSS, or None for a WIN, a LOSS or a game
+    still in flight (outcome RUNNING).
 
     STOPPED: the manifest never recorded an outcome for the attempt, so run.py was killed while it was in
     flight; either the run is known stopped, or a result.json already exists that run.py never classified.
     STALEMATE: our frames.csv reached the frame cap.
+    NO_RESULT: the game never produced a result.json or never left the lobby (launch failure).
+    TIMEOUT: the realtime limit ended a game that had started.
+    OPPONENT_CRASH: the opponent's side explains a draw or crash: its log asserts, or its scores.json shows
+    a crash while ours does not.
     JVM_DIED: scored CRASH, the opponent's side does not explain it, and our bot.log shows the JVM's
     uncaught-exception marker or has no end line. A killed container also leaves no end line, so a missing
     end line counts as a JVM death only after the stop, stalemate and opponent checks have passed.
+    CRASH: any other crash. DRAW: a draw nothing else explains.
     The manifest outcome strings written by run.py are never changed.
     """
-    if outcome in CONCLUSIVE:
+    if outcome in CONCLUSIVE or outcome == "RUNNING":
         return None
     gdir = game_dir(game["game_name"])
     if "outcome" not in game and (run_stopped or (gdir / "result.json").is_file()):
         return LABEL_STOPPED
     if is_frame_cap_stalemate(gdir):
         return LABEL_STALEMATE
-    if outcome == "CRASH" and not opponent_at_fault(gdir) and (jvm_died(gdir) or bot_log_ended_cleanly(gdir) is False):
-        return LABEL_JVM_DIED
-    return None
+    if outcome in ("NO_RESULT", "STALL"):
+        return LABEL_NO_RESULT
+    if outcome == "TIMEOUT":
+        return LABEL_TIMEOUT
+    if opponent_at_fault(gdir):
+        return LABEL_OPPONENT_CRASH
+    if outcome == "CRASH":
+        if jvm_died(gdir) or bot_log_ended_cleanly(gdir) is False:
+            return LABEL_JVM_DIED
+        return LABEL_CRASH
+    return LABEL_DRAW
 
 
 def classify(game):
