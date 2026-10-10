@@ -73,6 +73,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_GEYSER_DEPLETED = "GEYSER_DEPLETED";
     private static final String EVENT_BUILD_ORDER_TRANSITION = "BUILD_ORDER_TRANSITION";
     private static final String EVENT_SCOUT_SKIPPED = "SCOUT_SKIPPED";
+    private static final String EVENT_RACE_PRIOR = "RACE_PRIOR";
     private static final String EVENT_BASE_CLAIMED = "BASE_CLAIMED";
     private static final String EVENT_MINERAL_PATCH_SEEN_GONE = "MINERAL_PATCH_SEEN_GONE";
     private static final String EVENT_DRONE_ROUND_OPEN = "DRONE_ROUND_OPEN";
@@ -187,8 +188,8 @@ public class PlanEventLogger implements PlanEventSink {
      * BUILD_ORDER_TRANSITION rows are written on the frame a build order decides to hand over, and
      * leave every plan column empty. item is the build handing over, the build taking over and the
      * trigger, as 2HatchMuta>LurkerDefilerUltra:GOLIATHS; build_order is still the chain before the
-     * handover. SpeedlingT writes one when it bails out of a wall or a main Bunker, as
-     * SpeedlingT>3HatchLurker:BUNKER_MAIN, the trigger being TERRAN_WALL or BUNKER_MAIN.
+     * handover. SpeedlingT writes one when it bails out of a Terran wall, as
+     * SpeedlingT>3HatchLurker:TERRAN_WALL.
      * <p>
      * SCOUT_SKIPPED rows are written when a ground scout is withheld from, or recalled off, a route a detected
      * Bunker holds, and leave every plan column empty. item is the reason and the destination, as
@@ -803,6 +804,24 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: the build order is picked during
+     * the information manager's frame, which may run ahead of this logger's onFrame.
+     */
+    @Override
+    public void onRacePrior(String priorLabel) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(racePriorRow(priorLabel));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * The frame is re-read for the reason {@link #onStrategyDetected} gives: scouts are assigned during the
      * unit manager's frame, which may run ahead of this logger's onFrame.
      */
@@ -1346,6 +1365,23 @@ public class PlanEventLogger implements PlanEventSink {
         appendEvent(sb, EVENT_BUILD_ORDER_TRANSITION);
         appendEmpty(sb, 3);
         sb.append(Csv.sanitize(transitionLabel)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
+    /** A row for the learning prior, which no plan owns, so the plan columns are empty. */
+    private String racePriorRow(String priorLabel) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_RACE_PRIOR);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(priorLabel)).append(',');
         appendEmpty(sb, 4);
         appendBlocker(sb, PlanBlocker.NONE, 0);
         appendEmpty(sb, 3);

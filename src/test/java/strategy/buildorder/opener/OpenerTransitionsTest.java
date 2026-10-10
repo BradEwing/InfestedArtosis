@@ -7,6 +7,7 @@ import info.tracking.StrategyTracker;
 import info.tracking.terran.BunkerMain;
 import info.tracking.terran.BunkerNatural;
 import info.tracking.terran.TerranMech;
+import info.tracking.terran.TerranWallNatural;
 import org.junit.jupiter.api.Test;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
@@ -77,8 +78,9 @@ class OpenerTransitionsTest {
     }
 
     @Test
-    void aRandomOpponentWhoseRaceIsUnknownIsOfferedSpeedlingR() {
-        assertEquals(new HashSet<>(Arrays.asList("SpeedlingR")), names(OpenerTransitions.forRace(Race.Unknown)));
+    void noSpeedlingVariantIsOfferedWhileTheRaceIsUnknown() {
+        assertTrue(speedlingNames(Race.Unknown).isEmpty());
+        assertTrue(speedlingNames(Race.Random).isEmpty());
     }
 
     @Test
@@ -89,7 +91,7 @@ class OpenerTransitionsTest {
     }
 
     @Test
-    void aDetectedBunkerMainWallOrPersistedWallBarsSpeedlingT() {
+    void onlyAWallThisGameOrPersistedBarsSpeedlingT() {
         StrategyTracker cold = terranTracker();
         StrategyTracker bunkerMain = terranTracker();
         bunkerMain.getDetectedStrategies().add(new BunkerMain());
@@ -100,12 +102,15 @@ class OpenerTransitionsTest {
 
         assertFalse(OpenerTransitions.barsSpeedlingT(null));
         assertFalse(OpenerTransitions.barsSpeedlingT(cold));
-        assertTrue(OpenerTransitions.barsSpeedlingT(bunkerMain));
+        assertFalse(OpenerTransitions.barsSpeedlingT(bunkerMain));
         assertFalse(OpenerTransitions.barsSpeedlingT(bunkerNatural));
         StrategyTracker both = terranTracker();
         both.getDetectedStrategies().add(new BunkerMain());
         both.getDetectedStrategies().add(new BunkerNatural());
         assertFalse(OpenerTransitions.barsSpeedlingT(both));
+        StrategyTracker detectedWall = terranTracker();
+        detectedWall.getDetectedStrategies().add(new TerranWallNatural());
+        assertTrue(OpenerTransitions.barsSpeedlingT(detectedWall));
         assertTrue(OpenerTransitions.barsSpeedlingT(persistedWall));
     }
 

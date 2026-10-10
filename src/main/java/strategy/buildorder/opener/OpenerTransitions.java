@@ -5,10 +5,7 @@ import config.Config;
 import info.GameState;
 import info.tracking.StrategyTracker;
 import strategy.buildorder.BuildOrder;
-import info.tracking.terran.BunkerMain;
-import info.tracking.terran.BunkerNatural;
 import strategy.buildorder.SpeedlingP;
-import strategy.buildorder.SpeedlingR;
 import strategy.buildorder.SpeedlingT;
 import strategy.buildorder.SpeedlingZ;
 import strategy.buildorder.protoss.ThreeHatchHydra;
@@ -31,9 +28,9 @@ public final class OpenerTransitions {
 
     /**
      * The transitions for this game's opponent race, leaving SpeedlingT out against a Terran whose wall was
-     * detected this game or in the previous game or whose main Bunker is detected without a natural Bunker, and offering
-     * TwoHatchHydraTerran only against a Terran whose mech persists across recent games or when the strategy
-     * override names it.
+     * detected this game or in the previous game, and offering TwoHatchHydraTerran only against a Terran whose mech
+     * persists across recent games or when the strategy override names it. No Speedling build is offered while the
+     * race is Unknown.
      */
     static Set<BuildOrder> forGame(GameState gameState) {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
@@ -42,17 +39,10 @@ public final class OpenerTransitions {
     }
 
     /**
-     * Whether SpeedlingT is left out: a Terran wall was detected this game or persists, or BunkerMain is
-     * detected without BunkerNatural.
+     * Whether SpeedlingT is left out: a Terran wall was detected this game or persists.
      */
     static boolean barsSpeedlingT(StrategyTracker strategyTracker) {
-        return strategyTracker != null
-                && (strategyTracker.isTerranWallDetected() || bunkerMainOnly(strategyTracker));
-    }
-
-    private static boolean bunkerMainOnly(StrategyTracker strategyTracker) {
-        return strategyTracker.isDetectedStrategy(BunkerMain.NAME)
-                && !strategyTracker.isDetectedStrategy(BunkerNatural.NAME);
+        return strategyTracker != null && strategyTracker.isTerranWallDetected();
     }
 
     /**
@@ -109,7 +99,6 @@ public final class OpenerTransitions {
                 }
                 break;
             default:
-                next.add(new SpeedlingR());
                 break;
         }
         return next;

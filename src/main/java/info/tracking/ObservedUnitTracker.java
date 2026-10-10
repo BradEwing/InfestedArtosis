@@ -251,6 +251,18 @@ public class ObservedUnitTracker {
                 .count();
     }
 
+    /**
+     * @param unitType a building type
+     * @return how many buildings of the type that were seen completed have been seen destroyed
+     */
+    public int getCountOfDestroyedCompletedUnits(UnitType unitType) {
+        return (int) observedUnits.values()
+                .stream()
+                .filter(ou -> ou.getUnitType() == unitType)
+                .filter(ou -> ou.isCompleted() && ou.getDestroyedFrame() != null)
+                .count();
+    }
+
     public boolean hasLivingGasBuilding() {
         return getCountOfLivingUnits(UnitType.Protoss_Assimilator, UnitType.Terran_Refinery, UnitType.Zerg_Extractor) > 0;
     }

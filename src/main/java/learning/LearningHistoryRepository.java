@@ -16,8 +16,13 @@ final class LearningHistoryRepository {
     private final String fileRace;
 
     LearningHistoryRepository(String opponentFileName, String fileRace) {
-        this.readFile = new File("bwapi-data/read/" + opponentFileName);
-        this.writeFile = new File("bwapi-data/write/" + opponentFileName);
+        this(new File("bwapi-data/read/" + opponentFileName), new File("bwapi-data/write/" + opponentFileName),
+                fileRace);
+    }
+
+    LearningHistoryRepository(File readFile, File writeFile, String fileRace) {
+        this.readFile = readFile;
+        this.writeFile = writeFile;
         this.fileRace = fileRace;
     }
 

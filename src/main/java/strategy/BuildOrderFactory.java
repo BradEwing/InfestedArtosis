@@ -3,7 +3,6 @@ package strategy;
 import bwapi.Race;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SpeedlingP;
-import strategy.buildorder.SpeedlingR;
 import strategy.buildorder.SpeedlingT;
 import strategy.buildorder.SpeedlingZ;
 import strategy.buildorder.opener.FourPool;
@@ -105,7 +104,6 @@ public class BuildOrderFactory {
         allBuildOrders.add(new SpeedlingT());
         allBuildOrders.add(new SpeedlingP());
         allBuildOrders.add(new SpeedlingZ());
-        allBuildOrders.add(new SpeedlingR());
     }
 
     private void initOpeners(int numStartingLocations) {

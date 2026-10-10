@@ -30,6 +30,7 @@ import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import learning.Decisions;
 import lombok.Data;
+import macro.BunkerStance;
 import macro.DroneRound;
 import macro.ExtractorTrick;
 import macro.HatcheryCapacity;
@@ -127,6 +128,8 @@ public class GameState {
     private DroneRound droneRound = new DroneRound();
     private final ExtractorTrick extractorTrick = new ExtractorTrick();
     private final ContainHeldTimer containHeldTimer = new ContainHeldTimer();
+    private final BunkerStance bunkerStance = new BunkerStance();
+    private boolean armyAttacking = false;
     private final EndgameHunt endgameHunt = new EndgameHunt();
     private final ContainmentStalemate containmentStalemate = new ContainmentStalemate();
     private HashMap<Unit, Plan> assignedPlannedItems = new HashMap<>();
@@ -141,6 +144,12 @@ public class GameState {
 
     private boolean defensiveSunk = false;
     private BuildOrder activeBuildOrder;
+
+    /**
+     * The strategy selected for the game: the one the strategy override forces from the start, then the one the opener
+     * transitioned into. Null until one is selected.
+     */
+    private BuildOrder selectedStrategy;
     private final BuildOrderChain buildOrderChain = new BuildOrderChain();
 
     private boolean transitionBuildOrder = false;
@@ -177,6 +186,7 @@ public class GameState {
 
     public void onStart(Decisions decisions, Race opponentRace) {
         this.activeBuildOrder = decisions.getOpener();
+        this.selectedStrategy = decisions.getStrategy();
         this.opponentRace = opponentRace;
         this.gameMap = new GameMap(game.mapWidth(), game.mapHeight());
         this.strategyTracker = new StrategyTracker(game, opponentRace, this.observedUnitTracker, this.baseData,
@@ -876,6 +886,9 @@ public class GameState {
         plan.setReservedColonyBase(null);
         plan.setState(PlanState.COMPLETE);
         plansComplete.add(plan);
+        if (DroneRound.isRoundDrone(plan)) {
+            bunkerStance.onRoundDroneMade();
+        }
         assignedPlannedItems.remove(unit);
         if (plan.getType() == PlanType.UPGRADE) {
             clearPlannedUpgradeFlags(plan.getPlannedUpgrade());

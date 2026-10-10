@@ -13,14 +13,20 @@ class LegacyBuildOrderNamesTest {
         assertEquals("SpeedlingT", LegacyBuildOrderNames.resolve("SpeedlingAllIn", "Terran"));
         assertEquals("SpeedlingP", LegacyBuildOrderNames.resolve("SpeedlingAllIn", "Protoss"));
         assertEquals("SpeedlingZ", LegacyBuildOrderNames.resolve("SpeedlingAllIn", "Zerg"));
-        assertEquals("SpeedlingR", LegacyBuildOrderNames.resolve("SpeedlingAllIn", "Unknown"));
-        assertEquals("SpeedlingR", LegacyBuildOrderNames.resolve("SpeedlingAllIn", "Random"));
+    }
+
+    @Test
+    void aLegacyRowOfAnUnknownRaceFileKeepsItsNameSoNoBuildOrderMatchesIt() {
+        assertEquals("SpeedlingAllIn", LegacyBuildOrderNames.resolve("SpeedlingAllIn", "Unknown"));
+        assertEquals("SpeedlingAllIn", LegacyBuildOrderNames.resolve("SpeedlingAllIn", "Random"));
+        assertEquals("12Hatch;SpeedlingAllIn", LegacyBuildOrderNames.resolveChain("12Hatch;SpeedlingAllIn", "Unknown"));
+        assertNull(LegacyBuildOrderNames.speedlingFor("Unknown"));
     }
 
     @Test
     void theRaceOverloadAgreesWithTheStringForm() {
         assertEquals("SpeedlingT", LegacyBuildOrderNames.resolve("SpeedlingAllIn", Race.Terran));
-        assertEquals("SpeedlingR", LegacyBuildOrderNames.resolve("SpeedlingAllIn", Race.Unknown));
+        assertEquals("SpeedlingAllIn", LegacyBuildOrderNames.resolve("SpeedlingAllIn", Race.Unknown));
     }
 
     @Test

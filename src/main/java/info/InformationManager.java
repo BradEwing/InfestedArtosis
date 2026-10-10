@@ -99,6 +99,7 @@ public class InformationManager {
         if (active.shouldTransition(gameState)) {
             BuildOrder transition = transitionBuildOrder();
             gameState.setActiveBuildOrder(transition);
+            gameState.setSelectedStrategy(transition);
             gameState.setTransitionBuildOrder(true);
         }
     }

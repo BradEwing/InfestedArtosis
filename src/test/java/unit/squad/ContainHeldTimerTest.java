@@ -172,6 +172,20 @@ class ContainHeldTimerTest {
     }
 
     @Test
+    void onlyAGroundSquadInFightCountsAsTheArmyAttacking() {
+        Squad fighting = new GroundSquad();
+        fighting.setStatus(SquadStatus.FIGHT);
+        Squad rallying = new GroundSquad();
+        rallying.setStatus(SquadStatus.RALLY);
+        Squad air = new AirSquad();
+        air.setStatus(SquadStatus.FIGHT);
+
+        assertTrue(SquadManager.anyGroundSquadAttacking(Arrays.asList(rallying, fighting)));
+        assertFalse(SquadManager.anyGroundSquadAttacking(Arrays.asList(rallying, air)));
+        assertFalse(SquadManager.anyGroundSquadAttacking(Collections.emptyList()));
+    }
+
+    @Test
     void anEnemyForcedRetreatBreaksTheHeldContainButATimeoutRetreatIsBridged() {
         SquadManager.ContainmentVerdict retreat = SquadManager.ContainmentVerdict.RETREAT;
         assertTrue(SquadManager.breaksHeldContain(retreat, DecisionPath.CONTAIN_ATTRITION));

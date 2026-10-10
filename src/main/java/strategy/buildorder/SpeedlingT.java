@@ -4,7 +4,6 @@ import bwapi.Race;
 import info.GameState;
 import info.TechProgression;
 import info.tracking.StrategyTracker;
-import info.tracking.terran.BunkerMain;
 import info.tracking.terran.BunkerNatural;
 import info.tracking.terran.TerranWallMain;
 import info.tracking.terran.TerranWallNatural;
@@ -16,11 +15,11 @@ import java.util.Set;
 
 /**
  * {@link Speedling} against Terran. Keeps a base advantage, and bails out of the ling build when a
- * wall or a main Bunker is seen early.
+ * wall is seen early.
  *
- * <p>{@link #shouldTransition} is true before {@link #BAIL_OUT_DEADLINE} while TerranWall or
- * BunkerMain is detected this game and BunkerNatural is not, because a Bunker at the natural is the
- * one defence the ling build beats. The next build is picked from the Terran candidates without
+ * <p>{@link #shouldTransition} is true before {@link #BAIL_OUT_DEADLINE} while TerranWall is
+ * detected this game and BunkerNatural is not, because a Bunker at the natural is the one defence
+ * the ling build beats. A Bunker in the main alone does not bail out. The next build is picked from the Terran candidates without
  * a Speedling, and a BUILD_ORDER_TRANSITION row {@code SpeedlingT>NextBuild:TRIGGER} is written on
  * the frame the pick is made.
  */
@@ -34,9 +33,7 @@ public class SpeedlingT extends Speedling {
     /** What made the build bail out, written to the BUILD_ORDER_TRANSITION row. */
     public enum BailOutTrigger {
         /** TerranWallNatural or TerranWallMain was detected. */
-        TERRAN_WALL,
-        /** BunkerMain was detected. */
-        BUNKER_MAIN
+        TERRAN_WALL
     }
 
     private BailOutTrigger bailOutTrigger;
@@ -66,34 +63,38 @@ public class SpeedlingT extends Speedling {
 
     @Override
     public boolean shouldTransition(GameState gameState) {
-        StrategyTracker strategyTracker = gameState.getStrategyTracker();
-        if (strategyTracker == null || gameState.getOpponentRace() != Race.Terran) {
-            return false;
-        }
-        bailOutTrigger = bailOutTrigger(gameState.getGameTime(),
-                strategyTracker.isAnyDetectedStrategy(TerranWallNatural.NAME, TerranWallMain.NAME),
-                strategyTracker.isDetectedStrategy(BunkerMain.NAME),
-                strategyTracker.isDetectedStrategy(BunkerNatural.NAME));
+        bailOutTrigger = bailOutTrigger(gameState.getGameTime(), gameState.getOpponentRace(),
+                gameState.getStrategyTracker());
         return bailOutTrigger != null;
     }
 
     /**
      * @param gameTime current game time
-     * @param terranWall whether a Terran wall was detected this game
-     * @param bunkerMain whether BunkerMain was detected
-     * @param bunkerNatural whether BunkerNatural was detected
-     * @return the trigger that holds, the wall first, or null after the deadline, with BunkerNatural
-     *     detected, or with neither a wall nor BunkerMain
+     * @param opponentRace the opponent's race
+     * @param strategyTracker the detected strategies, possibly null
+     * @return the trigger that holds for the detections, see {@link #bailOutTrigger(Time, boolean, boolean)}, or
+     *     null against a race other than Terran or with no tracker
      */
-    static BailOutTrigger bailOutTrigger(Time gameTime, boolean terranWall, boolean bunkerMain,
-                                         boolean bunkerNatural) {
+    static BailOutTrigger bailOutTrigger(Time gameTime, Race opponentRace, StrategyTracker strategyTracker) {
+        if (strategyTracker == null || opponentRace != Race.Terran) {
+            return null;
+        }
+        return bailOutTrigger(gameTime,
+                strategyTracker.isAnyDetectedStrategy(TerranWallNatural.NAME, TerranWallMain.NAME),
+                strategyTracker.isDetectedStrategy(BunkerNatural.NAME));
+    }
+
+    /**
+     * @param gameTime current game time
+     * @param terranWall whether a Terran wall was detected this game
+     * @param bunkerNatural whether BunkerNatural was detected
+     * @return the wall trigger, or null after the deadline, with BunkerNatural detected, or with no wall
+     */
+    static BailOutTrigger bailOutTrigger(Time gameTime, boolean terranWall, boolean bunkerNatural) {
         if (!gameTime.lessThan(BAIL_OUT_DEADLINE) || bunkerNatural) {
             return null;
         }
-        if (terranWall) {
-            return BailOutTrigger.TERRAN_WALL;
-        }
-        return bunkerMain ? BailOutTrigger.BUNKER_MAIN : null;
+        return terranWall ? BailOutTrigger.TERRAN_WALL : null;
     }
 
     @Override
@@ -109,7 +110,7 @@ public class SpeedlingT extends Speedling {
     }
 
     /**
-     * The item of the BUILD_ORDER_TRANSITION row, as {@code SpeedlingT>3HatchLurker:BUNKER_MAIN}.
+     * The item of the BUILD_ORDER_TRANSITION row, as {@code SpeedlingT>3HatchLurker:TERRAN_WALL}.
      */
     static String label(String next, BailOutTrigger trigger) {
         return NAME + ">" + next + ":" + trigger;

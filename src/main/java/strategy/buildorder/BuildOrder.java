@@ -7,6 +7,7 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
 import bwem.Base;
+import config.Config;
 import info.BaseData;
 import info.GameState;
 import info.Readiness;
@@ -14,8 +15,10 @@ import info.ResourceCount;
 import info.TechProgression;
 import info.UnitTypeCount;
 import info.map.BuildingPlanner;
+import info.tracking.StrategyTracker;
 import lombok.Getter;
 import macro.AdvancedUnitEligibility;
+import macro.BunkerStance;
 import macro.DroneRound;
 import macro.HatcheryCapacity;
 import macro.Reactions;
@@ -217,8 +220,47 @@ public abstract class BuildOrder {
                 + gameState.visibleEnemyAirCombatUnitsAtOurBases();
         boolean threatened = DroneRound.isThreatened(rushed, gameState.isAllIn(), enemiesAtBases);
         int frame = gameState.getGameTime().getFrames();
+        BunkerStance bunkerStance = gameState.getBunkerStance();
+        StrategyTracker tracker = gameState.getStrategyTracker();
+        bunkerStance.setStatus(bunkerStanceStatus(gameState), tracker != null && tracker.isBunkerHeld());
         gameState.getDroneRound().update(frame, livingArmy, drones, droneRoundDroneCap(gameState),
                 gameState.workersWanted(), threatened, containHeld(gameState, frame));
+        bunkerStance.record(frame, gameState.getDroneRound(), drones, gameState.numWorkers());
+    }
+
+    private BunkerStance.Status bunkerStanceStatus(GameState gameState) {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        return BunkerStance.evaluate(Config.bunkerEcon,
+                strategyTracker != null && strategyTracker.isBunkerHeld(),
+                strategyTracker != null && strategyTracker.isBunkerBroken(),
+                gameState.isArmyAttacking(),
+                bunkerEconAllowed(this, gameState.getSelectedStrategy(), gameState));
+    }
+
+    /**
+     * Whether the Bunker economy answer may run under a build and the strategy selected for the game. Either one
+     * opting out, see {@link #allowsBunkerEcon}, turns it off, so an all-in strategy chosen before the opener hands
+     * over keeps its economy through the opener.
+     *
+     * @param active the active build order
+     * @param selectedStrategy the strategy selected for the game, or null when none is yet
+     * @param gameState current game state
+     * @return true when neither opts out
+     */
+    static boolean bunkerEconAllowed(BuildOrder active, BuildOrder selectedStrategy, GameState gameState) {
+        return active.allowsBunkerEcon(gameState)
+                && (selectedStrategy == null || selectedStrategy.allowsBunkerEcon(gameState));
+    }
+
+    /**
+     * Whether this build takes Drones while an enemy Bunker stance stands, see {@link BunkerStance}. A build that is
+     * an all-in by design keeps its economy where it is.
+     *
+     * @param gameState current game state
+     * @return true unless the build overrides it
+     */
+    public boolean allowsBunkerEcon(GameState gameState) {
+        return true;
     }
 
     private DroneRound.ContainHeld containHeld(GameState gameState, int frame) {
@@ -233,6 +275,7 @@ public abstract class BuildOrder {
                 .softCap(gameState.workerSoftCap())
                 .hardCap(gameState.workerHardCap())
                 .calmEconomyHeld(holdsCalmEconomyRound(gameState))
+                .bunkerStanceId(gameState.getBunkerStance().getStanceId())
                 .build();
     }
 
@@ -857,12 +900,23 @@ public abstract class BuildOrder {
      * @param preferGas whether a base with no geyser is skipped while a base with one is available
      */
     protected Plan planNewBase(GameState gameState, boolean preferGas) {
+        return planNewBase(gameState, preferGas, behindOnBases(gameState));
+    }
+
+    /**
+     * Plans a hatchery that claims a base and records the base parity rule the build asked under.
+     *
+     * @param preferGas whether a base with no geyser is skipped while a base with one is available
+     * @param behindOnBases whether the build's own base parity rule asked for this base, which is the base parity
+     *     half of the recorded {@link HatcheryRequestReason}
+     */
+    protected Plan planNewBase(GameState gameState, boolean preferGas, boolean behindOnBases) {
         if (!gameState.mayQueueExpansionHatchery()) {
             return null;
         }
 
         HatcheryRequestReason reason = HatcheryRequestReason.forExpansion(gameState.isFloatingMinerals(),
-                behindOnBases(gameState));
+                behindOnBases);
         Base base = gameState.reserveBase(preferGas);
         if (base == null) {
             return null;

@@ -18,12 +18,11 @@ import java.util.function.Predicate;
 
 /**
  * Two hatchery speedling all-in, specialised per opponent race by {@link SpeedlingT},
- * {@link SpeedlingP}, {@link SpeedlingZ} and {@link SpeedlingR}.
+ * {@link SpeedlingP} and {@link SpeedlingZ}.
  *
- * <p>Each variant plays only its own race, and {@link SpeedlingR} plays Random and Unknown. A
- * Random opponent whose race resolves mid-game keeps the build it has: there is no forced switch
- * to the race variant. The variants differ in two overrides, {@link #wantsBaseAdvantage} and
- * {@link #playsRace}; everything else is shared.
+ * <p>Each variant plays only its own race, so none is offered while the opponent's race is Unknown.
+ * The variants differ in two overrides, {@link #wantsBaseAdvantage} and {@link #playsRace};
+ * everything else is shared.
  *
  * <p>Hatchery tech by definition: it never plans a Lair and never reports {@link #needLair()} or
  * {@link #needHive()}. Zergling production is continuous and uncapped; the cap is on drones, from
@@ -175,6 +174,11 @@ public abstract class Speedling extends BuildOrder {
         return runsContainHeldRounds(gameState.ourLivingUnitCount(UnitType.Zerg_Zergling));
     }
 
+    @Override
+    public boolean allowsBunkerEcon(GameState gameState) {
+        return false;
+    }
+
     /**
      * @param livingZerglings zerglings alive now
      * @return true once {@link #ZERGLINGS_FOR_CONTAIN_HELD_ROUND} zerglings are alive
@@ -202,7 +206,7 @@ public abstract class Speedling extends BuildOrder {
                 gameState.ourLivingUnitCount(UnitType.Zerg_Zergling));
         if (shouldExpand(wantHatchery, basesHeldOrReserved)
                 || wantsExtraBase(baseAdvantage, gameState.isFloatingMinerals(), basesHeldOrReserved)) {
-            Plan expansionPlan = this.planNewBase(gameState);
+            Plan expansionPlan = this.planNewBase(gameState, false, baseAdvantage);
             if (expansionPlan != null) {
                 plans.add(expansionPlan);
                 return plans;

@@ -427,7 +427,6 @@ class SpeedlingTest {
         assertOnlyPlays(new SpeedlingT(), Race.Terran);
         assertOnlyPlays(new SpeedlingP(), Race.Protoss);
         assertOnlyPlays(new SpeedlingZ(), Race.Zerg);
-        assertOnlyPlays(new SpeedlingR(), Race.Random, Race.Unknown);
     }
 
     private static void assertOnlyPlays(Speedling buildOrder, Race... races) {
@@ -441,8 +440,7 @@ class SpeedlingTest {
     @Test
     void everyVariantIsRegisteredAndPlayableAgainstItsRace() {
         List<String[]> variants = Arrays.asList(new String[]{"Terran", "SpeedlingT"},
-                new String[]{"Protoss", "SpeedlingP"}, new String[]{"Zerg", "SpeedlingZ"},
-                new String[]{"Random", "SpeedlingR"}, new String[]{"Unknown", "SpeedlingR"});
+                new String[]{"Protoss", "SpeedlingP"}, new String[]{"Zerg", "SpeedlingZ"});
         for (String[] variant : variants) {
             for (int startingLocations = 2; startingLocations <= 4; startingLocations++) {
                 BuildOrderFactory factory = new BuildOrderFactory(startingLocations, Race.valueOf(variant[0]));
@@ -462,7 +460,6 @@ class SpeedlingTest {
         assertTrue(new SpeedlingT().wantsBaseAdvantage());
         assertTrue(new SpeedlingP().wantsBaseAdvantage());
         assertFalse(new SpeedlingZ().wantsBaseAdvantage());
-        assertFalse(new SpeedlingR().wantsBaseAdvantage());
     }
 
     @Test

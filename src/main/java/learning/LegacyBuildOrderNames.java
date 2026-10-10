@@ -2,7 +2,6 @@ package learning;
 
 import bwapi.Race;
 import strategy.buildorder.SpeedlingP;
-import strategy.buildorder.SpeedlingR;
 import strategy.buildorder.SpeedlingT;
 import strategy.buildorder.SpeedlingZ;
 
@@ -14,7 +13,8 @@ import java.util.stream.Collectors;
  *
  * <p>Rows written before the Speedling split name {@value #LEGACY_SPEEDLING}, which played every
  * race. The learning file is per opponent and race, so the race variant is the one for the race the
- * file holds, and a file for an Unknown race maps to {@link SpeedlingR}.
+ * file holds. A row in a file for an Unknown race keeps the legacy name, which no build order carries, so
+ * it is ignored; a row that recorded a resolved race still maps to that race's variant.
  */
 public final class LegacyBuildOrderNames {
 
@@ -27,7 +27,7 @@ public final class LegacyBuildOrderNames {
 
     /**
      * @param raceName the race of the learning file, as {@code Race.toString()} writes it
-     * @return the Speedling variant for that race
+     * @return the Speedling variant for that race, or null for an Unknown or Random race
      */
     public static String speedlingFor(String raceName) {
         if (Race.Terran.toString().equals(raceName)) {
@@ -39,7 +39,7 @@ public final class LegacyBuildOrderNames {
         if (Race.Zerg.toString().equals(raceName)) {
             return SpeedlingZ.NAME;
         }
-        return SpeedlingR.NAME;
+        return null;
     }
 
     /**
@@ -48,7 +48,11 @@ public final class LegacyBuildOrderNames {
      * @return the race variant when the name is the legacy Speedling, else the name unchanged
      */
     public static String resolve(String name, String raceName) {
-        return LEGACY_SPEEDLING.equals(name) ? speedlingFor(raceName) : name;
+        if (!LEGACY_SPEEDLING.equals(name)) {
+            return name;
+        }
+        String variant = speedlingFor(raceName);
+        return variant == null ? name : variant;
     }
 
     /**

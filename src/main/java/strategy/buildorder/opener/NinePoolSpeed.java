@@ -43,6 +43,11 @@ public class NinePoolSpeed extends BuildOrder {
     }
 
     @Override
+    public boolean allowsBunkerEcon(GameState gameState) {
+        return false;
+    }
+
+    @Override
     protected boolean openerComplete(GameState gameState) {
         TechProgression techProgression = gameState.getTechProgression();
         return openingDone(gameState.ourUnitCount(UnitType.Zerg_Zergling),

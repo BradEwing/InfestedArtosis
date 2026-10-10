@@ -24,6 +24,15 @@ public final class Config {
      * points out of live hit marks. On unless IA_LURKER_FIRE_AWARE is set to false.
      */
     public static boolean lurkerFireAware = true;
+    /**
+     * Whether an opponent with no history starts from the per-race learning prior bundled in the jar. On unless
+     * IA_RACE_PRIOR is set to false.
+     */
+    public static boolean racePrior = true;
+    /**
+     * Whether Drones are added while an enemy Bunker stance stands. On unless IA_BUNKER_ECON is set to false.
+     */
+    public static boolean bunkerEcon = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -113,6 +122,8 @@ public final class Config {
         airFlapEscape = Boolean.parseBoolean(airFlapEscapeSetting);
         baseChecks = enabledUnlessFalse(setting(dotenv, "IA_BASE_CHECKS"));
         lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
+        racePrior = enabledUnlessFalse(setting(dotenv, "IA_RACE_PRIOR"));
+        bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
     }
 
     /**

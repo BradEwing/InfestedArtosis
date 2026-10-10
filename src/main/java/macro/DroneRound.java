@@ -53,6 +53,12 @@ import unit.squad.ContainHeldTimer;
  * ({@link ContainHeld#isCalmEconomyHeld()}). It closes like an army milestone round, on SIZE, BUILD_CAP, HARD_CAP, THREAT or
  * TIMEOUT, and never reads or moves the army milestone.
  *
+ * <p>A {@link OpenReason#BUNKER_STANCE} round opens while an enemy Bunker stance stands, see {@link BunkerStance}, and
+ * the workers are under both caps, at most once per stance. It adds {@link #BUNKER_STANCE_ROUND_SIZE} Drones, cut to
+ * the room under the caps, and the build's Drone cap does not bound it. It closes on a threat, when the stance stops
+ * standing, when the workers reach either cap, once its Drones are hatched or in an egg, or after
+ * {@link #MAX_ROUND_FRAMES}, and never reads or moves the army milestone.
+ *
  * <p>Every open and close is reported through {@link PlanEvents} with its reason.
  */
 public class DroneRound {
@@ -91,19 +97,25 @@ public class DroneRound {
     /** Workers under the soft cap that a calm-economy round needs. Tuning constant. */
     public static final int CALM_ECONOMY_WORKER_DEFICIT = 6;
 
+    /** Drones a Bunker stance round adds, cut to the workers still under the lower of the two caps. Tuning constant. */
+    public static final int BUNKER_STANCE_ROUND_SIZE = 2;
+
     private static final int NEVER = Integer.MIN_VALUE / 2;
 
     /** Why a round opened. */
     public enum OpenReason {
         ARMY_MILESTONE,
         CONTAIN_HELD,
-        CALM_ECONOMY
+        CALM_ECONOMY,
+        BUNKER_STANCE
     }
 
     /**
      * Why a round closed. BUILD_CAP is the build's own Drone cap, which army milestone and calm-economy rounds read.
      * INELIGIBLE is a contain-held round whose matchup or build no longer allows it, such as a switch to a
-     * build that runs none or too few Zerglings left alive for Speedling.
+     * build that runs none or too few Zerglings left alive for Speedling. BUNKER_STANCE_ENDED is a Bunker stance
+     * round whose stance stopped standing: the Bunker hold cleared, a Bunker was broken, the army attacks or the build
+     * no longer takes the round.
      */
     public enum CloseReason {
         SIZE,
@@ -113,7 +125,8 @@ public class DroneRound {
         THREAT,
         CONTAIN_ENDED,
         TIMEOUT,
-        INELIGIBLE
+        INELIGIBLE,
+        BUNKER_STANCE_ENDED
     }
 
     /**
@@ -153,6 +166,13 @@ public class DroneRound {
 
         /** Whether the build holds back a calm-economy round, such as while its first wave is still to come. */
         private final boolean calmEconomyHeld;
+
+        /** The number of the enemy Bunker stance that stands, see {@link BunkerStance}, or 0 when none does. */
+        private final int bunkerStanceId;
+
+        boolean isBunkerStance() {
+            return bunkerStanceId > 0;
+        }
 
         boolean isHeld() {
             return chainStartFrame != ContainHeldTimer.NO_CHAIN && heldFrames >= ContainHeldTimer.HELD_FRAMES;
@@ -217,6 +237,14 @@ public class DroneRound {
     @Getter
     private int lastCalmEconomyCloseFrame = NEVER;
 
+    /** The number of the Bunker stance the last Bunker stance round opened for, or 0 before one has. */
+    @Getter
+    private int lastBunkerStanceRoundId = 0;
+
+    /** Why the last round closed, or null before one has. */
+    @Getter
+    private CloseReason lastCloseReason;
+
     @Getter
     private int droneTarget = 0;
 
@@ -273,9 +301,7 @@ public class DroneRound {
             lastThreatFrame = frame;
         }
         if (active) {
-            CloseReason close = reason == OpenReason.CONTAIN_HELD
-                    ? containHeldClose(frame, drones, threatened, containHeld)
-                    : armyMilestoneClose(frame, drones, droneCap, workersWanted, threatened);
+            CloseReason close = closeReason(frame, drones, droneCap, workersWanted, threatened, containHeld);
             if (close != null) {
                 close(frame, close, containHeld);
             }
@@ -293,9 +319,26 @@ public class DroneRound {
             open(frame, OpenReason.CONTAIN_HELD, drones + containHeldRoundSize(containHeld), containHeld);
             return;
         }
+        if (opensBunkerStanceRound(frame, containHeld)) {
+            lastBunkerStanceRoundId = containHeld.getBunkerStanceId();
+            open(frame, OpenReason.BUNKER_STANCE, drones + bunkerStanceRoundSize(containHeld), containHeld);
+            return;
+        }
         if (opensCalmEconomyRound(frame, drones, droneCap, workersWanted, containHeld)) {
             int size = Math.min(Math.min(DRONES_PER_ROUND, droneCap - drones), containHeld.capRoom());
             open(frame, OpenReason.CALM_ECONOMY, drones + size, containHeld);
+        }
+    }
+
+    private CloseReason closeReason(int frame, int drones, int droneCap, boolean workersWanted, boolean threatened,
+                                    ContainHeld containHeld) {
+        switch (reason) {
+            case CONTAIN_HELD:
+                return containHeldClose(frame, drones, threatened, containHeld);
+            case BUNKER_STANCE:
+                return bunkerStanceClose(frame, drones, threatened, containHeld);
+            default:
+                return armyMilestoneClose(frame, drones, droneCap, workersWanted, threatened);
         }
     }
 
@@ -304,6 +347,20 @@ public class DroneRound {
             armyProduced += livingArmy - lastLivingArmy;
         }
         lastLivingArmy = livingArmy;
+    }
+
+    private boolean opensBunkerStanceRound(int frame, ContainHeld containHeld) {
+        return containHeld.isBunkerStance()
+                && containHeld.getBunkerStanceId() != lastBunkerStanceRoundId
+                && containHeld.underCaps();
+    }
+
+    /**
+     * @param containHeld the workers and caps the round opens on
+     * @return {@link #BUNKER_STANCE_ROUND_SIZE}, cut to the workers still under the lower of the two caps
+     */
+    static int bunkerStanceRoundSize(ContainHeld containHeld) {
+        return Math.min(BUNKER_STANCE_ROUND_SIZE, containHeld.capRoom());
     }
 
     private boolean opensCalmEconomyRound(int frame, int drones, int droneCap, boolean workersWanted,
@@ -399,6 +456,28 @@ public class DroneRound {
         return null;
     }
 
+    private CloseReason bunkerStanceClose(int frame, int drones, boolean threatened, ContainHeld containHeld) {
+        if (threatened) {
+            return CloseReason.THREAT;
+        }
+        if (!containHeld.isBunkerStance()) {
+            return CloseReason.BUNKER_STANCE_ENDED;
+        }
+        if (containHeld.getWorkers() >= containHeld.getHardCap()) {
+            return CloseReason.HARD_CAP;
+        }
+        if (containHeld.getWorkers() >= containHeld.getSoftCap()) {
+            return CloseReason.SOFT_CAP;
+        }
+        if (drones >= droneTarget) {
+            return CloseReason.SIZE;
+        }
+        if (frame - startFrame >= MAX_ROUND_FRAMES) {
+            return CloseReason.TIMEOUT;
+        }
+        return null;
+    }
+
     private void open(int frame, OpenReason openReason, int target, ContainHeld containHeld) {
         active = true;
         reason = openReason;
@@ -413,11 +492,12 @@ public class DroneRound {
         OpenReason kind = reason;
         active = false;
         reason = null;
+        lastCloseReason = closeReason;
         if (kind == OpenReason.CONTAIN_HELD) {
             lastContainHeldCloseFrame = frame;
         } else if (kind == OpenReason.CALM_ECONOMY) {
             lastCalmEconomyCloseFrame = frame;
-        } else if (closeReason != CloseReason.THREAT) {
+        } else if (kind != OpenReason.BUNKER_STANCE && closeReason != CloseReason.THREAT) {
             armyMilestone = armyProduced + ARMY_UNITS_PER_ROUND;
         }
         PlanEvents.droneRoundClosed(new Report(kind, closeReason.name(), drones, roundSize, containHeld));
