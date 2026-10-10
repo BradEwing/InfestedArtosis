@@ -111,6 +111,12 @@ public enum DecisionPath {
     CONTAIN_GATED,
 
     /**
+     * As {@link #CONTAIN_GATED}, where the held Bunker alone refused the squad: it would have contained were no Bunker
+     * held.
+     */
+    CONTAIN_GATED_BUNKER,
+
+    /**
      * A squad was refused a contain arc because it is inside its re-entry cooldown after an attrition or outranged
      * exit.
      */
@@ -165,6 +171,12 @@ public enum DecisionPath {
      * of its priced sample, whether beyond the sample radius or unpriced inside it.
      */
     BUNKER_MEMORY_HOLD,
+
+    /**
+     * A mostly melee squad held on a sim ADVANCE toward a Bunker it was priced as unable to break, see
+     * BunkerAdvanceGate, instead of marching into it again.
+     */
+    BUNKER_ADVANCE_HOLD,
 
     /**
      * An air squad still under the retreat lock its harass exit armed acted on a sim ENGAGE measured against a real

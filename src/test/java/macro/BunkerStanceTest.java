@@ -3,6 +3,9 @@ package macro;
 import macro.BunkerStance.Status;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import telemetry.BunkerAdvanceEvent;
+import telemetry.BunkerAttackEvent;
+import telemetry.BunkerLossEvent;
 import telemetry.BunkerSink;
 import telemetry.BunkerStanceEvent;
 import telemetry.BunkerTelemetry;
@@ -35,6 +38,22 @@ class BunkerStanceTest {
 
     private void recordStances() {
         BunkerTelemetry.register(new BunkerSink() {
+            @Override
+            public void onAdvance(BunkerAdvanceEvent event) {
+            }
+
+            @Override
+            public void onHold(int frame, String event, String reason) {
+            }
+
+            @Override
+            public void onLoss(BunkerLossEvent event) {
+            }
+
+            @Override
+            public void onAttack(BunkerAttackEvent event) {
+            }
+
             @Override
             public void onStance(BunkerStanceEvent event) {
                 events.add(event);

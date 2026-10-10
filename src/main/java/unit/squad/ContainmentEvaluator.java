@@ -183,6 +183,18 @@ public class ContainmentEvaluator {
         return gameState.getStrategyTracker() != null && gameState.getStrategyTracker().isBunkerHeld();
     }
 
+    /**
+     * Whether a held Bunker alone is why the squad is refused a contain arc, see
+     * {@link ContainmentGate#bunkerAloneRefuses}.
+     *
+     * @param squad the squad offered an arc
+     * @return true when the squad would contain were no Bunker held
+     */
+    public boolean bunkerAloneRefuses(Squad squad) {
+        return ContainmentGate.bunkerAloneRefuses(versusTerran(), mechDetected(), bunkerHeld(),
+                squad.getComposition(), enemyGroundArmyCounts());
+    }
+
     private Map<UnitType, Integer> enemyGroundArmyCounts() {
         ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
         Map<UnitType, Integer> counts = new EnumMap<>(UnitType.class);

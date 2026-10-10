@@ -22,11 +22,43 @@ public final class BunkerTelemetry {
         return sink != null;
     }
 
+    public static void advance(BunkerAdvanceEvent event) {
+        BunkerSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onAdvance(event);
+    }
+
+    public static void hold(int frame, String event, String reason) {
+        BunkerSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onHold(frame, event, reason);
+    }
+
     public static void stance(BunkerStanceEvent event) {
         BunkerSink current = sink;
         if (current == null) {
             return;
         }
         current.onStance(event);
+    }
+
+    public static void loss(BunkerLossEvent event) {
+        BunkerSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onLoss(event);
+    }
+
+    public static void attack(BunkerAttackEvent event) {
+        BunkerSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onAttack(event);
     }
 }

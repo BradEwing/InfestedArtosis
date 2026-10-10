@@ -1,12 +1,51 @@
 package telemetry;
 
 import bwapi.Game;
+import bwapi.Position;
+import bwapi.Unit;
+import bwapi.UnitType;
 import info.GameState;
+import info.tracking.ObservedUnit;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Writes telemetry_bunker.csv: the rows about enemy Bunkers, told apart by row_type.
+ *
+ * <p>BUNKER_ADVANCE: one row per repeat-advance gate decision about a squad and a Bunker in range. event is HELD or
+ * ALLOWED and reason names why, see {@link BunkerAdvanceReason}. own_strength is the squad's priced strength,
+ * bunker_price the enemy strength the recorded loss was priced against, ratio their quotient and release_ratio the
+ * ratio at which the record ends; price, ratio and release_ratio are blank while no loss is on record. ling_count is
+ * the Zerglings in the squad, squad_size the units, squad_x and squad_y the squad centre, entry the branch that read
+ * the squad, see {@link BunkerAdvanceEntry}, bunker_id, bunker_x, bunker_y and bunker_hp the Bunker, blank when none
+ * is known. A squad's row repeats only when its reason or Bunker changes or {@link #ADVANCE_REPEAT_FRAMES} pass.
+ *
+ * <p>BUNKER_ENGAGEMENT: one row per closed engagement of ours at a Bunker, see {@link BunkerEngagements}.
+ * start_frame and end_frame bound it, our_lost counts our units that died in it, lings_lost the Zerglings among
+ * them, enemy_lost the enemy units that are not buildings that died in it, hp_start and hp_end the Bunker's hit
+ * points, and broken is 1 when the Bunker died in it.
+ *
+ * <p>BUNKER_HOLD: one row each time the Bunker hold of the enemy natural or main starts (event HOLD_START, reason
+ * NATURAL, MAIN or NATURAL+MAIN) or ends (event HOLD_END, reason BROKEN or CLEARED).
+ *
+ * <p>LOSS_RECORDED: one row each time a retreat is booked as a loss at a Bunker, which needs units of ours to have
+ * died at it. squad_id and squad_size name the retreating squad, units_lost the units that died at the Bunker in the
+ * window the loss counts, squad_lost the units among them that died as members of that squad, bunker_price the enemy
+ * strength the retreat was priced against and bunker_id, bunker_x, bunker_y and bunker_hp the Bunker.
+ *
+ * <p>BUNKER_ATTACK: one row per ground squad id the first frame it is in FIGHT within 288 px of a living Bunker, and
+ * another for each new combination of nearest Bunker, loss on record there and whether the gate weighed it.
+ * ledger_frame is the frame of the latest loss on record at the nearest Bunker, blank when none is, and read_frame the
+ * frame of the gate's latest read of the squad or a squad it was formed from, blank when it never read one. event is
+ * EXEMPT when the build is exempt from the gate, GATED when the gate weighed that Bunker's record on or after the
+ * frame of its loss, and entry names the branch of the latest read, see {@link BunkerAdvanceEntry}; event is UNREAD
+ * otherwise, which includes a Bunker the sim did not price against the squad, since the gate reads a fight lock only
+ * against a priced Bunker. squad_x and squad_y are the squad centre. The share of contacts at a Bunker with a loss on
+ * record that the gate evaluated is the GATED rows over the GATED and UNREAD rows with a ledger_frame.
  *
  * <p>BUNKER_ECON: one row per change of a Bunker stance, see the Drone round it opens. event is STANCE_START,
  * ROUND_OPEN, ROUND_CLOSE or STANCE_END. stance_id numbers the game's Bunker holds from 1, and a stance that re-forms
@@ -28,19 +67,39 @@ public class BunkerLogger implements BunkerSink {
         "release_ratio", "ling_count", "bunker_id", "bunker_x", "bunker_y", "bunker_hp", "engagement_id",
         "start_frame", "end_frame", "our_lost", "lings_lost", "enemy_lost", "hp_start", "hp_end", "broken",
         "stance_id", "drones", "workers", "extra_planned", "extra_made", "squad_size", "squad_x", "squad_y", "entry",
-        "units_lost"
+        "units_lost", "squad_lost", "read_frame", "ledger_frame"
     };
 
     static final String HEADER = String.join(",", COLUMNS);
 
+    /**
+     * Frames between two identical BUNKER_ADVANCE rows of a squad.
+     */
+    static final int ADVANCE_REPEAT_FRAMES = 240;
+
+    private static final int SAMPLE_INTERVAL_FRAMES = 4;
     private static final int FLUSH_INTERVAL_FRAMES = 480;
 
     private final Game game;
     private final GameState gameState;
     private final String gameId;
     private final TelemetryWriter writer;
+    private final BunkerEngagements engagements = new BunkerEngagements();
+    private final Map<String, AdvanceKey> lastAdvance = new HashMap<>();
 
     private boolean disabled;
+
+    private static final class AdvanceKey {
+        private final BunkerAdvanceReason reason;
+        private final int bunkerId;
+        private final int frame;
+
+        private AdvanceKey(BunkerAdvanceReason reason, int bunkerId, int frame) {
+            this.reason = reason;
+            this.bunkerId = bunkerId;
+            this.frame = frame;
+        }
+    }
 
     public BunkerLogger(Game game, GameState gameState, String gameId) {
         this(game, gameState, gameId, new TelemetryWriter(FILE, HEADER));
@@ -59,8 +118,31 @@ public class BunkerLogger implements BunkerSink {
         }
 
         try {
-            if (game.getFrameCount() % FLUSH_INTERVAL_FRAMES == 0) {
+            int frame = game.getFrameCount();
+            if (frame % SAMPLE_INTERVAL_FRAMES == 0) {
+                writeEngagements(engagements.onSample(frame, livingBunkers(), ourUnits()));
+            }
+            if (frame % FLUSH_INTERVAL_FRAMES == 0) {
                 writer.flush();
+            }
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    public void onUnitDestroy(Unit unit) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            UnitType type = unit.getType();
+            if (unit.getPlayer() != null && unit.getPlayer().getID() == game.self().getID()) {
+                if (isGroundCombat(type)) {
+                    engagements.onOurDeath(unit.getPosition(), type == UnitType.Zerg_Zergling);
+                }
+            } else if (unit.getPlayer() != null && unit.getPlayer().isEnemy(game.self()) && !type.isBuilding()) {
+                engagements.onEnemyDeath(unit.getPosition());
             }
         } catch (RuntimeException e) {
             disable();
@@ -74,7 +156,67 @@ public class BunkerLogger implements BunkerSink {
 
         try {
             gameState.getBunkerStance().flush(game.getFrameCount());
+            writeEngagements(engagements.finish(game.getFrameCount()));
             writer.flush();
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onAdvance(BunkerAdvanceEvent event) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            AdvanceKey last = lastAdvance.get(event.getSquad().getId());
+            if (last != null && last.reason == event.getReason() && last.bunkerId == event.getBunker().getId()
+                    && event.getFrame() - last.frame < ADVANCE_REPEAT_FRAMES) {
+                return;
+            }
+            lastAdvance.put(event.getSquad().getId(),
+                    new AdvanceKey(event.getReason(), event.getBunker().getId(), event.getFrame()));
+            writer.append(advanceRow(gameId, event));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onLoss(BunkerLossEvent event) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(lossRow(gameId, event));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onAttack(BunkerAttackEvent event) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(attackRow(gameId, event));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onHold(int frame, String event, String reason) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(holdRow(gameId, frame, event, reason));
         } catch (RuntimeException e) {
             disable();
         }
@@ -91,6 +233,40 @@ public class BunkerLogger implements BunkerSink {
         } catch (RuntimeException e) {
             disable();
         }
+    }
+
+    private void writeEngagements(List<BunkerEngagements.Closed> closed) {
+        for (BunkerEngagements.Closed engagement : closed) {
+            writer.append(engagementRow(gameId, engagement));
+        }
+    }
+
+    private List<BunkerEngagements.BunkerSample> livingBunkers() {
+        List<BunkerEngagements.BunkerSample> bunkers = new ArrayList<>();
+        for (ObservedUnit ou : gameState.getObservedUnitTracker().getLivingObservedUnits()) {
+            Position position = ou.getUnitType() == UnitType.Terran_Bunker && ou.isCompleted()
+                    ? ou.getCurrentOrLastKnownPosition()
+                    : null;
+            if (position != null) {
+                bunkers.add(new BunkerEngagements.BunkerSample(ou.getUnit().getID(), position,
+                        ou.getLastKnownHitPoints()));
+            }
+        }
+        return bunkers;
+    }
+
+    private List<BunkerEngagements.OurUnit> ourUnits() {
+        List<BunkerEngagements.OurUnit> units = new ArrayList<>();
+        for (Unit unit : game.self().getUnits()) {
+            if (isGroundCombat(unit.getType())) {
+                units.add(new BunkerEngagements.OurUnit(unit.getPosition()));
+            }
+        }
+        return units;
+    }
+
+    private static boolean isGroundCombat(UnitType type) {
+        return type.canAttack() && !type.isWorker() && !type.isBuilding() && !type.isFlyer();
     }
 
     private void disable() {
@@ -118,6 +294,71 @@ public class BunkerLogger implements BunkerSink {
         throw new IllegalArgumentException(column);
     }
 
+    private static String known(int value) {
+        return value < 0 ? "" : String.valueOf(value);
+    }
+
+    /**
+     * Builds a BUNKER_ADVANCE row in {@link #HEADER} order.
+     *
+     * @return the row
+     */
+    static String advanceRow(String gameId, BunkerAdvanceEvent event) {
+        String[] cells = blankRow(gameId, event.getFrame(), "BUNKER_ADVANCE",
+                event.getReason().isHeld() ? "HELD" : "ALLOWED");
+        set(cells, "squad_id", Csv.sanitize(event.getSquad().getId()));
+        set(cells, "reason", event.getReason().name());
+        set(cells, "own_strength", Csv.format(event.getOwnStrength()));
+        if (event.getBunkerPrice() > 0) {
+            set(cells, "bunker_price", Csv.format(event.getBunkerPrice()));
+            set(cells, "ratio", Csv.format(event.getOwnStrength() / event.getBunkerPrice()));
+            set(cells, "release_ratio", Csv.format(event.getReleaseRatio()));
+        }
+        set(cells, "ling_count", String.valueOf(event.getSquad().getLingCount()));
+        set(cells, "squad_size", String.valueOf(event.getSquad().getSize()));
+        set(cells, "squad_x", String.valueOf(event.getSquad().getX()));
+        set(cells, "squad_y", String.valueOf(event.getSquad().getY()));
+        set(cells, "entry", event.getEntry().name());
+        set(cells, "bunker_id", known(event.getBunker().getId()));
+        set(cells, "bunker_x", known(event.getBunker().getX()));
+        set(cells, "bunker_y", known(event.getBunker().getY()));
+        set(cells, "bunker_hp", known(event.getBunker().getHitPoints()));
+        return String.join(",", cells);
+    }
+
+    /**
+     * Builds a BUNKER_ENGAGEMENT row in {@link #HEADER} order.
+     *
+     * @return the row
+     */
+    static String engagementRow(String gameId, BunkerEngagements.Closed engagement) {
+        String[] cells = blankRow(gameId, engagement.getEndFrame(), "BUNKER_ENGAGEMENT", "CLOSED");
+        set(cells, "bunker_id", String.valueOf(engagement.getBunkerId()));
+        set(cells, "bunker_x", String.valueOf(engagement.getBunker().getX()));
+        set(cells, "bunker_y", String.valueOf(engagement.getBunker().getY()));
+        set(cells, "engagement_id", String.valueOf(engagement.getId()));
+        set(cells, "start_frame", String.valueOf(engagement.getStartFrame()));
+        set(cells, "end_frame", String.valueOf(engagement.getEndFrame()));
+        set(cells, "our_lost", String.valueOf(engagement.getOurLost()));
+        set(cells, "lings_lost", String.valueOf(engagement.getLingsLost()));
+        set(cells, "enemy_lost", String.valueOf(engagement.getEnemyLost()));
+        set(cells, "hp_start", String.valueOf(engagement.getHitPointsStart()));
+        set(cells, "hp_end", String.valueOf(engagement.getHitPointsEnd()));
+        set(cells, "broken", engagement.isBroken() ? "1" : "0");
+        return String.join(",", cells);
+    }
+
+    /**
+     * Builds a BUNKER_HOLD row in {@link #HEADER} order.
+     *
+     * @return the row
+     */
+    static String holdRow(String gameId, int frame, String event, String reason) {
+        String[] cells = blankRow(gameId, frame, "BUNKER_HOLD", event);
+        set(cells, "reason", Csv.sanitize(reason));
+        return String.join(",", cells);
+    }
+
     /**
      * Builds a BUNKER_ECON row in {@link #HEADER} order.
      *
@@ -131,6 +372,56 @@ public class BunkerLogger implements BunkerSink {
         set(cells, "workers", String.valueOf(event.getWorkers()));
         set(cells, "extra_planned", String.valueOf(event.getExtraPlanned()));
         set(cells, "extra_made", String.valueOf(event.getExtraMade()));
+        return String.join(",", cells);
+    }
+
+    /**
+     * Builds a LOSS_RECORDED row in {@link #HEADER} order.
+     *
+     * @return the row
+     */
+    static String lossRow(String gameId, BunkerLossEvent event) {
+        String[] cells = blankRow(gameId, event.getFrame(), "LOSS_RECORDED", "RECORDED");
+        set(cells, "squad_id", Csv.sanitize(event.getSquadId()));
+        set(cells, "squad_size", String.valueOf(event.getSquadSize()));
+        set(cells, "units_lost", String.valueOf(event.getUnitsLost()));
+        set(cells, "squad_lost", String.valueOf(event.getSquadLost()));
+        set(cells, "bunker_price", Csv.format(event.getPrice()));
+        set(cells, "bunker_id", known(event.getBunker().getId()));
+        set(cells, "bunker_x", known(event.getBunker().getX()));
+        set(cells, "bunker_y", known(event.getBunker().getY()));
+        set(cells, "bunker_hp", known(event.getBunker().getHitPoints()));
+        return String.join(",", cells);
+    }
+
+    private static String attackEvent(BunkerAttackEvent event) {
+        if (event.isExempt()) {
+            return "EXEMPT";
+        }
+        return event.getGateRead() == null ? "UNREAD" : "GATED";
+    }
+
+    /**
+     * Builds a BUNKER_ATTACK row in {@link #HEADER} order. event is EXEMPT under a build the gate does not apply to,
+     * GATED when the gate weighed the loss on record at the Bunker after it was booked, UNREAD otherwise.
+     *
+     * @return the row
+     */
+    static String attackRow(String gameId, BunkerAttackEvent event) {
+        String[] cells = blankRow(gameId, event.getFrame(), "BUNKER_ATTACK", attackEvent(event));
+        set(cells, "squad_id", Csv.sanitize(event.getSquadId()));
+        set(cells, "squad_size", String.valueOf(event.getSquadSize()));
+        set(cells, "squad_x", String.valueOf(event.getSquadX()));
+        set(cells, "squad_y", String.valueOf(event.getSquadY()));
+        if (event.getGateRead() != null) {
+            set(cells, "entry", event.getGateRead().name());
+        }
+        set(cells, "read_frame", known(event.getReadFrame()));
+        set(cells, "ledger_frame", known(event.getLedgerFrame()));
+        set(cells, "bunker_id", known(event.getBunker().getId()));
+        set(cells, "bunker_x", known(event.getBunker().getX()));
+        set(cells, "bunker_y", known(event.getBunker().getY()));
+        set(cells, "bunker_hp", known(event.getBunker().getHitPoints()));
         return String.join(",", cells);
     }
 }

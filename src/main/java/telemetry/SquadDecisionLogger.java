@@ -293,10 +293,11 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      * rather than on every frame it holds.
      *
      * @param path the branch taken
-     * @return true for BLIND_ADVANCE_HOLD and BUNKER_MEMORY_HOLD
+     * @return true for BLIND_ADVANCE_HOLD, BUNKER_MEMORY_HOLD and BUNKER_ADVANCE_HOLD
      */
     static boolean isBlindHold(DecisionPath path) {
-        return path == DecisionPath.BLIND_ADVANCE_HOLD || path == DecisionPath.BUNKER_MEMORY_HOLD;
+        return path == DecisionPath.BLIND_ADVANCE_HOLD || path == DecisionPath.BUNKER_MEMORY_HOLD
+                || path == DecisionPath.BUNKER_ADVANCE_HOLD;
     }
 
     /**

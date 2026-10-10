@@ -137,6 +137,34 @@ public final class ContainmentGate {
     }
 
     /**
+     * Whether a squad is mostly melee: its ranged units make up less than {@link #MIN_RANGED_SHARE} of its attacking
+     * supply.
+     *
+     * @param composition unit counts of a squad
+     * @return true when the squad is short of the ranged supply that lets it contain a Bunker
+     */
+    static boolean isMostlyMelee(Map<UnitType, Integer> composition) {
+        return rangedShare(composition) < MIN_RANGED_SHARE;
+    }
+
+    /**
+     * Whether a held Bunker alone is why a squad is refused a contain arc: the squad's makeup would contain without
+     * the Bunker counted as an enemy that outranges melee, and does not with it.
+     *
+     * @param versusTerran true when the opponent is Terran
+     * @param mechDetected true when the TerranMech strategy has been detected
+     * @param bunkerHeld true when BunkerNatural or BunkerMain holds
+     * @param ours the squad's unit counts
+     * @param enemy living enemy unit counts
+     * @return true when {@link #compositionAllows(boolean, boolean, boolean, Map, Map)} flips on the Bunker alone
+     */
+    static boolean bunkerAloneRefuses(boolean versusTerran, boolean mechDetected, boolean bunkerHeld,
+                                      Map<UnitType, Integer> ours, Map<UnitType, Integer> enemy) {
+        return bunkerHeld && compositionAllows(versusTerran, mechDetected, false, ours, enemy)
+                && !compositionAllows(versusTerran, mechDetected, true, ours, enemy);
+    }
+
+    /**
      * Whether a squad the combat sim read as RETREAT may hold a contain arc instead: always against a non-Terran
      * opponent, otherwise only when no known mobile enemy outranges the squad's longest weapon, counting melee as
      * {@link #MELEE_MAX_RANGE}, the opponent is not detected as mech, and the squad's makeup lets it contain, see {@link #compositionAllows}.

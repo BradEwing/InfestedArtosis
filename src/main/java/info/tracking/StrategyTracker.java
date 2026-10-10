@@ -30,6 +30,7 @@ import info.tracking.zerg.ZergOpenerReading;
 import info.tracking.zerg.ZergOpenerRecognizer;
 import lombok.Getter;
 import lombok.Setter;
+import telemetry.BunkerTelemetry;
 import telemetry.PlanEvents;
 import util.Time;
 
@@ -161,19 +162,27 @@ public class StrategyTracker {
 
         recordDetections(newlyDetected);
         applyBunkerHolds(isDetectedStrategy(BunkerNatural.NAME) && bunkerNatural.isDetected(context),
-                isDetectedStrategy(BunkerMain.NAME) && bunkerMain.isDetected(context));
+                isDetectedStrategy(BunkerMain.NAME) && bunkerMain.isDetected(context), currentTime.getFrames());
     }
 
     /**
-     * Sets the Bunker holds and whether a Bunker has been broken.
+     * Sets the Bunker holds and whether a Bunker has been broken, and reports a hold starting or ending.
      *
      * @param natural whether a Bunker holds the enemy natural
      * @param main whether a Bunker holds the enemy main
+     * @param frame the current frame
      */
-    public void applyBunkerHolds(boolean natural, boolean main) {
+    public void applyBunkerHolds(boolean natural, boolean main, int frame) {
+        boolean heldBefore = isBunkerHeld();
         bunkerNaturalHeld = natural;
         bunkerMainHeld = main;
         bunkerBroken = tracker.getCountOfDestroyedCompletedUnits(UnitType.Terran_Bunker) > 0;
+        boolean held = isBunkerHeld();
+        if (held && !heldBefore) {
+            BunkerTelemetry.hold(frame, "HOLD_START", natural && main ? "NATURAL+MAIN" : natural ? "NATURAL" : "MAIN");
+        } else if (!held && heldBefore) {
+            BunkerTelemetry.hold(frame, "HOLD_END", bunkerBroken ? "BROKEN" : "CLEARED");
+        }
     }
 
     /**

@@ -155,6 +155,11 @@ public class SpeedlingAllIn extends BuildOrder {
         return false;
     }
 
+    @Override
+    public boolean allowsBunkerGate(GameState gameState) {
+        return false;
+    }
+
     /**
      * @param livingZerglings zerglings alive now
      * @return true once {@link #ZERGLINGS_FOR_CONTAIN_HELD_ROUND} zerglings are alive

@@ -337,6 +337,9 @@ public class Bot extends DefaultBWListener {
     @Override
     public void onUnitDestroy(Unit unit) {
         combatTelemetry.onUnitDestroy(unit);
+        if (bunkerLogger != null) {
+            bunkerLogger.onUnitDestroy(unit);
+        }
         informationManager.onUnitDestroy(unit);
         productionManager.onUnitDestroy(unit);
         unitManager.onUnitDestroy(unit);

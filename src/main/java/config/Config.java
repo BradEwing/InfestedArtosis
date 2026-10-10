@@ -25,6 +25,11 @@ public final class Config {
      */
     public static boolean lurkerFireAware = true;
     /**
+     * Whether the repeat-advance gate runs: a mostly melee squad held back from a Bunker priced as a loss after it
+     * retreated from it. On unless IA_BUNKER_GATE is set to false.
+     */
+    public static boolean bunkerGate = true;
+    /**
      * Whether an opponent with no history starts from the per-race learning prior bundled in the jar. On unless
      * IA_RACE_PRIOR is set to false.
      */
@@ -122,6 +127,7 @@ public final class Config {
         airFlapEscape = Boolean.parseBoolean(airFlapEscapeSetting);
         baseChecks = enabledUnlessFalse(setting(dotenv, "IA_BASE_CHECKS"));
         lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
+        bunkerGate = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_GATE"));
         racePrior = enabledUnlessFalse(setting(dotenv, "IA_RACE_PRIOR"));
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
     }
