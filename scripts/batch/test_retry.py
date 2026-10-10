@@ -10,6 +10,7 @@ import report
 import sitrep
 
 ROW = {"is_winner": "true"}
+STALEMATE_ROW = {"is_winner": "false", "frame_count": "86400", "reason": "stalemate"}
 
 
 def entry(index, opponent="opp", maps=("m0", "m1", "m2")):
@@ -43,6 +44,15 @@ class NeedsRetryTest(unittest.TestCase):
     def test_learning_row_needs_no_retry(self):
         for outcome in ("WIN", "LOSS", "CRASH"):
             self.assertFalse(bl.needs_retry((outcome, 100, ROW)), outcome)
+
+    def test_stalemate_row_needs_no_retry(self):
+        self.assertFalse(bl.needs_retry(("CRASH", 1887, STALEMATE_ROW)))
+
+    def test_stalemate_row_is_recognised_only_by_its_reason(self):
+        self.assertTrue(bl.is_stalemate_row(STALEMATE_ROW))
+        self.assertFalse(bl.is_stalemate_row(ROW))
+        self.assertFalse(bl.is_stalemate_row({"is_winner": "false", "reason": None}))
+        self.assertFalse(bl.is_stalemate_row(None))
 
 
 class PlayIndexTest(unittest.TestCase):

@@ -9,6 +9,11 @@ import java.util.List;
 @Data
 @Builder
 public class GameRecord {
+    /**
+     * Value of the optional eleventh column that marks a game the bot recorded itself at the frame cap.
+     */
+    public static final String STALEMATE_REASON = "stalemate";
+
     private long timestamp;
     private int numStartingLocations;
     private String mapName;
@@ -19,9 +24,13 @@ public class GameRecord {
     private String detectedStrategies;
     private boolean isWinner;
     private int frameCount;
-    
+    private boolean stalemate;
+
+    /**
+     * Returns the CSV row. A stalemate row carries a trailing reason column; every other row has ten columns.
+     */
     public String toCsvRow() {
-        return String.format("%d,%s,%d,%s,%s,%s,%s,%s,%s,%d",
+        String row = String.format("%d,%s,%d,%s,%s,%s,%s,%s,%s,%d",
             timestamp,
             isWinner,
             numStartingLocations,
@@ -33,6 +42,7 @@ public class GameRecord {
             escapeCsvField(detectedStrategies),
             frameCount
         );
+        return stalemate ? row + "," + STALEMATE_REASON : row;
     }
     
     public static GameRecord fromCsvRow(String csvRow) {
@@ -48,6 +58,7 @@ public class GameRecord {
             .buildOrder(fields[7])
             .detectedStrategies(fields[8])
             .frameCount(fields.length > 9 && !fields[9].isEmpty() ? Integer.parseInt(fields[9]) : 0)
+            .stalemate(fields.length > 10 && STALEMATE_REASON.equals(fields[10]))
             .build();
     }
     

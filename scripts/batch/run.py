@@ -3,7 +3,7 @@
 Usage:
   py scripts/batch/run.py <opponent> [<opponent>...] [-n 100] [--jobs 1] [--frozen]
 
-A game that leaves no learning row (crash, no result, frame cap) is replayed on the same map index before the
+A game that leaves no learning row (crash, no result) is replayed on the same map index before the
 opponent's next index, up to --max-retries times, so the k-th recorded game stays on the k-th map. Retries
 default to 2 in accumulate mode and 0 with --frozen.
 

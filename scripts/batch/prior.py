@@ -11,6 +11,8 @@ bot that was played many times does not outweigh the others. It is then shrunk t
 balanced rate over every arm of that kind) with --shrink pseudo-observations. The pseudo-games are --games
 (default 3), or --loser-games (default 5) for an arm whose shrunk rate is at or below --loser-rate with at least
 --loser-min first exposures. Pseudo-wins are the product of the shrunk rate and the pseudo-games, to two decimals.
+A row whose optional reason column reads "stalemate" is a game the bot recorded as a loss at the frame cap; it
+counts as a loss like any other row unless --exclude-stalemates drops it.
 Only runs whose id (a start timestamp) is at or after --since count (default 20261001, the October runs the
 study recommends from). Arms
 with fewer than --min-n first exposures are left out and stay untried.
@@ -68,6 +70,14 @@ def load_rows(path):
         row["index"] = int(row["index"])
     rows.sort(key=lambda r: (r["run"], r["opponent"], r["gnum"], r["index"]))
     return rows
+
+
+def is_stalemate(row):
+    return (row.get("reason") or "").strip().lower() == "stalemate"
+
+
+def drop_stalemates(rows):
+    return [row for row in rows if not is_stalemate(row)]
 
 
 def first_exposures(rows, kind, window, random_bots=RANDOM_BOTS):
@@ -148,8 +158,13 @@ def main(argv=None):
     parser.add_argument("--min-n", type=int, default=5)
     parser.add_argument("--since", default="20261001")
     parser.add_argument("--random-bots", nargs="*", default=sorted(RANDOM_BOTS))
+    parser.add_argument("--exclude-stalemates", action="store_true",
+                        help="drop frame-cap stalemate rows instead of counting them as losses")
     args = parser.parse_args(argv)
-    prior = build_prior(load_rows(args.games_csv), args.window, args.shrink, args.games, args.loser_games,
+    rows = load_rows(args.games_csv)
+    if args.exclude_stalemates:
+        rows = drop_stalemates(rows)
+    prior = build_prior(rows, args.window, args.shrink, args.games, args.loser_games,
                         args.loser_rate, args.loser_min, args.min_n, args.since, set(args.random_bots))
     write_prior(prior, Path(args.output))
     print(f"wrote {len(prior)} rows to {args.output}")

@@ -251,6 +251,7 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onFrame() {
+        learningManager.onFrame();
         if (planEventLogger != null) {
             planEventLogger.onFrame();
         }

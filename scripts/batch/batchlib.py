@@ -65,6 +65,9 @@ BOT_EXITED_MARKER = "Bot exited."
 FRAME_CAP_FRAMES = 85000
 
 LABEL_STALEMATE = "STALEMATE"
+
+# Value of the learning file's reason column on a row the bot wrote itself at the frame cap.
+STALEMATE_REASON = "stalemate"
 LABEL_STOPPED = "STOPPED"
 LABEL_JVM_DIED = "JVM_DIED"
 
@@ -92,8 +95,15 @@ def game_name(tag, index):
     return f"{tag}{base36(index).rjust(3, '0')}"
 
 
+def is_stalemate_row(row):
+    """True when a learning row is the loss the bot recorded itself at the frame cap."""
+    return bool(row) and (row.get("reason") or "").strip().lower() == STALEMATE_REASON
+
+
 def needs_retry(classified):
     """A game needs a retry when it produced no learning row, whatever its outcome.
+    A frame-cap stalemate carries the bot's own loss row, so it is not replayed: the replay would run the same
+    pick again and the row already moved the arm's record.
     Takes the (outcome, game_time, learning_row) tuple from classify."""
     return classified[2] is None
 

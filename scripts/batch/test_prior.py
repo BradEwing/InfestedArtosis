@@ -17,6 +17,25 @@ def repeat(count, **kwargs):
     return [game(run=f"2026100{i}", **kwargs) for i in range(count)]
 
 
+class StalemateRowTest(unittest.TestCase):
+    def rows(self):
+        stalled = game("r0", "a", 1, "3HatchBeforePool", "SpeedlingP", 0)
+        stalled["reason"] = "stalemate"
+        return [stalled, game("r0", "b", 1, "3HatchBeforePool", "SpeedlingP", 1)]
+
+    def test_a_stalemate_row_counts_as_a_loss_by_default(self):
+        exposures = prior.first_exposures(self.rows(), "opener", 10)
+        self.assertEqual([("Terran", "3HatchBeforePool", "a", 0), ("Terran", "3HatchBeforePool", "b", 1)], exposures)
+
+    def test_exclude_flag_drops_only_stalemate_rows(self):
+        kept = prior.drop_stalemates(self.rows())
+        self.assertEqual(["b"], [row["opponent"] for row in kept])
+
+    def test_rows_without_a_reason_column_are_kept(self):
+        rows = [game("r0", "a", 1, "9Hatch", "x", 1)]
+        self.assertEqual(rows, prior.drop_stalemates(rows))
+
+
 class FirstExposureTest(unittest.TestCase):
     def test_counts_only_the_first_game_of_an_arm_per_run_and_opponent(self):
         rows = [game("r0", "a", 1, "9Hatch", "x", 1), game("r0", "a", 2, "9Hatch", "x", 0)]
