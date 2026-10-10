@@ -14,19 +14,26 @@ import java.util.Map;
  * <p>A mostly melee squad that retreated from a priced Bunker leaves a loss on record, see {@link BunkerLossLedger}.
  * While the record stands, an advance of a mostly melee squad toward that Bunker is held. The record ends, and the
  * advance is allowed again, when the squad's strength reaches the strength the retreat was priced against times the
- * ratio the sim needs plus {@link #RELEASE_HYSTERESIS}, when the Bunker is seen damaged by
- * {@link #DAMAGE_RELEASE_HIT_POINTS} or more, when the Bunker is no longer a living observed Bunker, or when
- * {@link #HOLD_TIMEOUT_FRAMES} pass since the retreat. The gate never applies to the first attack on a Bunker, which
- * has no loss on record, and never while the sim reads the squad as breaking the Bunker with the squad at least as
- * strong as the strength the loss was priced against.
+ * ratio {@link #RELEASE_RATIO}, so when it is at least as strong as the strength the retreat was priced against, when
+ * the Bunker is seen damaged by {@link #DAMAGE_RELEASE_HIT_POINTS} or more, when the Bunker is no longer a living
+ * observed Bunker, or when {@link #HOLD_TIMEOUT_FRAMES} pass since the retreat. A squad the gate has not held is
+ * held only while its strength is below the price by more than {@link #REHOLD_HYSTERESIS}, so a squad hovering at
+ * the price is not held and released in turn. The gate never applies to the first attack on a Bunker, which has no
+ * loss on record, and never while the sim reads the squad as breaking the Bunker with the squad at least as strong
+ * as the strength the loss was priced against.
  */
 public final class BunkerAdvanceGate {
 
     /**
-     * Added to the ratio the sim needs before a squad is priced as breaking a Bunker it lost to, so a squad that only
-     * just reaches the ratio does not march back in and retreat again.
+     * The strength a squad needs, as a multiple of the strength the retreat was priced against, to end the record.
      */
-    static final double RELEASE_HYSTERESIS = 0.25;
+    static final double RELEASE_RATIO = 1.0;
+
+    /**
+     * The fraction below the release strength within which a squad the gate has not held is not held, so a squad at
+     * the price is held once at most.
+     */
+    static final double REHOLD_HYSTERESIS = 0.1;
 
     /**
      * Hit points a Bunker must have lost since the loss was first recorded to count as damaged.
@@ -247,6 +254,10 @@ public final class BunkerAdvanceGate {
             Bunker bunker = find(living, entry);
             BunkerAdvanceReason reason = releaseReason(entry, bunker, ownStrength, frame);
             if (reason == null) {
+                double releaseStrength = entry.getPrice() * entry.getReleaseRatio();
+                if (!squad.latched && ownStrength >= releaseStrength * (1 - REHOLD_HYSTERESIS)) {
+                    return verdict(BunkerAdvanceReason.IN_PRICE_BAND, bunker, entry);
+                }
                 return verdict(BunkerAdvanceReason.HELD_LOSS, bunker, entry);
             }
             ledger.remove(entry);

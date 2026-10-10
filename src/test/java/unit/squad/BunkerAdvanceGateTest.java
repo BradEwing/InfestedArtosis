@@ -24,8 +24,8 @@ class BunkerAdvanceGateTest {
     private static final int FULL_HIT_POINTS = 350;
     private static final int LOSS_FRAME = 5000;
     private static final double PRICE = 100;
-    private static final double RELEASE_RATIO = 1.44 + BunkerAdvanceGate.RELEASE_HYSTERESIS;
-    private static final double WEAK = 100;
+    private static final double RELEASE_RATIO = BunkerAdvanceGate.RELEASE_RATIO;
+    private static final double WEAK = 50;
     private static final double STRONG = PRICE * RELEASE_RATIO + 1;
 
     private static BunkerLossLedger ledgerWithLoss() {
@@ -41,8 +41,14 @@ class BunkerAdvanceGateTest {
     private static BunkerAdvanceGate.Verdict evaluate(BunkerLossLedger ledger, List<BunkerAdvanceGate.Bunker> living,
                                                       double ownStrength, boolean melee, boolean simBreaks,
                                                       int frame) {
+        return evaluate(ledger, living, ownStrength, melee, simBreaks, false, frame);
+    }
+
+    private static BunkerAdvanceGate.Verdict evaluate(BunkerLossLedger ledger, List<BunkerAdvanceGate.Bunker> living,
+                                                      double ownStrength, boolean melee, boolean simBreaks,
+                                                      boolean latched, int frame) {
         return BunkerAdvanceGate.evaluate(true, ledger, living,
-                new BunkerAdvanceGate.Situation(SQUAD, ownStrength, melee, simBreaks, false), frame);
+                new BunkerAdvanceGate.Situation(SQUAD, ownStrength, melee, simBreaks, latched), frame);
     }
 
     @Test
@@ -87,11 +93,11 @@ class BunkerAdvanceGateTest {
     }
 
     @Test
-    void theHoldReleasesOnceTheSquadReachesThePricedStrengthPlusHysteresis() {
+    void theHoldReleasesOnceTheSquadReachesThePricedStrength() {
         BunkerLossLedger ledger = ledgerWithLoss();
 
         BunkerAdvanceGate.Verdict justShort = evaluate(ledger, living(FULL_HIT_POINTS),
-                PRICE * (RELEASE_RATIO - 0.01), true, false, LOSS_FRAME + 10);
+                PRICE * (RELEASE_RATIO - 0.01), true, false, true, LOSS_FRAME + 10);
         BunkerAdvanceGate.Verdict released = evaluate(ledger, living(FULL_HIT_POINTS), STRONG, true, false,
                 LOSS_FRAME + 11);
 
@@ -102,10 +108,46 @@ class BunkerAdvanceGateTest {
     }
 
     @Test
-    void theReleaseNeedsMoreThanTheSimsOwnEngageThreshold() {
-        assertTrue(BunkerAdvanceGate.RELEASE_HYSTERESIS > 0);
-        BunkerAdvanceGate.Verdict verdict = evaluate(ledgerWithLoss(), living(FULL_HIT_POINTS), PRICE * 1.44, true,
+    void aSquadExactlyAsStrongAsThePriceIsReleased() {
+        BunkerLossLedger ledger = ledgerWithLoss();
+
+        BunkerAdvanceGate.Verdict verdict = evaluate(ledger, living(FULL_HIT_POINTS), PRICE, true, false, true,
+                LOSS_FRAME + 10);
+
+        assertFalse(verdict.isHeld());
+        assertEquals(BunkerAdvanceReason.RELEASED_STRENGTH, verdict.getReason());
+        assertEquals(0, ledger.size());
+    }
+
+    @Test
+    void aSquadNotHeldBeforeIsNotHeldWithinTheReholdMarginBelowThePriceAndTheRecordStands() {
+        BunkerLossLedger ledger = ledgerWithLoss();
+        double inBand = PRICE * (1 - BunkerAdvanceGate.REHOLD_HYSTERESIS / 2);
+
+        BunkerAdvanceGate.Verdict verdict = evaluate(ledger, living(FULL_HIT_POINTS), inBand, true, false, false,
+                LOSS_FRAME + 10);
+
+        assertFalse(verdict.isHeld());
+        assertEquals(BunkerAdvanceReason.IN_PRICE_BAND, verdict.getReason());
+        assertEquals(1, ledger.size());
+    }
+
+    @Test
+    void aSquadNotHeldBeforeIsHeldBelowTheReholdMargin() {
+        double below = PRICE * (1 - BunkerAdvanceGate.REHOLD_HYSTERESIS) - 1;
+
+        BunkerAdvanceGate.Verdict verdict = evaluate(ledgerWithLoss(), living(FULL_HIT_POINTS), below, true, false,
                 false, LOSS_FRAME + 10);
+
+        assertTrue(verdict.isHeld());
+    }
+
+    @Test
+    void aHeldSquadStaysHeldInTheMarginUntilItReachesThePrice() {
+        double inBand = PRICE * (1 - BunkerAdvanceGate.REHOLD_HYSTERESIS / 2);
+
+        BunkerAdvanceGate.Verdict verdict = evaluate(ledgerWithLoss(), living(FULL_HIT_POINTS), inBand, true, false,
+                true, LOSS_FRAME + 10);
 
         assertTrue(verdict.isHeld());
     }
@@ -184,7 +226,7 @@ class BunkerAdvanceGateTest {
     void anAdvanceTheSimReadsAsBreakingTheBunkerIsNeverGated() {
         BunkerLossLedger ledger = ledgerWithLoss();
 
-        BunkerAdvanceGate.Verdict breaks = evaluate(ledger, living(FULL_HIT_POINTS), WEAK, true, true,
+        BunkerAdvanceGate.Verdict breaks = evaluate(ledger, living(FULL_HIT_POINTS), PRICE, true, true,
                 LOSS_FRAME + 10);
         BunkerAdvanceGate.Verdict later = evaluate(ledger, living(FULL_HIT_POINTS), WEAK, true, false,
                 LOSS_FRAME + 11);
@@ -303,7 +345,7 @@ class BunkerAdvanceGateTest {
 
     @Test
     void anEngageBelowThePricedStrengthIsNotSimBreaksAndIsHeld() {
-        BunkerAdvanceGate.Verdict verdict = evaluate(ledgerWithLoss(), living(FULL_HIT_POINTS), PRICE - 1, true, true,
+        BunkerAdvanceGate.Verdict verdict = evaluate(ledgerWithLoss(), living(FULL_HIT_POINTS), WEAK, true, true,
                 LOSS_FRAME + 10);
 
         assertTrue(verdict.isHeld());
@@ -311,7 +353,7 @@ class BunkerAdvanceGateTest {
     }
 
     @Test
-    void anEngageAtOrAboveThePricedStrengthButBelowTheReleaseIsSimBreaks() {
+    void anEngageAtThePricedStrengthIsSimBreaks() {
         BunkerAdvanceGate.Verdict verdict = evaluate(ledgerWithLoss(), living(FULL_HIT_POINTS), PRICE, true, true,
                 LOSS_FRAME + 10);
 

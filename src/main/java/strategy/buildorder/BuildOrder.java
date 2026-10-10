@@ -254,6 +254,34 @@ public abstract class BuildOrder {
         return true;
     }
 
+    /**
+     * Whether the repeat-advance gate may hold this build's squads back from a Bunker priced as a loss, see
+     * {@link unit.squad.BunkerAdvanceGate}. A build that is an all-in by design keeps committing its Zerglings.
+     *
+     * @param gameState current game state
+     * @return true unless the build overrides it
+     */
+    public boolean allowsBunkerGate(GameState gameState) {
+        return true;
+    }
+
+    /**
+     * Whether the repeat-advance gate may run under the active build and the strategy selected for the game. Either
+     * one opting out, see {@link #allowsBunkerGate}, exempts the game, so an all-in strategy chosen before the opener
+     * hands over is exempt through the opener.
+     *
+     * @param gameState current game state
+     * @return true when neither opts out
+     */
+    public static boolean bunkerGateAllowed(GameState gameState) {
+        return bunkerGateAllowed(gameState.getActiveBuildOrder(), gameState.getSelectedStrategy(), gameState);
+    }
+
+    static boolean bunkerGateAllowed(BuildOrder active, BuildOrder selectedStrategy, GameState gameState) {
+        return (active == null || active.allowsBunkerGate(gameState))
+                && (selectedStrategy == null || selectedStrategy.allowsBunkerGate(gameState));
+    }
+
     private DroneRound.ContainHeld containHeld(GameState gameState, int frame) {
         ContainHeldTimer timer = gameState.getContainHeldTimer();
         return DroneRound.ContainHeld.builder()

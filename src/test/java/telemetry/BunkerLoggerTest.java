@@ -191,12 +191,13 @@ class BunkerLoggerTest {
     @Test
     void aLossRowCarriesTheSquadTheUnitsLostAndThePrice() {
         String[] fields = fields(BunkerLogger.lossRow("game-1",
-                new BunkerLossEvent(7000, "squad-a", 18, 5, 120, BUNKER)));
+                new BunkerLossEvent(7000, "squad-a", 18, 5, 3, 120, BUNKER)));
 
         assertEquals("LOSS_RECORDED", fields[columnIndex("row_type")]);
         assertEquals("squad-a", fields[columnIndex("squad_id")]);
         assertEquals("18", fields[columnIndex("squad_size")]);
         assertEquals("5", fields[columnIndex("units_lost")]);
+        assertEquals("3", fields[columnIndex("squad_lost")]);
         assertEquals("120.0000", fields[columnIndex("bunker_price")]);
         assertEquals("7", fields[columnIndex("bunker_id")]);
     }
@@ -204,14 +205,19 @@ class BunkerLoggerTest {
     @Test
     void anAttackRowIsGatedWhenTheGateReadTheSquadAndUnreadOtherwise() {
         String[] gated = fields(BunkerLogger.attackRow("game-1",
-                new BunkerAttackEvent(7000, "squad-a", 18, 640, 720, BunkerAdvanceEntry.FIGHT_LOCK, BUNKER)));
+                new BunkerAttackEvent(7000, new BunkerAdvanceEvent.Squad("squad-a", 18, 12, 640, 720),
+                        BunkerAdvanceEntry.FIGHT_LOCK, 6900, 6800, BUNKER)));
         String[] unread = fields(BunkerLogger.attackRow("game-1",
-                new BunkerAttackEvent(7000, "squad-b", 18, 640, 720, null, BUNKER)));
+                new BunkerAttackEvent(7000, new BunkerAdvanceEvent.Squad("squad-b", 18, 12, 640, 720), null, 6000,
+                        6800, BUNKER)));
 
         assertEquals("BUNKER_ATTACK", gated[columnIndex("row_type")]);
         assertEquals("GATED", gated[columnIndex("event")]);
         assertEquals("FIGHT_LOCK", gated[columnIndex("entry")]);
+        assertEquals("6900", gated[columnIndex("read_frame")]);
+        assertEquals("6800", gated[columnIndex("ledger_frame")]);
         assertEquals("UNREAD", unread[columnIndex("event")]);
         assertEquals("", unread[columnIndex("entry")]);
+        assertEquals("6000", unread[columnIndex("read_frame")]);
     }
 }

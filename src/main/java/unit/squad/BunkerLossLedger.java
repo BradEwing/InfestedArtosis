@@ -63,6 +63,11 @@ public final class BunkerLossLedger {
         }
     }
 
+    /**
+     * The frame reported when no loss is on record.
+     */
+    public static final int NONE = Integer.MIN_VALUE;
+
     private final Map<Position, Entry> entries = new LinkedHashMap<>();
 
     /**
@@ -103,6 +108,31 @@ public final class BunkerLossLedger {
         }
         near.sort(Comparator.comparingDouble(entry -> center.getDistance(entry.position)));
         return near;
+    }
+
+    /**
+     * @param center a position
+     * @param range the farthest distance, in pixels
+     * @return the frame of the latest retreat on record at a Bunker within the range of the position, or
+     *     {@link #NONE} when none is
+     */
+    public int latestFrame(Position center, double range) {
+        int latest = NONE;
+        for (Entry entry : entries.values()) {
+            if (center.getDistance(entry.position) <= range) {
+                latest = Math.max(latest, entry.frame);
+            }
+        }
+        return latest;
+    }
+
+    /**
+     * @param bunker where a Bunker stands or was last seen
+     * @return the frame of the latest retreat on record at it, or {@link #NONE} when none is
+     */
+    public int frameAt(Position bunker) {
+        Entry entry = entries.get(bunker);
+        return entry == null ? NONE : entry.frame;
     }
 
     void remove(Entry entry) {

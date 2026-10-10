@@ -34,12 +34,17 @@ import java.util.Map;
  *
  * <p>LOSS_RECORDED: one row each time a retreat is booked as a loss at a Bunker, which needs units of ours to have
  * died at it. squad_id and squad_size name the retreating squad, units_lost the units that died at the Bunker in the
- * window the loss counts, bunker_price the enemy strength the retreat was priced against and bunker_id, bunker_x,
- * bunker_y and bunker_hp the Bunker.
+ * window the loss counts, squad_lost the units among them that died as members of that squad, bunker_price the enemy
+ * strength the retreat was priced against and bunker_id, bunker_x, bunker_y and bunker_hp the Bunker.
  *
- * <p>BUNKER_ATTACK: one row per ground squad id the first frame it is in FIGHT within 288 px of a living
- * Bunker. event is GATED when the gate read the squad, or a squad it was formed from, and entry names the branch that
- * read it, see {@link BunkerAdvanceEntry}; event is UNREAD otherwise. squad_x and squad_y are the squad centre.
+ * <p>BUNKER_ATTACK: one row per ground squad id the first frame it is in FIGHT within 288 px of a living Bunker, and
+ * another each time the loss on record at the nearest Bunker changes while it stays there. ledger_frame is the frame
+ * of the latest loss on record at the nearest Bunker, blank when none is, and read_frame the frame of the gate's
+ * latest read of the squad or a squad it was formed from, blank when it never read one. event is GATED when the read
+ * is later than the loss, or when no loss is on record and the squad was read, and entry names the branch that read
+ * it, see {@link BunkerAdvanceEntry}; event is UNREAD otherwise. squad_x and squad_y are the squad centre. The
+ * share of contacts at a Bunker with a loss on record that the gate evaluated is the GATED rows over all rows with a
+ * ledger_frame.
  *
  * <p>BUNKER_ECON: one row per change of a Bunker stance, see the Drone round it opens. event is STANCE_START,
  * ROUND_OPEN, ROUND_CLOSE or STANCE_END. stance_id numbers the game's Bunker holds from 1, and a stance that re-forms
@@ -61,7 +66,7 @@ public class BunkerLogger implements BunkerSink {
         "release_ratio", "ling_count", "bunker_id", "bunker_x", "bunker_y", "bunker_hp", "engagement_id",
         "start_frame", "end_frame", "our_lost", "lings_lost", "enemy_lost", "hp_start", "hp_end", "broken",
         "stance_id", "drones", "workers", "extra_planned", "extra_made", "squad_size", "squad_x", "squad_y", "entry",
-        "units_lost"
+        "units_lost", "squad_lost", "read_frame", "ledger_frame"
     };
 
     static final String HEADER = String.join(",", COLUMNS);
@@ -379,6 +384,7 @@ public class BunkerLogger implements BunkerSink {
         set(cells, "squad_id", Csv.sanitize(event.getSquadId()));
         set(cells, "squad_size", String.valueOf(event.getSquadSize()));
         set(cells, "units_lost", String.valueOf(event.getUnitsLost()));
+        set(cells, "squad_lost", String.valueOf(event.getSquadLost()));
         set(cells, "bunker_price", Csv.format(event.getPrice()));
         set(cells, "bunker_id", known(event.getBunker().getId()));
         set(cells, "bunker_x", known(event.getBunker().getX()));
@@ -403,6 +409,8 @@ public class BunkerLogger implements BunkerSink {
         if (event.getGateRead() != null) {
             set(cells, "entry", event.getGateRead().name());
         }
+        set(cells, "read_frame", known(event.getReadFrame()));
+        set(cells, "ledger_frame", known(event.getLedgerFrame()));
         set(cells, "bunker_id", known(event.getBunker().getId()));
         set(cells, "bunker_x", known(event.getBunker().getX()));
         set(cells, "bunker_y", known(event.getBunker().getY()));

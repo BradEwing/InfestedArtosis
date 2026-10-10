@@ -26,7 +26,7 @@ public enum BunkerAdvanceReason {
     SIM_BREAKS(false),
 
     /**
-     * The squad's strength reached the strength the lost engagement priced, plus the hysteresis; the record ended.
+     * The squad's strength reached the strength the lost engagement priced; the record ended.
      */
     RELEASED_STRENGTH(false),
 
@@ -44,6 +44,17 @@ public enum BunkerAdvanceReason {
      * The timeout ran out since the loss; the record ended.
      */
     RELEASED_TIMEOUT(false),
+
+    /**
+     * The build is an all-in by design and the gate does not apply to it; the record, if any, stands.
+     */
+    EXEMPT_BUILD(false),
+
+    /**
+     * The squad is within the re-hold margin below the strength the lost engagement priced and was not held before:
+     * the advance is allowed and the record stands.
+     */
+    IN_PRICE_BAND(false),
 
     /**
      * The squad lost an engagement at the Bunker, the sim priced it as a loss, and nothing has released the record.

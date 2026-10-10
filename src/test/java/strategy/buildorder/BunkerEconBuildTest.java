@@ -49,4 +49,22 @@ class BunkerEconBuildTest {
         assertTrue(BuildOrder.bunkerEconAllowed(new ThreeHatchBeforePool(), new TwoHatchMuta(), null));
         assertTrue(BuildOrder.bunkerEconAllowed(new ThreeHatchBeforePool(), null, null));
     }
+
+    @Test
+    void onlyTheSpeedlingAllInIsExemptFromTheAdvanceGate() {
+        assertFalse(new SpeedlingAllIn().allowsBunkerGate(null));
+        assertTrue(new FourPool().allowsBunkerGate(null));
+        assertTrue(new NinePoolSpeed().allowsBunkerGate(null));
+        assertTrue(new NinePoolGasHatchSpeed8D().allowsBunkerGate(null));
+        assertTrue(new TwelvePool().allowsBunkerGate(null));
+        assertTrue(new ThreeHatchLurker().allowsBunkerGate(null));
+    }
+
+    @Test
+    void aSpeedlingStrategySelectedBeforeTheOpenerHandsOverExemptsTheGameFromTheGate() {
+        assertFalse(BuildOrder.bunkerGateAllowed(new ThreeHatchBeforePool(), new SpeedlingAllIn(), null));
+        assertFalse(BuildOrder.bunkerGateAllowed(new SpeedlingAllIn(), null, null));
+        assertTrue(BuildOrder.bunkerGateAllowed(new ThreeHatchBeforePool(), new TwoHatchMuta(), null));
+        assertTrue(BuildOrder.bunkerGateAllowed(new FourPool(), null, null));
+    }
 }

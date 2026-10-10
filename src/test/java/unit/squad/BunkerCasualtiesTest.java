@@ -112,4 +112,19 @@ class BunkerCasualtiesTest {
 
         assertTrue(lost.isEmpty());
     }
+
+    @Test
+    void aSquadsOwnLossesAreTheDeathsOfItsMembersAtTheBunker() {
+        BunkerCasualties casualties = new BunkerCasualties();
+        casualties.recordDeath(BUNKER, Collections.singletonList(BUNKER), FRAME, "squad-a");
+        casualties.recordDeath(BUNKER, Collections.singletonList(BUNKER), FRAME + 10, "squad-b");
+        casualties.recordDeath(BUNKER, Collections.singletonList(BUNKER), FRAME + 20, "squad-a");
+        casualties.recordDeath(BUNKER, Collections.singletonList(BUNKER), FRAME + 30);
+
+        assertEquals(4, casualties.lostSince(BUNKER, 0));
+        assertEquals(2, casualties.lostSince(BUNKER, 0, "squad-a"));
+        assertEquals(1, casualties.lostSince(BUNKER, 0, "squad-b"));
+        assertEquals(1, casualties.lostSince(BUNKER, FRAME + 15, "squad-a"));
+        assertEquals(0, casualties.lostSince(BUNKER, 0, "squad-c"));
+    }
 }

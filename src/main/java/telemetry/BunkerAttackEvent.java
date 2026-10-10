@@ -15,26 +15,30 @@ public final class BunkerAttackEvent {
     private final int squadX;
     private final int squadY;
     private final BunkerAdvanceEntry gateRead;
+    private final int readFrame;
+    private final int ledgerFrame;
     private final BunkerAdvanceEvent.Bunker bunker;
 
     /**
      * @param frame the frame the squad was first seen in FIGHT near the Bunker
-     * @param squadId the squad's id
-     * @param squadSize units in the squad
-     * @param squadX the squad centre's x in pixels
-     * @param squadY the squad centre's y in pixels
-     * @param gateRead the branch where the gate read the squad or a squad it was formed from, or null when it never
-     *     did
+     * @param squad the squad: its id, units and centre
+     * @param gateRead the branch where the gate read the squad or a squad it was formed from after the latest loss
+     *     on record at the Bunker, or null when it did not
+     * @param readFrame the frame of the gate's latest read of the squad or a squad it was formed from, or -1 when it
+     *     never read one
+     * @param ledgerFrame the frame of the latest loss on record at the Bunker, or -1 when none is
      * @param bunker the nearest living Bunker
      */
-    public BunkerAttackEvent(int frame, String squadId, int squadSize, int squadX, int squadY,
-                             BunkerAdvanceEntry gateRead, BunkerAdvanceEvent.Bunker bunker) {
+    public BunkerAttackEvent(int frame, BunkerAdvanceEvent.Squad squad, BunkerAdvanceEntry gateRead, int readFrame,
+                             int ledgerFrame, BunkerAdvanceEvent.Bunker bunker) {
         this.frame = frame;
-        this.squadId = squadId;
-        this.squadSize = squadSize;
-        this.squadX = squadX;
-        this.squadY = squadY;
+        this.squadId = squad.getId();
+        this.squadSize = squad.getSize();
+        this.squadX = squad.getX();
+        this.squadY = squad.getY();
         this.gateRead = gateRead;
+        this.readFrame = readFrame;
+        this.ledgerFrame = ledgerFrame;
         this.bunker = bunker;
     }
 }
