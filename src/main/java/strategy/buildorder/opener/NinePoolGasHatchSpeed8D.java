@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 9 Pool Gas Hatch Speed, 8 drones, against Zerg: drones to 9, Spawning Pool at 9, drone, the
+ * 9 Pool Gas Hatch Speed, 8 drones, against Zerg or a Random opponent: drones to 9, Spawning Pool at 9, drone, the
  * extractor trick, Overlord, 3 zergling pairs, Extractor, a Hatchery in the main, 2 zergling pairs,
  * Metabolic Boost, then 35 zergling pairs while the drone count is held at 8.
  *
@@ -165,8 +165,10 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
         if (shouldPlanZergling(usablePools, zerglingPlans, TOTAL_ZERGLING_PLANS,
                 gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling))) {
             plans.add(planZergling(gameState));
+            return plans;
         }
 
+        plans.addAll(planUnknownRaceMacro(gameState));
         return plans;
     }
 
@@ -216,7 +218,7 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
 
     @Override
     public boolean playsRace(Race race) {
-        return race == Race.Zerg;
+        return race == Race.Zerg || race == Race.Unknown;
     }
 
     @Override
