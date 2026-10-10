@@ -132,8 +132,17 @@ public class LearningManager {
         if (config.strategyOverride == null) {
             return null;
         }
-        BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);
+        BuildOrder forced = buildOrderFactory.getByName(overrideName(config.strategyOverride, opponentRace));
         return forced != null && !forced.isOpener() ? forced : null;
+    }
+
+    /**
+     * @param strategyOverride the configured strategy override
+     * @param race the opponent's race
+     * @return the build order name the override selects, the legacy Speedling name mapped to the race's variant
+     */
+    static String overrideName(String strategyOverride, Race race) {
+        return LegacyBuildOrderNames.resolve(strategyOverride, race);
     }
 
     private void seedRacePrior() {
@@ -571,7 +580,7 @@ public class LearningManager {
 
         if (config.strategyOverride != null) {
             BuildOrder forced = buildOrderFactory.getByName(
-                    LegacyBuildOrderNames.resolve(config.strategyOverride, gameState.getOpponentRace()));
+                    overrideName(config.strategyOverride, gameState.getOpponentRace()));
             if (forced != null && candidates.contains(forced)) {
                 return forced;
             }

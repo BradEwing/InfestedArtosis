@@ -11,7 +11,6 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class LearningHistoryRepositoryTest {
 
@@ -55,7 +54,6 @@ class LearningHistoryRepositoryTest {
                 "1,true,4,(4)Python.scx,Dave Churchill,Unknown,12Pool,SpeedlingAllIn,,15000");
 
         assertEquals("SpeedlingAllIn", games.get(0).getBuildOrder());
-        assertFalse(games.get(0).getBuildOrder().startsWith("SpeedlingR"));
     }
 
     @Test

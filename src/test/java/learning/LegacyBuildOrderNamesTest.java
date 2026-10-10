@@ -30,6 +30,14 @@ class LegacyBuildOrderNamesTest {
     }
 
     @Test
+    void theStrategyOverrideResolvesTheLegacyNameByTheOpponentRace() {
+        assertEquals("SpeedlingT", LearningManager.overrideName("SpeedlingAllIn", Race.Terran));
+        assertEquals("SpeedlingP", LearningManager.overrideName("SpeedlingAllIn", Race.Protoss));
+        assertEquals("SpeedlingAllIn", LearningManager.overrideName("SpeedlingAllIn", Race.Unknown));
+        assertEquals("2HatchMuta", LearningManager.overrideName("2HatchMuta", Race.Terran));
+    }
+
+    @Test
     void otherNamesPassThrough() {
         assertEquals("3HatchLurker", LegacyBuildOrderNames.resolve("3HatchLurker", "Terran"));
         assertEquals("SpeedlingT", LegacyBuildOrderNames.resolve("SpeedlingT", "Terran"));
