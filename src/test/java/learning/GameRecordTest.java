@@ -99,4 +99,32 @@ public class GameRecordTest {
 
         assertEquals(original, GameRecord.fromCsvRow(original.toCsvRow()));
     }
+
+    @Test
+    void stalemateRowCarriesTrailingReasonAndRoundTrips() {
+        GameRecord original = GameRecord.builder()
+                .timestamp(7L)
+                .isWinner(false)
+                .numStartingLocations(4)
+                .mapName("(4)Map.scx")
+                .opponentName("Pylon Puller")
+                .opponentRace("Protoss")
+                .opener("3HatchBeforePool")
+                .buildOrder("SpeedlingP")
+                .detectedStrategies("2Gate")
+                .frameCount(86400)
+                .stalemate(true)
+                .build();
+
+        assertEquals("7,false,4,(4)Map.scx,Pylon Puller,Protoss,3HatchBeforePool,SpeedlingP,2Gate,86400,stalemate",
+                original.toCsvRow());
+        assertEquals(original, GameRecord.fromCsvRow(original.toCsvRow()));
+    }
+
+    @Test
+    void rowWithoutReasonColumnIsNotAStalemate() {
+        GameRecord parsed = GameRecord.fromCsvRow("1,false,2,Map,Opp,Terran,12Hatch,12Hatch,,5000");
+
+        assertEquals(false, parsed.isStalemate());
+    }
 }

@@ -90,6 +90,7 @@ public class LearningManager {
     private BuildOrderFactory buildOrderFactory;
     private LearningHistoryRepository historyRepository;
     private LearningRecordAccumulator recordAccumulator;
+    private StalemateRecorder stalemateRecorder;
 
     public LearningManager(Config config, Game game, BWEM bwem, GameState gameState) {
         this.config = config;
@@ -102,6 +103,7 @@ public class LearningManager {
         this.buildOrderFactory = new BuildOrderFactory(bwem.getMap().getStartingLocations().size(), opponentRace);
         this.historyRepository = new LearningHistoryRepository(opponentFileName);
         this.recordAccumulator = new LearningRecordAccumulator(opponentName, opponentRace);
+        this.stalemateRecorder = new StalemateRecorder(historyRepository);
 
         try {
             LearningHistory history = historyRepository.load();
@@ -151,17 +153,22 @@ public class LearningManager {
     }
 
     /**
-     * Records the result of the finished game.
+     * Writes the stalemate loss row once the game reaches the frame cap, because a game ended at the cap
+     * delivers no end callback.
+     */
+    public void onFrame() {
+        stalemateRecorder.onFrame(game.getFrameCount(),
+                () -> createGameRecord(false, System.currentTimeMillis(), true));
+    }
+
+    /**
+     * Records the result of the finished game, replacing the stalemate row when one was written.
      */
     public void onEnd(boolean isWinner) {
         long currentTimestamp = System.currentTimeMillis();
-        GameRecord gameRecord = createGameRecord(isWinner, currentTimestamp);
+        GameRecord gameRecord = createGameRecord(isWinner, currentTimestamp, false);
         recordAccumulator.apply(opponentRecord, gameRecord);
-        
-        try {
-            historyRepository.append(gameRecord);
-        } catch (IOException e) {
-        }
+        stalemateRecorder.onEnd(gameRecord);
     }
 
     /**
@@ -179,7 +186,7 @@ public class LearningManager {
         return this.opponentRecord;
     }
 
-    private GameRecord createGameRecord(boolean isWinner, long timestamp) {
+    private GameRecord createGameRecord(boolean isWinner, long timestamp, boolean stalemate) {
         return GameRecord.builder()
             .timestamp(timestamp)
             .numStartingLocations(bwem.getMap().getStartingLocations().size())
@@ -192,6 +199,7 @@ public class LearningManager {
                 gameState.getStrategyTracker().getDetectedStrategiesAsString() : "")
             .isWinner(isWinner)
             .frameCount(game.getFrameCount())
+            .stalemate(stalemate)
             .build();
     }
 

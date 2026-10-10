@@ -156,6 +156,22 @@ class LabelTest(GamesDirTestCase):
         self.assertEqual(bl.classify(game)[0], "CRASH")
         self.assertEqual(self.label(game), bl.LABEL_STALEMATE)
 
+    def test_stalemate_that_wrote_its_row_is_recognised_and_not_replayed(self):
+        gdir = make_game_dir(self.root, "MJ3IG00E", RESULT_CRASHED, SCORES_CRASHED, 89616, LOG_UNFINISHED)
+        (gdir / "write_0").mkdir()
+        (gdir / "write_0" / "Pylon Puller_Protoss.csv").write_text(
+            "timestamp,is_winner,num_starting_locations,map_name,opponent_name,opponent_race,opener,build_order,"
+            "detected_strategies,frame_count,reason\n"
+            "1,true,4,(4)Map.scx,Pylon Puller,Protoss,9Hatch,SpeedlingP,,12000\n"
+            "2,false,4,(4)Map.scx,Pylon Puller,Protoss,3HatchBeforePool,SpeedlingP,2Gate,86400,stalemate\n",
+            encoding="utf-8")
+        game = {"game_name": "MJ3IG00E", "outcome": "CRASH"}
+        classified = bl.classify(game)
+        self.assertEqual(classified[0], "CRASH")
+        self.assertTrue(bl.is_stalemate_row(classified[2]))
+        self.assertFalse(bl.needs_retry(classified))
+        self.assertEqual(self.label(game), bl.LABEL_STALEMATE)
+
     def test_stop_rule_cut_is_stopped_with_the_end_line(self):
         make_game_dir(self.root, "MJ3IG09G", RESULT_CRASHED, SCORES_CRASHED, 6648, LOG_UNFINISHED)
         game = {"game_name": "MJ3IG09G"}

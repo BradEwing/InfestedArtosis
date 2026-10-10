@@ -297,6 +297,7 @@ public class Bot extends DefaultBWListener {
         combatTelemetry.onFrame();
         debugMap.onFrame();
         autoObserver.onFrame();
+        learningManager.onFrame();
     }
 
     @Override

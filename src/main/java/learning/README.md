@@ -46,6 +46,7 @@ Adaptive build order selection using a Discounted Upper Confidence Bound (D-UCB)
 1. **Game start** - `Bot.onStart()` creates `LearningManager`. `LearningHistoryRepository` reads the opponent CSV, `LearningRecordAccumulator` reconstructs the record, and `OpenerSelectionPolicy` selects the opening strategy via D-UCB.
 2. **Mid-game transition** - `ProductionManager` calls `determineBuildOrder(candidates)` when the opener signals a transition, selecting the mid-game strategy via D-UCB.
 3. **Game end** - `Bot.onEnd()` calls `LearningManager.onEnd(isWinner)`, which creates one timestamped game record, applies it through `LearningRecordAccumulator`, then appends that same record through `LearningHistoryRepository`.
+4. **Frame cap** - a game ended at the frame cap delivers no end callback, so `Bot.onFrame()` calls `LearningManager.onFrame()`, and `StalemateRecorder` appends one loss row with `reason` = `stalemate` and the game's opener and build at frame 86400. A real result that arrives later replaces that row, so a game never leaves two.
 
 ## D-UCB Algorithm
 

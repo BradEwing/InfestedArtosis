@@ -70,6 +70,7 @@ GAME_COLUMNS = [
     "plan_events", "plan_enqueued", "plan_transitions", "plan_completed", "plan_cancelled",
     "plan_units", "plan_buildings", "plan_tech", "plan_upgrades", "plan_queue_depth_peak", "plan_last_frame",
     "learn_opener", "learn_build_order", "learn_detected_strategies", "learn_is_winner", "learn_frame_count",
+    "learn_reason",
 ]
 
 ENGAGEMENT_COLUMNS = [
@@ -354,6 +355,7 @@ def game_row(manifest, game, outcome, game_time, learning_row, flag):
         "learn_detected_strategies": learning_row.get("detected_strategies"),
         "learn_is_winner": learning_row.get("is_winner"),
         "learn_frame_count": learning_row.get("frame_count"),
+        "learn_reason": learning_row.get("reason"),
     }
     for field in ("is_winner", "building", "kill", "razing", "unit"):
         row[f"score_self_{field}"] = self_score[field]

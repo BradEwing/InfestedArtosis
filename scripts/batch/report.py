@@ -150,6 +150,9 @@ def print_learning(manifest, results, tail):
         finals = bl.final_attempts([r for r in results if r["opponent"] == opp])
         played = sum(1 for r in finals if r["outcome"] in bl.CONCLUSIVE)
         print(f"\n  vs {opp} ({bl.opponent_race(opp)}): {len(rows)} learning rows from {played} conclusive games")
+        stalemates = sum(1 for r in rows if bl.is_stalemate_row(r))
+        if stalemates:
+            print(f"    {stalemates} of those rows are frame-cap stalemates the bot recorded as losses")
         print_retry_line(results, opp)
         if not rows:
             continue
@@ -170,7 +173,8 @@ def print_learning(manifest, results, tail):
             print(f"    Avg frame_count: {avg:.0f} (~{avg / 24 / 60:.1f} min at 24fps)")
         print(f"    Last {min(tail, len(rows))} rows")
         for r in rows[-tail:]:
-            print(f"      {'W' if r.get('is_winner', '').lower() == 'true' else 'L'} "
+            mark = 'S' if bl.is_stalemate_row(r) else 'W' if r.get('is_winner', '').lower() == 'true' else 'L'
+            print(f"      {mark} "
                   f"{r.get('map_name', ''):<24} {r.get('opener', ''):<18} {r.get('build_order', ''):<18} "
                   f"{r.get('detected_strategies', '')}")
         read_rows = bl.read_dir_row_count(opp)
