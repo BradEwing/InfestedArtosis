@@ -44,14 +44,14 @@ public class WeightedUCBCalculator {
             double opponentWeight = 1.0 - mapWeight;
 
             double mapScore = mapRecord.index(totalGames, mapClock);
-            double opponentScore = (opponentRecord != null && opponentRecord.games() > 0)
+            double opponentScore = (opponentRecord != null && opponentRecord.hasEvidence())
                     ? opponentRecord.index(totalGames, gameTimestamps)
                     : 0.0;
 
             return mapWeight * mapScore + opponentWeight * opponentScore;
         }
 
-        if (opponentRecord != null && opponentRecord.games() > 0) {
+        if (opponentRecord != null && opponentRecord.hasEvidence()) {
             return opponentRecord.index(totalGames, gameTimestamps);
         }
 
@@ -84,7 +84,7 @@ public class WeightedUCBCalculator {
         List<String> untried = new ArrayList<>();
         for (String strategy : candidates) {
             Record record = opponentRecords.get(strategy);
-            if (record == null || record.games() == 0) {
+            if (record == null || !record.hasEvidence()) {
                 untried.add(strategy);
             }
         }

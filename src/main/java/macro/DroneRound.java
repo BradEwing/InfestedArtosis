@@ -56,9 +56,8 @@ import unit.squad.ContainHeldTimer;
  * <p>A {@link OpenReason#BUNKER_STANCE} round opens while an enemy Bunker stance stands, see {@link BunkerStance}, and
  * the workers are under both caps, at most once per stance. It adds {@link #BUNKER_STANCE_ROUND_SIZE} Drones, cut to
  * the room under the caps, and the build's Drone cap does not bound it. It closes on a threat, when the stance stops
- * standing, when the workers reach either cap, once
- * its Drones are hatched or in an egg, or after {@link #MAX_ROUND_FRAMES}, and never reads or moves the army
- * milestone.
+ * standing, when the workers reach either cap, once its Drones are hatched or in an egg, or after
+ * {@link #MAX_ROUND_FRAMES}, and never reads or moves the army milestone.
  *
  * <p>Every open and close is reported through {@link PlanEvents} with its reason.
  */
@@ -100,7 +99,6 @@ public class DroneRound {
 
     /** Drones a Bunker stance round adds, cut to the workers still under the lower of the two caps. Tuning constant. */
     public static final int BUNKER_STANCE_ROUND_SIZE = 2;
-
 
     private static final int NEVER = Integer.MIN_VALUE / 2;
 
@@ -351,17 +349,6 @@ public class DroneRound {
         lastLivingArmy = livingArmy;
     }
 
-    private boolean opensCalmEconomyRound(int frame, int drones, int droneCap, boolean workersWanted,
-                                          ContainHeld containHeld) {
-        return workersWanted
-                && !containHeld.isCalmEconomyHeld()
-                && drones < droneCap
-                && frame - lastThreatFrame >= CALM_ECONOMY_FRAMES
-                && frame - lastCalmEconomyCloseFrame >= CALM_ECONOMY_COOLDOWN_FRAMES
-                && containHeld.getSoftCap() - containHeld.getWorkers() >= CALM_ECONOMY_WORKER_DEFICIT
-                && containHeld.underCaps();
-    }
-
     private boolean opensBunkerStanceRound(int frame, ContainHeld containHeld) {
         return containHeld.isBunkerStance()
                 && containHeld.getBunkerStanceId() != lastBunkerStanceRoundId
@@ -374,6 +361,17 @@ public class DroneRound {
      */
     static int bunkerStanceRoundSize(ContainHeld containHeld) {
         return Math.min(BUNKER_STANCE_ROUND_SIZE, containHeld.capRoom());
+    }
+
+    private boolean opensCalmEconomyRound(int frame, int drones, int droneCap, boolean workersWanted,
+                                          ContainHeld containHeld) {
+        return workersWanted
+                && !containHeld.isCalmEconomyHeld()
+                && drones < droneCap
+                && frame - lastThreatFrame >= CALM_ECONOMY_FRAMES
+                && frame - lastCalmEconomyCloseFrame >= CALM_ECONOMY_COOLDOWN_FRAMES
+                && containHeld.getSoftCap() - containHeld.getWorkers() >= CALM_ECONOMY_WORKER_DEFICIT
+                && containHeld.underCaps();
     }
 
     /**

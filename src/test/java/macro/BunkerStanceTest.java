@@ -46,11 +46,11 @@ class BunkerStanceTest {
             public void onHold(int frame, String event, String reason) {
             }
 
-            
+            @Override
             public void onLoss(BunkerLossEvent event) {
             }
 
-            
+            @Override
             public void onAttack(BunkerAttackEvent event) {
             }
 

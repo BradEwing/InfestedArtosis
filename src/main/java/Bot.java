@@ -31,10 +31,10 @@ import telemetry.HarassTelemetry;
 import telemetry.RunbyLogger;
 import telemetry.BurrowLogger;
 import telemetry.BurrowTelemetry;
-import telemetry.ReachLogger;
-import telemetry.ReachTelemetry;
 import telemetry.BunkerLogger;
 import telemetry.BunkerTelemetry;
+import telemetry.ReachLogger;
+import telemetry.ReachTelemetry;
 import telemetry.RunbyTelemetry;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
@@ -198,15 +198,6 @@ public class Bot extends DefaultBWListener {
         FlockTelemetry.register(flockLogger);
     }
 
-    private void startBunkerLogging() {
-        if (!gameState.getConfig().telemetryCombat) {
-            return;
-        }
-
-        bunkerLogger = new BunkerLogger(game, gameState, combatTelemetry.getGameId());
-        BunkerTelemetry.register(bunkerLogger);
-    }
-
     private void startReachLogging() {
         if (!gameState.getConfig().telemetryCombat) {
             return;
@@ -214,6 +205,15 @@ public class Bot extends DefaultBWListener {
 
         reachLogger = new ReachLogger(game, combatTelemetry.getGameId());
         ReachTelemetry.register(reachLogger);
+    }
+
+    private void startBunkerLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        bunkerLogger = new BunkerLogger(game, gameState, combatTelemetry.getGameId());
+        BunkerTelemetry.register(bunkerLogger);
     }
 
     private void startBurrowLogging() {
@@ -242,6 +242,7 @@ public class Bot extends DefaultBWListener {
         planEventLogger = new PlanEventLogger(game, gameState, opener == null ? "" : opener.getName(),
                 bwem.getMap().getStartingLocations().size());
         PlanEvents.register(planEventLogger);
+        PlanEvents.racePrior(learningManager.racePriorLabel());
         gameState.reportClaimedBases();
         gameState.reportTerranMechPrior();
     }

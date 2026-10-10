@@ -40,11 +40,11 @@ class BunkerHoldTest {
                 holds.add(frame + ":" + event + ":" + reason);
             }
 
-            
+            @Override
             public void onLoss(BunkerLossEvent event) {
             }
 
-            
+            @Override
             public void onAttack(BunkerAttackEvent event) {
             }
 

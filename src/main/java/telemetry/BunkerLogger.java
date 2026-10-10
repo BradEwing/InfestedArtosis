@@ -45,7 +45,10 @@ import java.util.Map;
  * ROUND_OPEN, ROUND_CLOSE or STANCE_END. stance_id numbers the game's Bunker holds from 1, and a stance that re-forms
  * inside one hold keeps the id. drones counts Drones hatched or in an egg, workers the workers gathering,
  * extra_planned the Drones the hold's rounds were set to add so far and extra_made the Drones queued at
- * {@link macro.plan.UnitPlan#DRONE_ROUND_PRIORITY} that were made so far.
+ * {@link macro.plan.UnitPlan#DRONE_ROUND_PRIORITY} that were made so far. A round or stance still open when the
+ * game ends is closed with the reason GAME_END.
+ *
+ * <p>The header carries columns for other Bunker row types; their cells stay empty in a BUNKER_ECON row.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */

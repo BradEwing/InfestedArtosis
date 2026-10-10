@@ -30,6 +30,11 @@ public final class Config {
      */
     public static boolean bunkerGate = true;
     /**
+     * Whether an opponent with no history starts from the per-race learning prior bundled in the jar. On unless
+     * IA_RACE_PRIOR is set to false.
+     */
+    public static boolean racePrior = true;
+    /**
      * Whether Drones are added while an enemy Bunker stance stands. On unless IA_BUNKER_ECON is set to false.
      */
     public static boolean bunkerEcon = true;
@@ -123,6 +128,7 @@ public final class Config {
         baseChecks = enabledUnlessFalse(setting(dotenv, "IA_BASE_CHECKS"));
         lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
         bunkerGate = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_GATE"));
+        racePrior = enabledUnlessFalse(setting(dotenv, "IA_RACE_PRIOR"));
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
     }
 
