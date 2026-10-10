@@ -10,6 +10,11 @@ import macro.plan.PlanType;
  */
 public final class SupplyCapacity {
 
+    /** Raw supply at which the game stops counting supply provided, 200 in game terms. */
+    public static final int MAX_SUPPLY = 400;
+
+    private static final int OVERLORD_SUPPLY = UnitType.Zerg_Overlord.supplyProvided();
+
     private static final int MAX_FREE_SUPPLY = 17;
 
     /** Returned when no waiting unit plan costs supply, so no plan can be supply blocked. */
@@ -17,6 +22,19 @@ public final class SupplyCapacity {
 
     public static boolean isExcess(int supplyTotal, int supplyUsed) {
         return supplyTotal - supplyUsed > MAX_FREE_SUPPLY;
+    }
+
+    /**
+     * Whether another Overlord adds supply the game will count. False once supply provided, with
+     * the Overlords already in flight and those queued this frame, reaches {@link #MAX_SUPPLY}.
+     *
+     * @param supplyTotal raw supply provided by completed units
+     * @param plannedSupply raw supply of Overlords already queued, scheduled or in an egg
+     * @param overlordsQueued Overlords queued earlier in the same planning pass
+     * @return true when one more Overlord may be queued
+     */
+    public static boolean mayQueueOverlord(int supplyTotal, int plannedSupply, int overlordsQueued) {
+        return supplyTotal + plannedSupply + OVERLORD_SUPPLY * overlordsQueued < MAX_SUPPLY;
     }
 
     /**
