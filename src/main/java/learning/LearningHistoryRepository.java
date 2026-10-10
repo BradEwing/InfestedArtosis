@@ -2,6 +2,7 @@ package learning;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
@@ -44,7 +45,7 @@ final class LearningHistoryRepository {
 
     /**
      * Replaces the last row of the write file with the given game when that row is the previous game's, and
-     * appends the game otherwise, so one game never leaves two rows.
+     * appends the game when the last row is anything else.
      */
     void replaceLast(GameRecord previous, GameRecord game) throws IOException {
         initializeWriteFile();
@@ -58,7 +59,7 @@ final class LearningHistoryRepository {
             return;
         }
         lines.set(last, game.toCsvRow());
-        Files.write(writeFile.toPath(), (String.join("\n", lines) + "\n").getBytes());
+        Files.write(writeFile.toPath(), (String.join("\n", lines) + "\n").getBytes(StandardCharsets.UTF_8));
     }
 
     private void initializeWriteFile() throws IOException {

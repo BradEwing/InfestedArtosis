@@ -1,7 +1,7 @@
 """Generate src/main/resources/learning-prior.csv, the per-race learning prior bundled in the jar.
 
 Input is a games.csv of cold-start games (one row per decided game; the columns used are run, opponent, race,
-file_race, win, gnum, index, opener, build), as built by the IA-471 data study's extract.py from the batch
+file_race, win, gnum, index, opener, build and the optional reason), as built by the IA-471 data study's extract.py from the batch
 manifests, game directories and learning files.
 
 For each race, each opener and each build is rated by its first exposures: the first game an arm played in a
@@ -11,8 +11,9 @@ bot that was played many times does not outweigh the others. It is then shrunk t
 balanced rate over every arm of that kind) with --shrink pseudo-observations. The pseudo-games are --games
 (default 3), or --loser-games (default 5) for an arm whose shrunk rate is at or below --loser-rate with at least
 --loser-min first exposures. Pseudo-wins are the product of the shrunk rate and the pseudo-games, to two decimals.
-A row whose optional reason column reads "stalemate" is a game the bot recorded as a loss at the frame cap; it
-counts as a loss like any other row unless --exclude-stalemates drops it.
+A row whose reason column reads "stalemate" is a game the bot recorded as a loss at the frame cap. The producer of
+games.csv must emit such a game (batch outcome CRASH, learning row reason "stalemate") with win=0 and the reason
+value; it then counts as a loss like any other row unless --exclude-stalemates drops it.
 Only runs whose id (a start timestamp) is at or after --since count (default 20261001, the October runs the
 study recommends from). Arms
 with fewer than --min-n first exposures are left out and stay untried.

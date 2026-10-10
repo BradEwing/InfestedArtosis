@@ -14,25 +14,27 @@ import java.util.function.Supplier;
 final class StalemateRecorder {
     /**
      * Game frame at which the stalemate row is written: 60 game minutes at 24 frames per second. Every observed
-     * frame-cap end came at or after frame 86568, and a game that is still being played at this frame can finish
-     * later with a real result, which replaces the row.
+     * game that is still being played at this frame can finish later with a real result, which replaces the row.
      */
     static final int FRAME = 86400;
 
     private final LearningHistoryRepository repository;
     private GameRecord written;
+    private boolean attempted;
 
     StalemateRecorder(LearningHistoryRepository repository) {
         this.repository = repository;
     }
 
     /**
-     * Writes the stalemate row once, on the first frame at or past {@link #FRAME}.
+     * Writes the stalemate row once, on the first frame at or past {@link #FRAME}. A failed write is not retried,
+     * so a partly copied history is never appended to again.
      */
     void onFrame(int frame, Supplier<GameRecord> stalemateRow) {
-        if (written != null || frame < FRAME) {
+        if (attempted || frame < FRAME) {
             return;
         }
+        attempted = true;
         GameRecord row = stalemateRow.get();
         try {
             repository.append(row);

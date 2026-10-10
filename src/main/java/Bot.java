@@ -251,7 +251,6 @@ public class Bot extends DefaultBWListener {
 
     @Override
     public void onFrame() {
-        learningManager.onFrame();
         if (planEventLogger != null) {
             planEventLogger.onFrame();
         }
@@ -298,6 +297,7 @@ public class Bot extends DefaultBWListener {
         combatTelemetry.onFrame();
         debugMap.onFrame();
         autoObserver.onFrame();
+        learningManager.onFrame();
     }
 
     @Override

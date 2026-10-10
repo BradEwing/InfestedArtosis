@@ -133,10 +133,33 @@ public class StalemateRecorderTest {
     }
 
     @Test
-    void crashBeforeTheCapWritesNothing() throws IOException {
-        recorder.onFrame(20000, () -> row(1, false, 20000, true));
+    void failedWriteIsNotRetriedOnLaterFrames() {
+        File missingDir = new File(dir, "missing");
+        StalemateRecorder failing = new StalemateRecorder(
+                new LearningHistoryRepository(readFile, new File(missingDir, "write.csv")));
+        AtomicInteger supplied = new AtomicInteger();
 
-        assertFalse(writeFile.exists());
+        for (int frame = StalemateRecorder.FRAME; frame < StalemateRecorder.FRAME + 50; frame++) {
+            failing.onFrame(frame, () -> {
+                supplied.incrementAndGet();
+                return row(1, false, StalemateRecorder.FRAME, true);
+            });
+        }
+
+        assertEquals(1, supplied.get());
+        assertFalse(failing.hasWritten());
+    }
+
+    @Test
+    void resultAppendsWhenTheLastRowIsNotTheStalemateRow() throws IOException {
+        recorder.onFrame(StalemateRecorder.FRAME, () -> row(1, false, StalemateRecorder.FRAME, true));
+        Files.write(writeFile.toPath(), "9,true,4,(4)Map.scx,Opp,Terran,A,A,,100\n".getBytes(),
+                java.nio.file.StandardOpenOption.APPEND);
+
+        recorder.onEnd(row(2, true, 90000, false));
+
+        assertEquals(4, lines().size());
+        assertTrue(GameRecord.fromCsvRow(lines().get(3)).isWinner());
     }
 
     @Test
