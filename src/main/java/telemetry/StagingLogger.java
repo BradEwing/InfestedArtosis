@@ -7,15 +7,19 @@ import bwapi.Game;
  *
  * <p>A STANDOFF_ENTER row is written when a squad starts gathering at a standoff point, and a STANDOFF_EXIT row when
  * it stops, with the reason in reason: GATHERED when enough of its supply was within the gather radius, TIMEOUT when
- * the timeout passed, ENEMY_ARRIVED when the enemy came inside the standoff distance, and ABANDONED when the squad
- * stopped being staged for another reason. A REINFORCE_REAR row is written when a squad that would have launched is
- * sent to the rear of a larger friendly army, and then once per squad.
+ * the timeout passed, ENEMY_ARRIVED when the enemy came inside the standoff distance, ABANDONED when the squad
+ * stopped being staged for another reason, RETREAT when the verdict turned to retreat, and MERGED when the squad
+ * merged into another, which writes a fresh STANDOFF_ENTER under the merged squad's id if the episode carries on.
+ * A REINFORCE_REAR row is written when a squad that would have launched is sent to the rear of a larger friendly
+ * army, and then once per squad.
  *
- * <p>applied is false when the staging switch is off: the episode is read and logged as it would have run, and the
- * squad acts as it does without staging, so the off arm stays measurable. gathered_share is the share of the squad's
+ * <p>applied is false when the staging switch is off: the squad is read and an episode is opened and closed, but it
+ * acts as it does without staging, so the off arm yields comparable STANDOFF_ENTER counts only; its frames_staged
+ * and exit reasons describe a squad that kept walking in. gathered_share is the share of the squad's
  * supply within the gather radius of its centre, enemy_distance the pixels from the nearest member to the nearest
  * measured enemy, standoff_distance the distance the squad gathers at, and frames_staged the frames the episode has
- * lasted. Rows with no episode carry -1 in those columns.
+ * lasted, nearest_enemy_type the type of the measured enemy nearest the squad centre and enemy_reach the longest
+ * ground reach among the measured enemies, with extents. Rows with no episode carry -1 in those columns.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -24,7 +28,7 @@ public class StagingLogger implements StagingSink {
     static final String FILE = "telemetry_staging.csv";
 
     static final String HEADER = "game_id,frame,event,squad_id,reason,applied,squad_supply,members,gathered_share,"
-            + "enemy_distance,standoff_distance,frames_staged";
+            + "enemy_distance,standoff_distance,frames_staged,nearest_enemy_type,enemy_reach";
 
     static final String EVENT_ENTER = "STANDOFF_ENTER";
     static final String EVENT_EXIT = "STANDOFF_EXIT";
@@ -110,6 +114,7 @@ public class StagingLogger implements StagingSink {
         return String.join(",", gameId, String.valueOf(frame), event, row.getSquadId(), reason,
                 String.valueOf(row.isApplied()), String.valueOf(row.getSupply()), String.valueOf(row.getMembers()),
                 Csv.format(row.getGatheredShare()), String.valueOf(row.getEnemyDistance()),
-                String.valueOf(row.getStandoffDistance()), String.valueOf(row.getFramesStaged()));
+                String.valueOf(row.getStandoffDistance()), String.valueOf(row.getFramesStaged()), row.getEnemyType(),
+                String.valueOf(row.getEnemyReach()));
     }
 }

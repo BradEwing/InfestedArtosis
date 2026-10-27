@@ -76,6 +76,7 @@ import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
+import java.util.function.ToIntFunction;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -1424,6 +1425,7 @@ public class SquadManager {
                 newSquad = newFightSquad(UnitType.Zerg_Mutalisk);
             }
             newSquad.inheritStateFrom(mergeSet);
+            foldStandoff(newSquad, mergeSet, currentFrame);
             SquadDecisions.pathTaken(newSquad, DecisionPath.MERGE_INHERIT);
             for (Squad mergingSquad: mergeSet) {
                 SwarmLock dropped = mergingSquad.getSwarmLock();
@@ -1456,6 +1458,7 @@ public class SquadManager {
         for (Squad squad : fightSquads) {
             if (!maySplit(squad.getStatus())) continue;
             if (squad.size() < 4) continue;
+            if (Config.staging && squad.getStandoff().isActive()) continue;
 
             int threshold = squad.isAirSquad() ? AIR_SPLIT_DISTANCE : GROUND_SPLIT_DISTANCE;
             List<ManagedUnit> outliers = squad.findOutliers(threshold);
@@ -1617,15 +1620,24 @@ public class SquadManager {
      */
     private static final String STANDOFF_ABANDONED = "ABANDONED";
 
+    private static final String STANDOFF_MERGED = "MERGED";
+
+    private static final String STANDOFF_RETREAT = "RETREAT";
+
     private static final int STANDOFF_SNAPSHOT_FRESH_FRAMES = 96;
+
+    /** Pixels a Reaver's Scarab or a Carrier's Interceptors reach, which the weapon table does not give. */
+    private static final int REAVER_SCARAB_REACH = 256;
 
     private final Set<String> reinforcementsLogged = new HashSet<>();
 
     /**
      * Holds a ground squad at its standoff point while a measured enemy is farther than the standoff distance and
      * the squad is spread over more than the gather radius, see {@link Standoff}. Called where an ENGAGE or ADVANCE
-     * verdict would send the squad at the enemy. The reading and the episode are kept and logged whatever
-     * {@link Config#staging} is; with it off nothing is held.
+     * verdict would send the squad at the enemy. The reading and the episode are kept whatever
+     * {@link Config#staging} is, for telemetry; with it off nothing is held and the squad engages as it does
+     * without staging, so only the episodes' entries compare across arms. A squad turning back out of a retreat is not
+     * staged: the turn-back commit decides it.
      *
      * @param squad ground squad about to engage
      * @param snapshot the sim read behind the verdict, or null
@@ -1645,7 +1657,7 @@ public class SquadManager {
         boolean mayStage = snapshot != null && squad.isGroundSquad() && enemyMeasured && !turningBack && !released
                 && squad.getCollapse() == null;
         List<HorizonCombatSimulator.UnitDebugEntry> enemies = mayStage
-                ? measuredEnemies(snapshot) : Collections.emptyList();
+                ? snapshot.getEnemyUnits() : Collections.emptyList();
         boolean exempt = enemies.isEmpty() || standoffExempt(squad);
         if (!Standoff.applies(squad.isGroundSquad(), enemyMeasured, turningBack, exempt, released)) {
             closeStandoff(squad, STANDOFF_ABANDONED, now);
@@ -1653,12 +1665,18 @@ public class SquadManager {
         }
 
         int reach = 0;
-        for (HorizonCombatSimulator.UnitDebugEntry enemy : enemies) {
-            reach = Math.max(reach, Standoff.reachOf(enemy.getType()));
+        int ownExtent = 0;
+        for (ManagedUnit member : squad.getMembers()) {
+            ownExtent = Math.max(ownExtent, extent(member.getUnitType()));
         }
+        for (HorizonCombatSimulator.UnitDebugEntry enemy : enemies) {
+            reach = Math.max(reach, enemyReach(enemy.getType()) + extent(enemy.getType()));
+        }
+        reach += ownExtent;
         int distance = Standoff.distance(reach);
         Position center = squad.getCenter();
         Position nearestEnemy = null;
+        UnitType nearestEnemyType = null;
         double nearestMemberGap = Double.MAX_VALUE;
         double nearestCenterGap = Double.MAX_VALUE;
         for (HorizonCombatSimulator.UnitDebugEntry enemy : enemies) {
@@ -1666,6 +1684,7 @@ public class SquadManager {
             if (centerGap < nearestCenterGap) {
                 nearestCenterGap = centerGap;
                 nearestEnemy = enemy.getPosition();
+                nearestEnemyType = enemy.getType();
             }
             for (ManagedUnit member : squad.getMembers()) {
                 nearestMemberGap = Math.min(nearestMemberGap, enemy.getPosition().getDistance(member.getPosition()));
@@ -1681,7 +1700,7 @@ public class SquadManager {
         Standoff.Verdict verdict = Standoff.read(true, nearestMemberGap, distance, share, episode.framesStaged(now),
                 Standoff.timeoutFrames(isAllInOrRush()));
         StagingRow row = new StagingRow(squad.getId(), Config.staging, squad.getSupply(), squad.size(), share,
-                (int) nearestMemberGap, distance, episode.framesStaged(now));
+                (int) nearestMemberGap, distance, episode.framesStaged(now), nearestEnemyType.toString(), reach);
 
         if (verdict == Standoff.Verdict.HOLD) {
             if (!episode.isActive()) {
@@ -1717,18 +1736,36 @@ public class SquadManager {
             return;
         }
         StagingTelemetry.standoffExit(now, reason, new StagingRow(squad.getId(), Config.staging, squad.getSupply(),
-                squad.size(), -1, -1, -1, episode.framesStaged(now)));
-        episode.end();
+                squad.size(), -1, -1, -1, episode.framesStaged(now), "NONE", -1));
+        episode.release(now);
     }
 
-    private List<HorizonCombatSimulator.UnitDebugEntry> measuredEnemies(HorizonCombatSimulator.DebugSnapshot snapshot) {
-        List<HorizonCombatSimulator.UnitDebugEntry> enemies = new ArrayList<>();
-        for (HorizonCombatSimulator.UnitDebugEntry enemy : snapshot.getEnemyUnits()) {
-            if (!enemy.isFogOfWar()) {
-                enemies.add(enemy);
+    private int enemyReach(UnitType type) {
+        ToIntFunction<WeaponType> range = weapon -> game.enemy().weaponMaxRange(weapon);
+        if (type == UnitType.Terran_Bunker) {
+            return EnemyReachMemory.groundRange(UnitType.Terran_Marine, range) + EnemyReachMemory.BUNKER_ALLOWANCE;
+        }
+        if (type == UnitType.Protoss_Reaver || type == UnitType.Protoss_Carrier) {
+            return REAVER_SCARAB_REACH;
+        }
+        return EnemyReachMemory.groundRange(type, range);
+    }
+
+    private void foldStandoff(Squad merged, Set<Squad> sources, int now) {
+        List<Standoff.Episode> episodes = new ArrayList<>();
+        for (Squad source : sources) {
+            Standoff.Episode episode = source.getStandoff();
+            episodes.add(episode);
+            if (episode.isActive()) {
+                StagingTelemetry.standoffExit(now, STANDOFF_MERGED, new StagingRow(source.getId(), Config.staging,
+                        source.getSupply(), source.size(), -1, -1, -1, episode.framesStaged(now), "NONE", -1));
             }
         }
-        return enemies;
+        merged.getStandoff().foldFrom(episodes);
+        if (merged.getStandoff().isActive()) {
+            StagingTelemetry.standoffEnter(now, new StagingRow(merged.getId(), Config.staging, merged.getSupply(),
+                    merged.size(), -1, -1, -1, merged.getStandoff().framesStaged(now), "NONE", -1));
+        }
     }
 
     private boolean standoffExempt(Squad squad) {
@@ -1769,7 +1806,7 @@ public class SquadManager {
         int now = game.getFrameCount();
         List<Standoff.Army> armies = new ArrayList<>();
         for (Squad other : fightSquads) {
-            if (other == squad || !other.isGroundSquad() || other.getStatus() != SquadStatus.FIGHT) {
+            if (other == squad || !other.isGroundSquad() || other.getStatus() != SquadStatus.FIGHT && other.getStatus() != SquadStatus.RETREAT) {
                 continue;
             }
             HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(other);
@@ -1785,7 +1822,7 @@ public class SquadManager {
         }
         if (reinforcementsLogged.add(squad.getId())) {
             StagingTelemetry.reinforcement(now, new StagingRow(squad.getId(), Config.staging, squad.getSupply(),
-                    squad.size(), -1, -1, -1, -1));
+                    squad.size(), -1, -1, -1, -1, "NONE", -1));
         }
         if (!Standoff.routes(Config.staging, point)) {
             return false;
@@ -2913,6 +2950,7 @@ public class SquadManager {
                 break;
 
             case RETREAT:
+                closeStandoff(squad, STANDOFF_RETREAT, now);
                 boolean safeToHold = containmentEvaluator.safeToHold(squad);
                 if (!safeToHold) {
                     SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_GATED);

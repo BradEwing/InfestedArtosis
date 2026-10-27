@@ -46,6 +46,32 @@ class StandoffTest {
     }
 
     @Test
+    void aLeadMemberJustPastSightRangeOfTheEnemyStillHolds() {
+        int distance = Standoff.distance(Standoff.reachOf(UnitType.Terran_Marine));
+
+        assertEquals(Verdict.HOLD, Standoff.read(true, 190, distance, 0.4, 0, 240));
+        assertEquals(Verdict.ENEMY_ARRIVED, Standoff.read(true, 150, distance, 0.4, 0, 240));
+    }
+
+    @Test
+    void aMergedEpisodeKeepsTheEarliestStartAndTheLatestRelease() {
+        Episode first = new Episode();
+        Episode second = new Episode();
+        Episode released = new Episode();
+        first.begin(300, CENTER);
+        second.begin(200, ENEMY);
+        released.release(100);
+        Episode merged = new Episode();
+
+        merged.foldFrom(Arrays.asList(first, second, released));
+
+        assertTrue(merged.isActive());
+        assertEquals(200, merged.getStartFrame());
+        assertEquals(ENEMY, merged.getPoint());
+        assertTrue(merged.isReleased(100 + Standoff.RELEASE_HOLD_FRAMES - 1));
+    }
+
+    @Test
     void aGatheredSquadEngagesAtOnce() {
         List<Position> gathered = Arrays.asList(new Position(1000, 1000), new Position(1020, 1000),
                 new Position(1000, 1030), new Position(1040, 1040));

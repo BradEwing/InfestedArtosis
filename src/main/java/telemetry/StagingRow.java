@@ -15,4 +15,6 @@ public class StagingRow {
     int enemyDistance;
     int standoffDistance;
     int framesStaged;
+    String enemyType;
+    int enemyReach;
 }
