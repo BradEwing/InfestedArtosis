@@ -196,7 +196,8 @@ class SquadDecisionsTest {
                 context.getSwarmRemainingFrames(), false, context.getSwarmCover(), context.getSwarmRelease()))
                 + "," + String.join(",", SquadDecisionLogger.commitmentReleaseCells(context))
                 + "," + String.join(",", SquadDecisionLogger.bunkerHoldReleaseCells(context))
-                + "," + String.join(",", SquadDecisionLogger.siegeBandCells(context));
+                + "," + String.join(",", SquadDecisionLogger.siegeBandCells(context))
+                + "," + String.join(",", SquadDecisionLogger.retreatThresholdCells(context));
         return row.split(",", -1);
     }
 
@@ -656,7 +657,8 @@ class SquadDecisionsTest {
                 SwarmLock.Release.NONE))
                 + "," + String.join(",", SquadDecisionLogger.commitmentReleaseCells(context))
                 + "," + String.join(",", SquadDecisionLogger.bunkerHoldReleaseCells(context))
-                + "," + String.join(",", SquadDecisionLogger.siegeBandCells(context));
+                + "," + String.join(",", SquadDecisionLogger.siegeBandCells(context))
+                + "," + String.join(",", SquadDecisionLogger.retreatThresholdCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -789,7 +791,8 @@ class SquadDecisionsTest {
                 SwarmLock.Release.NONE))
                 + "," + String.join(",", SquadDecisionLogger.commitmentReleaseCells(context))
                 + "," + String.join(",", SquadDecisionLogger.bunkerHoldReleaseCells(context))
-                + "," + String.join(",", SquadDecisionLogger.siegeBandCells(context));
+                + "," + String.join(",", SquadDecisionLogger.siegeBandCells(context))
+                + "," + String.join(",", SquadDecisionLogger.retreatThresholdCells(context));
         String[] fields = row.split(",", -1);
 
         assertEquals(SquadDecisionLogger.HEADER.split(",", -1).length, fields.length);
@@ -1000,11 +1003,12 @@ class SquadDecisionsTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
 
         assertEquals(java.util.Collections.singletonList("COMMITMENT_RELEASED:STATIC_AA"), events);
-        assertEquals("siege_band_held_frames", columns[columns.length - 1]);
-        assertEquals("siege_band_frames", columns[columns.length - 2]);
-        assertEquals("siege_band", columns[columns.length - 3]);
-        assertEquals("bunker_hold_release", columns[columns.length - 4]);
-        assertEquals("air_commitment_release", columns[columns.length - 5]);
+        assertEquals("sim_retreat_threshold", columns[columns.length - 1]);
+        assertEquals("siege_band_held_frames", columns[columns.length - 2]);
+        assertEquals("siege_band_frames", columns[columns.length - 3]);
+        assertEquals("siege_band", columns[columns.length - 4]);
+        assertEquals("bunker_hold_release", columns[columns.length - 5]);
+        assertEquals("air_commitment_release", columns[columns.length - 6]);
         assertEquals(java.util.Collections.singletonList("HP"), SquadDecisionLogger.commitmentReleaseCells(context));
     }
 
