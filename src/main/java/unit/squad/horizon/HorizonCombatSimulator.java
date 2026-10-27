@@ -304,12 +304,15 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         if (!airSquad) {
             DebugSnapshot previous = lastSnapshots.get(squad.getId());
-            boolean engaged = previous != null && FightBand.engaged(Config.fightHysteresis, squad.getStatus(),
-                    previous.getResult(), previous.getCapturedFrame(), currentFrame, MAX_SIM_GAP_FRAMES);
+            boolean committed = squad.isFightLocked(currentFrame) || squad.isTurnBackCommitted(currentFrame);
+            boolean engaged = FightBand.engaged(Config.fightHysteresis, squad.getStatus(), committed,
+                    previous != null ? previous.getResult() : null,
+                    previous != null ? previous.getCapturedFrame() : 0, currentFrame, MAX_SIM_GAP_FRAMES);
             CombatResult single = result;
             result = FightBand.apply(single, engaged, overallRatio, retreatThresh);
             snapshot.setFightBandSinceFrame(FightBand.heldSinceFrame(result != single,
-                    engaged ? previous.getFightBandSinceFrame() : -1, currentFrame));
+                    previous != null && currentFrame - previous.getCapturedFrame() <= MAX_SIM_GAP_FRAMES
+                            ? previous.getFightBandSinceFrame() : -1, currentFrame));
             boolean tankInBand = SiegeBandHysteresis.inBand(nearestSiegedTank);
             CombatResult raw = result;
             boolean retreating = squad.getStatus() == SquadStatus.RETREAT

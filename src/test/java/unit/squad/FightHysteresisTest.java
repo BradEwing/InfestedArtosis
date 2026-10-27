@@ -115,6 +115,37 @@ class FightHysteresisTest {
         assertEquals(TURN_BACK + 50 + Squad.TURN_BACK_COMMIT_FRAMES, merged.getTurnBackCommitUntilFrame());
     }
 
+    private static final int SIM_GAP = 5;
+
+    @Test
+    void aMergedSquadInsideTheBandKeepsFightingPastItsInheritedLockAndStillLeavesBelowTheRetreatThreshold() {
+        Squad source = new GroundSquad();
+        source.setStatus(SquadStatus.FIGHT);
+        source.startFightLock(TURN_BACK);
+        Squad merged = new GroundSquad();
+        merged.inheritStateFrom(java.util.Collections.singletonList(source));
+        int inheritedExpiry = merged.getFightLockedUntilFrame();
+        CombatSimulator.CombatResult previous = null;
+        int previousFrame = 0;
+
+        for (int frame = TURN_BACK + 1; frame < inheritedExpiry + 200; frame++) {
+            boolean committed = merged.isFightLocked(frame) || merged.isTurnBackCommitted(frame);
+            boolean engaged = FightBand.engaged(true, merged.getStatus(), committed, previous, previousFrame, frame,
+                    SIM_GAP);
+            CombatSimulator.CombatResult verdict = FightBand.apply(RETREAT, engaged, IN_BAND, RETREAT_THRESH);
+            assertEquals(ENGAGE, verdict, "frame " + frame);
+            SquadManager.updateFightLock(merged, verdict, false,
+                    FightBand.holdsAboveRetreat(true, true, IN_BAND, RETREAT_THRESH), frame);
+            previous = verdict;
+            previousFrame = frame;
+        }
+        int frame = inheritedExpiry + 200;
+        boolean engaged = FightBand.engaged(true, merged.getStatus(), merged.isFightLocked(frame), previous,
+                previousFrame, frame, SIM_GAP);
+        assertEquals(RETREAT, FightBand.apply(RETREAT, engaged, BELOW_RETREAT, RETREAT_THRESH));
+        assertFalse(bandLockHolds(true, merged.isFightLocked(frame), RETREAT, true, BELOW_RETREAT));
+    }
+
     private static Squad lockedAfterLosses(int frame) {
         Squad squad = new GroundSquad();
         squad.setStatus(SquadStatus.FIGHT);

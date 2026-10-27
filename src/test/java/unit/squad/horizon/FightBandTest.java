@@ -70,20 +70,28 @@ class FightBandTest {
     @Test
     void engagedNeedsTheSwitchAFightStatusAndARecentEngageRead() {
         int gap = HorizonCombatSimulator.MAX_SIM_GAP_FRAMES;
-        assertTrue(FightBand.engaged(true, SquadStatus.FIGHT, ENGAGE, FRAME - 1, FRAME, gap));
-        assertTrue(FightBand.engaged(true, SquadStatus.FIGHT, ENGAGE, FRAME - gap, FRAME, gap));
-        assertFalse(FightBand.engaged(false, SquadStatus.FIGHT, ENGAGE, FRAME - 1, FRAME, gap), "switch off");
-        assertFalse(FightBand.engaged(true, SquadStatus.RETREAT, ENGAGE, FRAME - 1, FRAME, gap));
-        assertFalse(FightBand.engaged(true, SquadStatus.CONTAIN, ENGAGE, FRAME - 1, FRAME, gap));
-        assertFalse(FightBand.engaged(true, SquadStatus.FIGHT, ADVANCE, FRAME - 1, FRAME, gap));
-        assertFalse(FightBand.engaged(true, SquadStatus.FIGHT, RETREAT, FRAME - 1, FRAME, gap));
-        assertFalse(FightBand.engaged(true, SquadStatus.FIGHT, null, FRAME - 1, FRAME, gap));
-        assertFalse(FightBand.engaged(true, SquadStatus.FIGHT, ENGAGE, FRAME - gap - 1, FRAME, gap));
+        assertTrue(FightBand.engaged(true, SquadStatus.FIGHT, false, ENGAGE, FRAME - 1, FRAME, gap));
+        assertTrue(FightBand.engaged(true, SquadStatus.FIGHT, false, ENGAGE, FRAME - gap, FRAME, gap));
+        assertFalse(FightBand.engaged(false, SquadStatus.FIGHT, true, ENGAGE, FRAME - 1, FRAME, gap), "switch off");
+        assertFalse(FightBand.engaged(true, SquadStatus.RETREAT, true, ENGAGE, FRAME - 1, FRAME, gap));
+        assertFalse(FightBand.engaged(true, SquadStatus.CONTAIN, true, ENGAGE, FRAME - 1, FRAME, gap));
+        assertFalse(FightBand.engaged(true, SquadStatus.FIGHT, false, ADVANCE, FRAME - 1, FRAME, gap));
+        assertFalse(FightBand.engaged(true, SquadStatus.FIGHT, false, RETREAT, FRAME - 1, FRAME, gap));
+        assertFalse(FightBand.engaged(true, SquadStatus.FIGHT, false, null, FRAME - 1, FRAME, gap));
+        assertFalse(FightBand.engaged(true, SquadStatus.FIGHT, false, ENGAGE, FRAME - gap - 1, FRAME, gap));
+    }
+
+    @Test
+    void aCommittedFightSquadIsEngagedWithoutARecentEngageRead() {
+        int gap = HorizonCombatSimulator.MAX_SIM_GAP_FRAMES;
+        assertTrue(FightBand.engaged(true, SquadStatus.FIGHT, true, null, 0, FRAME, gap), "a merge has no read");
+        assertTrue(FightBand.engaged(true, SquadStatus.FIGHT, true, RETREAT, FRAME - 1, FRAME, gap));
+        assertTrue(FightBand.engaged(true, SquadStatus.FIGHT, true, ADVANCE, FRAME - 1, FRAME, gap));
     }
 
     @Test
     void withTheSwitchOffAnEngagedFightSquadInsideTheBandRetreatsAsOnMain() {
-        boolean engaged = FightBand.engaged(false, SquadStatus.FIGHT, ENGAGE, FRAME - 1, FRAME,
+        boolean engaged = FightBand.engaged(false, SquadStatus.FIGHT, true, ENGAGE, FRAME - 1, FRAME,
                 HorizonCombatSimulator.MAX_SIM_GAP_FRAMES);
 
         assertEquals(RETREAT, verdict(IN_BAND, engaged, false));

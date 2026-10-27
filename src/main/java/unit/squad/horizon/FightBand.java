@@ -55,21 +55,26 @@ public final class FightBand {
     }
 
     /**
-     * Whether a ground squad counts as engaged for the band: the switch is on, the squad is in FIGHT, and its
-     * previous sim read, taken no more than {@code maxGapFrames} ago, was ENGAGE.
+     * Whether a ground squad counts as engaged for the band: the switch is on, the squad is in FIGHT, and either it
+     * is committed to the fight (its fight lock or turn-back commit is active) or its previous sim read, taken no
+     * more than {@code maxGapFrames} ago, was ENGAGE. The commitment carries the engagement across a merge or split,
+     * which starts a squad with no previous read but with the folded locks of its sources, and across a single read
+     * that was not ENGAGE. A FIGHT squad held by a contain break or a collapse commit holds a fight lock too, so it
+     * is engaged as well.
      *
      * @param enabled whether the band is switched on
      * @param status the squad's status before this frame's verdict
+     * @param committed whether the squad's fight lock or turn-back commit is active this frame
      * @param previous the squad's previous verdict, null when it has none
      * @param previousFrame the frame of that verdict
      * @param frame the current frame
      * @param maxGapFrames the longest gap between reads that still continues the engagement
      * @return true when the squad is engaged
      */
-    public static boolean engaged(boolean enabled, SquadStatus status, CombatResult previous, int previousFrame,
-                                  int frame, int maxGapFrames) {
-        return enabled && status == SquadStatus.FIGHT && previous == CombatResult.ENGAGE
-                && frame - previousFrame <= maxGapFrames;
+    public static boolean engaged(boolean enabled, SquadStatus status, boolean committed, CombatResult previous,
+                                  int previousFrame, int frame, int maxGapFrames) {
+        if (!enabled || status != SquadStatus.FIGHT) return false;
+        return committed || previous == CombatResult.ENGAGE && frame - previousFrame <= maxGapFrames;
     }
 
     /**
