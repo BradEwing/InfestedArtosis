@@ -57,6 +57,12 @@ public final class Config {
      * unless IA_SPEEDLING_GAS_CUT is set to false.
      */
     public static boolean speedlingGasCut = true;
+    /**
+     * Whether the combat sim prices a missing ling or hydra speed upgrade only against faster enemies, prices enemy
+     * lings and hydras with no upgrade down, and lowers the retreat threshold of a ground squad that cannot escape.
+     * On unless IA_RELATIVE_SPEED is set to false.
+     */
+    public static boolean relativeSpeed = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -152,6 +158,7 @@ public final class Config {
         speedParityGate = enabledUnlessFalse(setting(dotenv, "IA_SPEED_PARITY_GATE"));
         speedlingPReactions = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_P_REACTIONS"));
         speedlingGasCut = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_GAS_CUT"));
+        relativeSpeed = enabledUnlessFalse(setting(dotenv, "IA_RELATIVE_SPEED"));
     }
 
     /**
