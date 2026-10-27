@@ -213,14 +213,12 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
             double unswarmedGroundStr = groundBase * hpWeight * distWeight * heightMod;
             double speedMod = 1.0;
-            if (type.isBuilding() || type.isFlyer()) {
+            if (!RelativeSpeed.canChase(type)) {
                 enemyMix.addOther(unswarmedGroundStr);
             } else {
                 boolean enemyUpgraded = enemyHasSpeedUpgrade(gameState, type, currentFrame);
                 enemyMix.addGround(RelativeSpeed.speed(type, enemyUpgraded), unswarmedGroundStr, dist);
-                if (Config.relativeSpeed) {
-                    speedMod = enemySpeedMod(type, enemyUpgraded, ownSpeeds);
-                }
+                speedMod = enemySpeedMod(Config.relativeSpeed, type, enemyUpgraded, ownSpeeds);
                 enemySpeedModSum += speedMod * unswarmedGroundStr;
                 enemySpeedModWeight += unswarmedGroundStr;
                 unswarmedGroundStr *= speedMod;
@@ -927,16 +925,14 @@ public class HorizonCombatSimulator implements CombatSimulator {
             }
             double unswarmedGround = weightedGroundStrength(type, friendlySizeProportions) * hpWeight * heightMod;
             double antiAir = weightedAntiAirStrength(type, friendlySizeProportions) * hpWeight * heightMod;
-            if (type.isBuilding() || type.isFlyer()) {
+            if (!RelativeSpeed.canChase(type)) {
                 sectorMix.addOther(unswarmedGround);
             } else {
                 boolean enemyUpgraded = enemyHasSpeedUpgrade(gameState, type, currentFrame);
                 sectorMix.addGround(RelativeSpeed.speed(type, enemyUpgraded), unswarmedGround, 0);
-                if (Config.relativeSpeed) {
-                    double speedMod = enemySpeedMod(type, enemyUpgraded, ownSpeeds);
-                    unswarmedGround *= speedMod;
-                    antiAir *= speedMod;
-                }
+                double speedMod = enemySpeedMod(Config.relativeSpeed, type, enemyUpgraded, ownSpeeds);
+                unswarmedGround *= speedMod;
+                antiAir *= speedMod;
             }
             enemySample.add(type, unswarmedGround * SwarmCover.groundMultiplier(type, swarmCover), antiAir,
                     Math.max(unswarmedGround, antiAir));
@@ -989,13 +985,14 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * The price multiplier of an enemy unit for its speed upgrade: a Zergling or Hydralisk with no sign of its
      * upgrade is priced down by the share of our squad that out-runs it, and any other enemy is not.
      *
+     * @param enabled whether IA_RELATIVE_SPEED is on, off prices no enemy down
      * @param type the enemy unit's type
      * @param upgraded whether the enemy has, or plausibly has, the upgrade
      * @param ownSpeeds the speeds of our squad's ground members
      * @return the multiplier
      */
-    static double enemySpeedMod(UnitType type, boolean upgraded, List<Double> ownSpeeds) {
-        if (upgraded || EnemySpeedTracker.upgradeFor(type) == null) return 1.0;
+    static double enemySpeedMod(boolean enabled, UnitType type, boolean upgraded, List<Double> ownSpeeds) {
+        if (!enabled || upgraded || EnemySpeedTracker.upgradeFor(type) == null) return 1.0;
         return RelativeSpeed.penalty(RelativeSpeed.shareFasterThan(ownSpeeds, RelativeSpeed.speed(type, false)));
     }
 

@@ -5,16 +5,16 @@ import info.tracking.EnemySpeedTracker;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Speed against the enemy it is priced against: the ling and hydra speed penalty applies only to a unit the enemy
  * out-runs, and a ground squad that cannot out-run what is on it keeps its fight.
  *
- * <p>A unit's speed is its type's top speed, raised by {@link EnemySpeedTracker#SEEN_SPEED_MARGIN} when it is a
- * Zergling or Hydralisk with its speed upgrade. The margin is the least a seen upgrade moves a unit above the base
- * speed, so two upgraded units of a type compare equal and an upgraded unit out-runs an unupgraded one of its type.
- * Other types run at their top speed.
+ * <p>A unit's speed is its type's top speed, multiplied by {@link #UPGRADE_SPEED_FACTOR} when it is a Zergling or
+ * Hydralisk with its speed upgrade. Other types run at their top speed.
  *
  * <p>A squad whose strength share in the {@link Mix} is at least as fast as it is, within
  * {@link #ESCAPE_DISTANCE} of it, and more than half of the enemy strength, cannot escape: a retreat gives the
@@ -33,7 +33,13 @@ public final class RelativeSpeed {
     /** The factor a blocked retreat scales the retreat threshold by. */
     public static final double ESCAPE_RETREAT_FACTOR = 0.75;
 
+    /** What Metabolic Boost and Muscular Augments multiply a unit's top speed by. */
+    public static final double UPGRADE_SPEED_FACTOR = 1.5;
+
     private static final double SPEED_EPSILON = 1e-9;
+
+    private static final Set<UnitType> NO_CHASERS = EnumSet.of(UnitType.Zerg_Lurker, UnitType.Terran_Vulture_Spider_Mine,
+            UnitType.Protoss_Scarab, UnitType.Protoss_Interceptor, UnitType.Terran_Siege_Tank_Siege_Mode);
 
     private RelativeSpeed() {
     }
@@ -48,9 +54,20 @@ public final class RelativeSpeed {
     public static double speed(UnitType type, boolean upgraded) {
         double base = type.topSpeed();
         if (upgraded && EnemySpeedTracker.upgradeFor(type) != null) {
-            return base * EnemySpeedTracker.SEEN_SPEED_MARGIN;
+            return base * UPGRADE_SPEED_FACTOR;
         }
         return base;
+    }
+
+    /**
+     * Whether an enemy type can chase a retreating squad: it walks, is not a building or flyer, and is not a Lurker,
+     * Spider Mine, Scarab, Interceptor or sieged Tank, whose top speed says nothing about pursuit.
+     *
+     * @param type the enemy type
+     * @return true for a mobile ground unit that pursues
+     */
+    public static boolean canChase(UnitType type) {
+        return !type.isBuilding() && !type.isFlyer() && !NO_CHASERS.contains(type);
     }
 
     /**

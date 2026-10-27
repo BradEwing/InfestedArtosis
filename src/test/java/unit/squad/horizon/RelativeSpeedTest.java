@@ -49,7 +49,7 @@ class RelativeSpeedTest {
 
         assertEquals(1.0, HorizonCombatSimulator.speedPenalty(UnitType.Zerg_Zergling, tech(false), lings(false, NEAR)),
                 1e-9);
-        assertEquals(1.0, HorizonCombatSimulator.enemySpeedMod(UnitType.Zerg_Zergling, false, ours), 1e-9);
+        assertEquals(1.0, HorizonCombatSimulator.enemySpeedMod(true, UnitType.Zerg_Zergling, false, ours), 1e-9);
     }
 
     @Test
@@ -67,11 +67,11 @@ class RelativeSpeedTest {
         List<Double> sped = Collections.singletonList(SPED_LING);
         List<Double> unsped = Collections.singletonList(LING);
 
-        assertEquals(RelativeSpeed.UPGRADE_PENALTY, HorizonCombatSimulator.enemySpeedMod(UnitType.Zerg_Zergling,
-                false, sped), 1e-9);
-        assertEquals(1.0, HorizonCombatSimulator.enemySpeedMod(UnitType.Zerg_Zergling, false, unsped), 1e-9);
-        assertEquals(1.0, HorizonCombatSimulator.enemySpeedMod(UnitType.Zerg_Zergling, true, sped), 1e-9);
-        assertEquals(1.0, HorizonCombatSimulator.enemySpeedMod(UnitType.Protoss_Zealot, false, sped), 1e-9);
+        assertEquals(RelativeSpeed.UPGRADE_PENALTY, HorizonCombatSimulator.enemySpeedMod(true,
+                UnitType.Zerg_Zergling, false, sped), 1e-9);
+        assertEquals(1.0, HorizonCombatSimulator.enemySpeedMod(true, UnitType.Zerg_Zergling, false, unsped), 1e-9);
+        assertEquals(1.0, HorizonCombatSimulator.enemySpeedMod(true, UnitType.Zerg_Zergling, true, sped), 1e-9);
+        assertEquals(1.0, HorizonCombatSimulator.enemySpeedMod(true, UnitType.Protoss_Zealot, false, sped), 1e-9);
     }
 
     @Test
@@ -175,6 +175,28 @@ class RelativeSpeedTest {
         assertEquals(RelativeSpeed.UPGRADE_PENALTY, HorizonCombatSimulator.speedPenalty(UnitType.Zerg_Zergling,
                 tech(false), RelativeSpeed.pricedAgainst(false, lings(false, NEAR))), 1e-9);
         assertEquals(1.0, HorizonCombatSimulator.speedPenalty(UnitType.Zerg_Zergling, tech(true), null), 1e-9);
+        assertEquals(1.0, HorizonCombatSimulator.enemySpeedMod(false, UnitType.Zerg_Zergling, false,
+                Collections.singletonList(SPED_LING)), 1e-9);
+    }
+
+    @Test
+    void upgradedSpeedsOrderAsInTheGame() {
+        assertEquals(LING * 1.5, SPED_LING, 1e-9);
+        assertTrue(SPED_LING > RelativeSpeed.speed(UnitType.Terran_Vulture, false));
+        assertTrue(RelativeSpeed.speed(UnitType.Zerg_Hydralisk, true) > RelativeSpeed.speed(UnitType.Protoss_Dragoon,
+                false));
+        assertEquals(LING, RelativeSpeed.speed(UnitType.Zerg_Hydralisk, true), 1e-9);
+    }
+
+    @Test
+    void lurkersMinesScarabsAndBuildingsAreNotChasers() {
+        assertFalse(RelativeSpeed.canChase(UnitType.Zerg_Lurker));
+        assertFalse(RelativeSpeed.canChase(UnitType.Terran_Vulture_Spider_Mine));
+        assertFalse(RelativeSpeed.canChase(UnitType.Protoss_Scarab));
+        assertFalse(RelativeSpeed.canChase(UnitType.Zerg_Sunken_Colony));
+        assertFalse(RelativeSpeed.canChase(UnitType.Zerg_Mutalisk));
+        assertTrue(RelativeSpeed.canChase(UnitType.Zerg_Zergling));
+        assertTrue(RelativeSpeed.canChase(UnitType.Protoss_Zealot));
     }
 
     @Test
