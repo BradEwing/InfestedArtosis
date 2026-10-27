@@ -179,6 +179,14 @@ public interface PlanEventSink {
     }
 
     /**
+     * SpeedlingAllIn's drone floor was suspended or resumed against a Protoss opponent.
+     *
+     * @param floorLabel SUSPENDED when enemy ground units entered our bases, RESUMED when they left
+     */
+    default void onSpeedlingDroneFloor(String floorLabel) {
+    }
+
+    /**
      * A ground scout was withheld from, or recalled off, a route a detected Bunker holds.
      *
      * @param skipLabel the reason and the destination, e.g. BUNKER:ENEMY_MAIN

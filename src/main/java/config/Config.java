@@ -33,6 +33,12 @@ public final class Config {
      * Whether Drones are added while an enemy Bunker stance stands. On unless IA_BUNKER_ECON is set to false.
      */
     public static boolean bunkerEcon = true;
+    /**
+     * Whether SpeedlingAllIn answers a Protoss opponent with the Protoss sunken and zergling targets, a larva-bound
+     * hatchery, and a drone floor suspended while enemy ground units are in our bases. On unless
+     * IA_SPEEDLING_P_REACTIONS is set to false.
+     */
+    public static boolean speedlingPReactions = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -124,6 +130,7 @@ public final class Config {
         lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
         racePrior = Boolean.parseBoolean(setting(dotenv, "IA_RACE_PRIOR"));
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
+        speedlingPReactions = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_P_REACTIONS"));
     }
 
     /**
