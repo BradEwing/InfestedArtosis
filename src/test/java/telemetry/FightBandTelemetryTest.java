@@ -29,14 +29,27 @@ class FightBandTelemetryTest {
     }
 
     @Test
-    void theRetreatThresholdIsTheLastColumnAndUnevaluatedWithoutASnapshot() {
+    void theRetreatThresholdIsFollowedByTheRelativeSpeedColumnsAndUnevaluatedWithoutASnapshot() {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("sim_retreat_threshold", columns[columns.length - 1]);
+        assertEquals("sim_retreat_threshold", columns[columns.length - 4]);
         assertEquals(Collections.singletonList(Csv.format(SquadDecision.NOT_EVALUATED)),
                 SquadDecisionLogger.retreatThresholdCells(context));
         context.setRetreatThreshold(0.7);
         assertEquals(Collections.singletonList(Csv.format(0.7)), SquadDecisionLogger.retreatThresholdCells(context));
+    }
+
+    @Test
+    void theRelativeSpeedCellsAreUnevaluatedWithoutASnapshotAndCarryTheSimsFactors() {
+        SquadDecision context = new SquadDecision();
+
+        assertEquals(java.util.Arrays.asList("-1.0000", "-1.0000", "-1"),
+                SquadDecisionLogger.relativeSpeedCells(context));
+        context.setOwnSpeedFactor(0.75);
+        context.setEnemySpeedFactor(1.0);
+        context.setEscapeBlocked(1);
+        assertEquals(java.util.Arrays.asList("0.7500", "1.0000", "1"),
+                SquadDecisionLogger.relativeSpeedCells(context));
     }
 }

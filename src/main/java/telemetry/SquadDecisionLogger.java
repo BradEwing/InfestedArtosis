@@ -146,7 +146,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
             + "air_commitment_release,"
             + "bunker_hold_release,siege_band,siege_band_frames,siege_band_held_frames,"
-            + "sim_retreat_threshold";
+            + "sim_retreat_threshold,sim_own_speed_factor,sim_enemy_speed_factor,escape_blocked";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -887,6 +887,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setRatio(snapshot.getOverallRatio());
         decision.setEngageThreshold(snapshot.getEngageThreshold());
         decision.setRetreatThreshold(snapshot.getRetreatThreshold());
+        decision.setOwnSpeedFactor(snapshot.getOwnSpeedFactor());
+        decision.setEnemySpeedFactor(snapshot.getEnemySpeedFactor());
+        decision.setEscapeBlocked(snapshot.getEscapeBlocked());
         decision.setEnemySupplyBelieved(believedEnemySupply(snapshot));
         String composition = Csv.sanitize(HorizonCombatSimulator.enemyComposition(snapshot));
         decision.setEnemyComposition(composition.isEmpty() ? NONE : composition);
@@ -996,6 +999,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(bunkerHoldReleaseCells(context));
         fields.addAll(siegeBandCells(context));
         fields.addAll(retreatThresholdCells(context));
+        fields.addAll(relativeSpeedCells(context));
         return String.join(",", fields);
     }
 
@@ -1070,6 +1074,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(bunkerHoldReleaseCells(context));
         fields.addAll(siegeBandCells(context));
         fields.addAll(retreatThresholdCells(context));
+        fields.addAll(relativeSpeedCells(context));
         return String.join(",", fields);
     }
 
@@ -1318,6 +1323,23 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      */
     static List<String> retreatThresholdCells(SquadDecision context) {
         return Collections.singletonList(Csv.format(context.getRetreatThreshold()));
+    }
+
+    /**
+     * Builds the relative speed cells: the mean price multiplier of the squad's members for a missing speed upgrade
+     * (sim_own_speed_factor, 1 when none is missing or none is penalised), the strength-weighted mean multiplier of the
+     * enemy ground units for a missing speed upgrade (sim_enemy_speed_factor), and escape_blocked, 1 when most of the
+     * enemy strength is ground units at least as fast as the squad within the escape distance, 0 when not, and -1 on
+     * an air squad's row or a row whose decision never read a sim snapshot. The two factors are -1 on a row without
+     * a snapshot. They are recorded whether or not IA_RELATIVE_SPEED prices them, so the off arm is measurable: with
+     * the switch off the own factor is the absolute penalty and the enemy factor is 1.
+     *
+     * @param context the decision the row is built from
+     * @return the own speed factor, enemy speed factor and escape blocked cells
+     */
+    static List<String> relativeSpeedCells(SquadDecision context) {
+        return Arrays.asList(Csv.format(context.getOwnSpeedFactor()), Csv.format(context.getEnemySpeedFactor()),
+                String.valueOf(context.getEscapeBlocked()));
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {

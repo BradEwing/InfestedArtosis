@@ -6,12 +6,14 @@ import bwapi.Race;
 import bwapi.Unit;
 import bwapi.UnitSizeType;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import bwapi.WeaponType;
 import config.Config;
 import info.GameState;
 import info.TechProgression;
 import info.tracking.DarkSwarm;
 import info.tracking.EnemyReachMemory;
+import info.tracking.EnemySpeedTracker;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import lombok.Getter;
@@ -66,7 +68,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
     private static final double DEFAULT_RETREAT_THRESHOLD = 0.7;
     private static final double MIN_ENEMY_STRENGTH = 0.01;
-    private static final double SPEED_UPGRADE_PENALTY = 0.75;
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
     static final int BUNKER_MAX_GARRISON = 4;
@@ -123,6 +124,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
         retreatMemory.releaseIfExpired(currentFrame);
         List<Position> livingBunkers = new ArrayList<>();
         List<Position> rememberedInRadius = new ArrayList<>();
+        List<Double> ownSpeeds = ownSpeeds(squad, techProgression);
+        RelativeSpeed.Mix enemyMix = new RelativeSpeed.Mix();
+        double enemySpeedModSum = 0;
+        double enemySpeedModWeight = 0;
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -207,8 +212,19 @@ public class HorizonCombatSimulator implements CombatSimulator {
             }
 
             double unswarmedGroundStr = groundBase * hpWeight * distWeight * heightMod;
+            double speedMod = 1.0;
+            if (!RelativeSpeed.canChase(type)) {
+                enemyMix.addOther(unswarmedGroundStr);
+            } else {
+                boolean enemyUpgraded = enemyHasSpeedUpgrade(gameState, type, currentFrame);
+                enemyMix.addGround(RelativeSpeed.speed(type, enemyUpgraded), unswarmedGroundStr, dist);
+                speedMod = enemySpeedMod(Config.relativeSpeed, type, enemyUpgraded, ownSpeeds);
+                enemySpeedModSum += speedMod * unswarmedGroundStr;
+                enemySpeedModWeight += unswarmedGroundStr;
+                unswarmedGroundStr *= speedMod;
+            }
             double groundEnemyStr = unswarmedGroundStr * SwarmCover.groundMultiplier(type, swarmCover);
-            double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
+            double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod * speedMod;
             enemySample.add(type, groundEnemyStr, aaEnemyStr, Math.max(unswarmedGroundStr, aaEnemyStr));
             if (!visible && BunkerPricing.SHOOTERS.contains(type)) {
                 pricedLooseShooters++;
@@ -229,19 +245,26 @@ public class HorizonCombatSimulator implements CombatSimulator {
         creditMedicSupport(snapshot, enemySample, airSquad);
         snapshot.setEnemyUnscoredSupply(enemySample.unscoredSupply());
 
+        RelativeSpeed.Mix pricingMix = RelativeSpeed.pricedAgainst(Config.relativeSpeed, enemyMix);
         FriendlyForce friendlyForce = new FriendlyForce();
+        double ownSpeedModSum = 0;
+        int ownSpeedModCount = 0;
         for (ManagedUnit mu : squad.getMembers()) {
             if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
             friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
-                    friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression), false);
+                    friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression, pricingMix), false);
+            ownSpeedModSum += speedPenalty(mu.getUnitType(), techProgression, pricingMix);
+            ownSpeedModCount++;
         }
+        snapshot.setOwnSpeedFactor(ownSpeedModCount > 0 ? ownSpeedModSum / ownSpeedModCount : 1.0);
+        snapshot.setEnemySpeedFactor(enemySpeedModWeight > 0 ? enemySpeedModSum / enemySpeedModWeight : 1.0);
         if (adjacentSquads != null) {
             for (Map.Entry<Squad, Double> entry : adjacentSquads.entrySet()) {
                 double weight = distanceWeight(entry.getValue());
                 for (ManagedUnit mu : entry.getKey().getMembers()) {
                     if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
                     friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
-                            friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression) * weight, true);
+                            friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression, pricingMix) * weight, true);
                 }
             }
         }
@@ -298,6 +321,11 @@ public class HorizonCombatSimulator implements CombatSimulator {
             engageThresh = Math.min(engageThresh, DEFAULT_ENGAGE_THRESHOLD);
         }
         double retreatThresh = FightBand.retreatThreshold(retreatThreshold(gameState.getOpponentRace()), engageThresh);
+        if (!airSquad) {
+            boolean escapeBlocked = !enemyMix.canEscape(squadSpeed(ownSpeeds));
+            snapshot.setEscapeBlocked(escapeBlocked ? 1 : 0);
+            retreatThresh = RelativeSpeed.retreatThreshold(Config.relativeSpeed, escapeBlocked, retreatThresh);
+        }
 
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
@@ -797,16 +825,17 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * speed research.
      */
     private double friendlyWeight(ManagedUnit mu, Position engagementCenter, boolean enemyHasDetection,
-                                  TechProgression techProgression) {
+                                  TechProgression techProgression, RelativeSpeed.Mix enemyMix) {
         double dist = mu.getUnit().getPosition().getDistance(engagementCenter);
-        return readinessWeight(mu, enemyHasDetection, techProgression) * distanceWeight(dist);
+        return readinessWeight(mu, enemyHasDetection, techProgression, enemyMix) * distanceWeight(dist);
     }
 
     /**
      * Every multiplier on one of our units except its domain pricing and its distance from the engagement: health,
      * cloak, burrow, upgrades and speed research.
      */
-    private double readinessWeight(ManagedUnit mu, boolean enemyHasDetection, TechProgression techProgression) {
+    private double readinessWeight(ManagedUnit mu, boolean enemyHasDetection, TechProgression techProgression,
+                                   RelativeSpeed.Mix enemyMix) {
         Unit unit = mu.getUnit();
         UnitType type = unit.getType();
 
@@ -828,11 +857,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         double rangeUpgrade = rangeUpgradeCorrection(unit, type);
 
-        double speedPenalty = 1.0;
-        if (type == UnitType.Zerg_Zergling && !techProgression.isMetabolicBoost()
-                || type == UnitType.Zerg_Hydralisk && !techProgression.isMuscularAugments()) {
-            speedPenalty = SPEED_UPGRADE_PENALTY;
-        }
+        double speedPenalty = speedPenalty(type, techProgression, enemyMix);
 
         double attackUpgrade = attackUpgradeCorrection(unit, type);
         double adrenalGlands = adrenalGlandsCorrection(unit, type, techProgression);
@@ -886,6 +911,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         Map<UnitSizeType, Double> friendlySizeProportions = sizeProportions(squad, null);
         double swarmCover = swarmCoverShare(squad, gameState.getDarkSwarmTracker().getActiveSwarms());
 
+        List<Double> ownSpeeds = ownSpeeds(squad, techProgression);
+        RelativeSpeed.Mix sectorMix = new RelativeSpeed.Mix();
         EnemySample enemySample = new EnemySample();
         for (Unit enemy : enemies) {
             UnitType type = enemy.getType();
@@ -898,15 +925,25 @@ public class HorizonCombatSimulator implements CombatSimulator {
             }
             double unswarmedGround = weightedGroundStrength(type, friendlySizeProportions) * hpWeight * heightMod;
             double antiAir = weightedAntiAirStrength(type, friendlySizeProportions) * hpWeight * heightMod;
+            if (!RelativeSpeed.canChase(type)) {
+                sectorMix.addOther(unswarmedGround);
+            } else {
+                boolean enemyUpgraded = enemyHasSpeedUpgrade(gameState, type, currentFrame);
+                sectorMix.addGround(RelativeSpeed.speed(type, enemyUpgraded), unswarmedGround, 0);
+                double speedMod = enemySpeedMod(Config.relativeSpeed, type, enemyUpgraded, ownSpeeds);
+                unswarmedGround *= speedMod;
+                antiAir *= speedMod;
+            }
             enemySample.add(type, unswarmedGround * SwarmCover.groundMultiplier(type, swarmCover), antiAir,
                     Math.max(unswarmedGround, antiAir));
         }
 
+        RelativeSpeed.Mix pricingMix = RelativeSpeed.pricedAgainst(Config.relativeSpeed, sectorMix);
         FriendlyForce friendlyForce = new FriendlyForce();
         for (ManagedUnit mu : squad.getMembers()) {
             if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
             friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
-                    readinessWeight(mu, enemyHasDetection, techProgression), false);
+                    readinessWeight(mu, enemyHasDetection, techProgression, pricingMix), false);
         }
         return sectorRatio(friendlyForce, enemySample);
     }
@@ -924,6 +961,65 @@ public class HorizonCombatSimulator implements CombatSimulator {
         double groundRatio = priced.getFriendlyGround() / priced.getEnemyGround();
         return Math.max(groundRatio, combinedRatio(priced.getFriendlyGround(), priced.getFriendlyAir(),
                 priced.getEnemyGround(), priced.getEnemyEngaged()));
+    }
+
+    /**
+     * The price multiplier of one of our units for its speed upgrade. A Zergling or Hydralisk without its upgrade is
+     * priced at {@link RelativeSpeed#UPGRADE_PENALTY} when no enemy mix is given, and scaled by the share of the
+     * enemy ground strength that out-runs it when one is.
+     *
+     * @param type the unit's type
+     * @param techProgression our tech
+     * @param enemyMix the enemy the unit is priced against, null to price the penalty absolutely
+     * @return the multiplier, 1 for a unit with its upgrade or without one
+     */
+    static double speedPenalty(UnitType type, TechProgression techProgression, RelativeSpeed.Mix enemyMix) {
+        boolean missing = type == UnitType.Zerg_Zergling && !techProgression.isMetabolicBoost()
+                || type == UnitType.Zerg_Hydralisk && !techProgression.isMuscularAugments();
+        if (!missing) return 1.0;
+        if (enemyMix == null) return RelativeSpeed.UPGRADE_PENALTY;
+        return RelativeSpeed.penalty(enemyMix.fasterShare(RelativeSpeed.speed(type, false)));
+    }
+
+    /**
+     * The price multiplier of an enemy unit for its speed upgrade: a Zergling or Hydralisk with no sign of its
+     * upgrade is priced down by the share of our squad that out-runs it, and any other enemy is not.
+     *
+     * @param enabled whether IA_RELATIVE_SPEED is on, off prices no enemy down
+     * @param type the enemy unit's type
+     * @param upgraded whether the enemy has, or plausibly has, the upgrade
+     * @param ownSpeeds the speeds of our squad's ground members
+     * @return the multiplier
+     */
+    static double enemySpeedMod(boolean enabled, UnitType type, boolean upgraded, List<Double> ownSpeeds) {
+        if (!enabled || upgraded || EnemySpeedTracker.upgradeFor(type) == null) return 1.0;
+        return RelativeSpeed.penalty(RelativeSpeed.shareFasterThan(ownSpeeds, RelativeSpeed.speed(type, false)));
+    }
+
+    private static boolean enemyHasSpeedUpgrade(GameState gameState, UnitType type, int frame) {
+        UpgradeType upgrade = EnemySpeedTracker.upgradeFor(type);
+        return upgrade != null && gameState.getEnemySpeedTracker().hasOrPlausiblyHas(upgrade, frame);
+    }
+
+    private static List<Double> ownSpeeds(Squad squad, TechProgression techProgression) {
+        List<Double> speeds = new ArrayList<>();
+        for (ManagedUnit mu : squad.getMembers()) {
+            UnitType type = mu.getUnitType();
+            if (type == UnitType.Zerg_Overlord || type.isFlyer()) continue;
+            speeds.add(RelativeSpeed.speed(type, ownSpeedUpgrade(type, techProgression)));
+        }
+        return speeds;
+    }
+
+    private static boolean ownSpeedUpgrade(UnitType type, TechProgression techProgression) {
+        return type == UnitType.Zerg_Zergling && techProgression.isMetabolicBoost()
+                || type == UnitType.Zerg_Hydralisk && techProgression.isMuscularAugments();
+    }
+
+    private static double squadSpeed(List<Double> ownSpeeds) {
+        double slowest = Double.POSITIVE_INFINITY;
+        for (double speed : ownSpeeds) slowest = Math.min(slowest, speed);
+        return slowest;
     }
 
     private double rangeUpgradeCorrection(Unit unit, UnitType type) {
@@ -1440,5 +1536,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private int fightBandSinceFrame = -1;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
+        private double ownSpeedFactor = -1;
+        private double enemySpeedFactor = -1;
+        private int escapeBlocked = -1;
     }
 }
