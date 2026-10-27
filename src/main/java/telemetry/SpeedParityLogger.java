@@ -18,6 +18,8 @@ import java.util.Map;
  * the two sides' state, squad_supply and move_out_threshold the squad's strength against the bar it was held to, and
  * base_threshold the bar without the gate.
  *
+ * <p>A GATE_END row is written when a squad's term ends, with the ended term in suppressed_by.
+ *
  * <p>An ENEMY_SPEED row is written when the evidence for an enemy upgrade first reaches PLAUSIBLE or SEEN, with the
  * upgrade and the level in evidence. Only those columns apply to it; the rest are NONE or -1.
  *
@@ -33,6 +35,7 @@ public class SpeedParityLogger implements SpeedParitySink {
             + "evidence,squad_supply,move_out_threshold,base_threshold,zerglings";
 
     static final String EVENT_GATE = "GATE";
+    static final String EVENT_GATE_END = "GATE_END";
     static final String EVENT_ENEMY_SPEED = "ENEMY_SPEED";
     static final String EVENT_OWN_SPEED = "OWN_SPEED";
 
@@ -87,7 +90,10 @@ public class SpeedParityLogger implements SpeedParitySink {
 
         try {
             if (NONE.equals(gate.getTerm())) {
-                terms.remove(gate.getSquadId());
+                String ended = terms.remove(gate.getSquadId());
+                if (ended != null) {
+                    writer.append(gateEndRow(gameId, frame, gate.getSquadId(), ended, gate));
+                }
                 return;
             }
             String previous = terms.put(gate.getSquadId(), gate.getTerm());
@@ -139,6 +145,16 @@ public class SpeedParityLogger implements SpeedParitySink {
                 String.valueOf(gate.isApplied()), gate.getOurSpeed(), gate.getEnemySpeed(), NONE, NONE,
                 String.valueOf(gate.getSupply()), String.valueOf(gate.getThreshold()),
                 String.valueOf(gate.getBaseThreshold()), String.valueOf(gate.getZerglings()));
+    }
+
+    /**
+     * Builds a GATE_END row in {@link #HEADER} order: the squad's term ended, named in suppressed_by, with the
+     * speed states of the frame it ended on.
+     */
+    static String gateEndRow(String gameId, int frame, String squadId, String endedTerm, SpeedParityGate gate) {
+        return String.join(",", gameId, String.valueOf(frame), EVENT_GATE_END, squadId, endedTerm, "false",
+                gate.getOurSpeed(), gate.getEnemySpeed(), NONE, NONE, String.valueOf(NOT_EVALUATED),
+                String.valueOf(NOT_EVALUATED), String.valueOf(NOT_EVALUATED), String.valueOf(NOT_EVALUATED));
     }
 
     /**

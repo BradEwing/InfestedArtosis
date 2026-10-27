@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SpeedlingAllIn;
 import strategy.buildorder.opener.FourPool;
+import strategy.buildorder.opener.NinePoolGasHatchSpeed8D;
 import strategy.buildorder.opener.NinePoolSpeed;
 import strategy.buildorder.opener.TwelveHatch;
 import unit.squad.SpeedParity.Reading;
@@ -187,6 +188,7 @@ class SpeedParityTest {
         assertTrue(new SpeedlingAllIn().isAllInOrRush());
         assertTrue(new FourPool().isAllInOrRush());
         assertTrue(new NinePoolSpeed().isAllInOrRush());
+        assertTrue(new NinePoolGasHatchSpeed8D().isAllInOrRush());
         BuildOrder macro = new TwelveHatch();
         assertFalse(macro.isAllInOrRush());
     }

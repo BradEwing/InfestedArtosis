@@ -29,6 +29,7 @@ import lombok.Getter;
 import org.bk.ass.sim.Agent;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import strategy.buildorder.BuildOrder;
 import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.FixedFireTelemetry;
@@ -1677,8 +1678,11 @@ public class SquadManager {
 
         if (squad.isGroundSquad()) {
             SpeedParity.Reading parity = readSpeedParity(squad);
-            logSpeedParity(squad, parity);
-            if (SpeedParity.holdsHome(Config.speedParityGate, parity.isHolds(), closeThreats)) {
+            boolean holdsNow = holdsForSpeedParity(parity);
+            boolean enforced = holdsNow
+                    && (!closeThreats || squad.getStatus() == SquadStatus.CONTAIN);
+            logSpeedParity(squad, parity, enforced);
+            if (enforced) {
                 holdForSpeedParity(squad);
                 return;
             }
@@ -2425,22 +2429,47 @@ public class SquadManager {
         EnemySpeedTracker.Evidence enemyMetabolicBoost = gameState.getEnemySpeedTracker()
                 .evidence(UpgradeType.Metabolic_Boost, game.getFrameCount());
         return SpeedParity.read(gameState.getOpponentRace(), squad.getComposition(),
-                gameState.getActiveBuildOrder().isAllInOrRush(), gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
+                isAllInOrRush(), gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
                 techProgression.isMetabolicBoost(), techProgression.isAdrenalGlands(), enemyMetabolicBoost);
     }
 
-    private void logSpeedParity(Squad squad, SpeedParity.Reading parity) {
+    private boolean isAllInOrRush() {
+        BuildOrder selected = gameState.getSelectedStrategy();
+        return gameState.getActiveBuildOrder().isAllInOrRush() || selected != null && selected.isAllInOrRush();
+    }
+
+    private boolean holdsForSpeedParity(SpeedParity.Reading parity) {
+        return SpeedParity.holdsHome(Config.speedParityGate, parity.isHolds(), false) && !baseThreatened();
+    }
+
+    private boolean speedParityBlocksContain(Squad squad) {
+        return squad.isGroundSquad() && holdsForSpeedParity(readSpeedParity(squad));
+    }
+
+    private void logSpeedParity(Squad squad, SpeedParity.Reading parity, boolean enforced) {
         int frame = game.getFrameCount();
         String enemySpeed = parity.getEnemyEvidence().name();
-        if (parity.getTerm() == SpeedParity.Term.NONE) {
-            SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), parity.getTerm().name(), false,
+        SpeedParity.Term term = parity.getTerm();
+        int strength = 0;
+        int base = 0;
+        int threshold = 0;
+        if (term != SpeedParity.Term.NONE) {
+            strength = squadStrength(squad);
+            base = groundMoveOutThreshold(squad, false);
+            threshold = Math.min(SpeedParity.applyTerm(base, parity.getUpgradeTerm()), MAX_MOVE_OUT_THRESHOLD);
+            if (term == SpeedParity.Term.LING_UPGRADE && (strength >= threshold || strength < base)) {
+                term = SpeedParity.Term.NONE;
+            }
+        }
+        if (term == SpeedParity.Term.NONE) {
+            SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), term.name(), false,
                     parity.getOurSpeed(), enemySpeed, 0, 0, 0, 0));
             return;
         }
-        SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), parity.getTerm().name(),
-                Config.speedParityGate, parity.getOurSpeed(), enemySpeed, squadStrength(squad),
-                calculateGroundSquadMoveOutThreshold(squad), groundMoveOutThreshold(squad, false),
-                parity.getZerglings()));
+        boolean applied = term == SpeedParity.Term.SPEED_PARITY
+                ? enforced : Config.speedParityGate && !baseThreatened();
+        SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), term.name(), applied,
+                parity.getOurSpeed(), enemySpeed, strength, threshold, base, parity.getZerglings()));
     }
 
     /**
@@ -2511,7 +2540,11 @@ public class SquadManager {
         }
         threshold += rushThresholdIncrease;
 
-        threshold = SpeedParity.gatedThreshold(withSpeedParity, threshold, readSpeedParity(squad).getUpgradeTerm());
+        int term = readSpeedParity(squad).getUpgradeTerm();
+        if (term > 0 && withSpeedParity && baseThreatened()) {
+            term = 0;
+        }
+        threshold = SpeedParity.gatedThreshold(withSpeedParity, threshold, term);
         return Math.min(threshold, MAX_MOVE_OUT_THRESHOLD);
     }
 
@@ -3140,6 +3173,9 @@ public class SquadManager {
      * @return true if the squad took the arc and is now containing
      */
     private boolean tryEnterContainment(Squad squad) {
+        if (speedParityBlocksContain(squad)) {
+            return false;
+        }
         int now = game.getFrameCount();
         boolean underAttack = baseThreatensContainment();
         boolean shouldContain = containmentEvaluator.shouldContain(squad);
@@ -5055,6 +5091,9 @@ public class SquadManager {
      * @return true when the squad was sent, false when it is not a ground squad or no contain holds an arc
      */
     private boolean joinActiveContain(Squad squad) {
+        if (speedParityBlocksContain(squad)) {
+            return false;
+        }
         Arc arc = containArcToJoin(squad);
         if (arc == null) {
             return false;

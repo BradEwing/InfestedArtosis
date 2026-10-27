@@ -38,4 +38,14 @@ class SpeedParityLoggerTest {
         assertEquals(columns(SpeedParityLogger.HEADER), columns(row));
         assertEquals("game,6011,OWN_SPEED,NONE,NONE,NONE,NONE,NONE,Metabolic_Boost,FINISHED,-1,-1,-1,-1", row);
     }
+
+    @Test
+    void aGateEndRowNamesTheTermThatEnded() {
+        SpeedParityGate gate = new SpeedParityGate("squad-1", "NONE", false, "METABOLIC", "SEEN", 0, 0, 0, 0);
+
+        String row = SpeedParityLogger.gateEndRow("game", 6011, "squad-1", "SPEED_PARITY", gate);
+
+        assertEquals(columns(SpeedParityLogger.HEADER), columns(row));
+        assertEquals("game,6011,GATE_END,squad-1,SPEED_PARITY,false,METABOLIC,SEEN,NONE,NONE,-1,-1,-1,-1", row);
+    }
 }
