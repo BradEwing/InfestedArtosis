@@ -1680,7 +1680,9 @@ public class SquadManager {
         if (squad.isGroundSquad()) {
             SpeedParity.Reading parity = readSpeedParity(squad);
             boolean holdsNow = holdsForSpeedParity(parity);
-            boolean enforced = holdsNow
+            boolean engaged = SpeedParity.exemptWhileEngaged(squad.getStatus(),
+                    squad.isFightLocked(game.getFrameCount()));
+            boolean enforced = holdsNow && !engaged
                     && (!closeThreats || squad.getStatus() == SquadStatus.CONTAIN);
             logSpeedParity(squad, parity, enforced);
             if (enforced) {

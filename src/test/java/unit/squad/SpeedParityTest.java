@@ -179,6 +179,18 @@ class SpeedParityTest {
     }
 
     @Test
+    void aFightingSquadUnderAFightLockIsNotHeld() {
+        assertTrue(SpeedParity.exemptWhileEngaged(SquadStatus.FIGHT, true));
+    }
+
+    @Test
+    void theSameSquadWithoutTheLockIsHeld() {
+        assertFalse(SpeedParity.exemptWhileEngaged(SquadStatus.FIGHT, false));
+        assertFalse(SpeedParity.exemptWhileEngaged(SquadStatus.RALLY, true));
+        assertFalse(SpeedParity.exemptWhileEngaged(SquadStatus.CONTAIN, true));
+    }
+
+    @Test
     void theSwitchIsOnByDefault() {
         assertTrue(Config.speedParityGate);
     }
