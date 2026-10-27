@@ -117,11 +117,11 @@ final class SpeedParity {
     }
 
     /**
-     * Whether a squad is exempt from the hold because it is engaged: it is fighting under an active fight lock, so
+     * Whether a squad is exempt from the hold because it is engaged: it is fighting under an active fight lock or turn-back commit, so
      * turning its back on the enemy is left to the combat simulation.
      *
      * @param status the squad's status
-     * @param fightLocked true when the squad's fight lock is active
+     * @param fightLocked true when the squad's fight lock or turn-back commit is active
      * @return true when the hold must not release the squad
      */
     static boolean exemptWhileEngaged(SquadStatus status, boolean fightLocked) {
