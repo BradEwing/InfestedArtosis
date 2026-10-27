@@ -2015,7 +2015,9 @@ public class SquadManager {
             Set<Squad> frozen = new HashSet<>();
             for (Squad squad : squads) {
                 if (!simulatedThisFrame.contains(squad) || collapseHoldsMembers(squad, now)
-                        || squad.isCorneredFightHeld(now)) {
+                        || squad.isCorneredFightHeld(now)
+                        || defendsHome(Config.homeContestedFight, squad.isGroundSquad(), squad.getStatus(),
+                        standoffExempt(squad))) {
                     frozen.add(squad);
                 }
             }
@@ -2032,6 +2034,20 @@ public class SquadManager {
                         pair.get(0).getStatus(), pair.get(1).getStatus());
             }
         }
+    }
+
+    /**
+     * Whether a squad's status is held by defending a base, so the shared verdict cannot turn it: a ground squad in
+     * FIGHT while a base is threatened or it stands within the home defence radius of one.
+     *
+     * @param homeFight whether the contested home fight rule is on
+     * @param ground whether the squad is a ground squad
+     * @param status status the squad holds
+     * @param nearHome whether a base is threatened or the squad stands at one, see {@link #standoffExempt}
+     * @return true when the squad keeps its status
+     */
+    static boolean defendsHome(boolean homeFight, boolean ground, SquadStatus status, boolean nearHome) {
+        return homeFight && ground && status == SquadStatus.FIGHT && nearHome;
     }
 
     private void turnToFight(Squad squad) {
@@ -2952,7 +2968,7 @@ public class SquadManager {
             squad.countContestedRetreatEvaluation();
         }
         boolean stagingFailed = stagingFailed(Config.homeContestedFight, squad.getStatus(), squad.getRetreatRoute(),
-                enemyMeasured, squad.isStagingInReach());
+                enemyMeasured, snapshot != null && snapshot.getEscapeBlocked() == 1, squad.isStagingInReach());
         DecisionPath turnPath = retreatTurnPath(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
                 ratio, homeDefendFloor(Config.homeContestedFight, engageThreshold, retreatThreshold), stagingFailed);
         if (squad.isGroundSquad() && (stagingFailed && turnPath != null
@@ -5629,7 +5645,7 @@ public class SquadManager {
                     .filter(enemy -> closesRetreatPath(enemy.getType(), enemy.isAttacking()))
                     .map(Unit::getPosition)
                     .collect(Collectors.toList());
-            plan = groundRetreatRouter.plan(members, rallyPoint, threats);
+            plan = groundRetreatRouter.plan(members, rallyPoint, threats, Config.homeContestedFight);
         }
         RetreatRoute route = plan != null ? plan.getRoute() : RetreatRoute.AWAY;
         squad.setRetreatRoute(route);
@@ -5744,19 +5760,21 @@ public class SquadManager {
 
     /**
      * Whether a squad's staging plan for a contested home is a failed plan: the squad is retreating from a
-     * HOME_CONTESTED plan that keeps it within the threats' reach, against an enemy the sim measured. A failed plan
+     * HOME_CONTESTED plan that keeps it within the threats' reach, against an enemy the sim measured, and it cannot
+     * escape them, see {@link HorizonCombatSimulator.DebugSnapshot#getEscapeBlocked}. A failed plan
      * turns the squad to fight at once instead of after a fight hysteresis window.
      *
      * @param homeFight whether the contested home fight rule is on
      * @param status status the squad holds
      * @param route route of the squad's last ground retreat plan
      * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param escapeBlocked whether the sim reads the squad cannot escape the enemy
      * @param stagingInReach whether the squad's last staging plan keeps it within the threats' reach
      * @return true when the staging plan failed
      */
     static boolean stagingFailed(boolean homeFight, SquadStatus status, RetreatRoute route, boolean enemyMeasured,
-                                 boolean stagingInReach) {
-        return homeFight && stagingInReach && enemyMeasured && status == SquadStatus.RETREAT
+                                 boolean escapeBlocked, boolean stagingInReach) {
+        return homeFight && stagingInReach && enemyMeasured && escapeBlocked && status == SquadStatus.RETREAT
                 && route == RetreatRoute.HOME_CONTESTED;
     }
 

@@ -125,15 +125,31 @@ final class GroundRetreatRouter {
      * @return the plan, or null when no walkable tile lies within {@link #SNAP_TILES} of home
      */
     <K> Plan<K> plan(Map<K, Position> members, Position home, Collection<Position> threats) {
+        return plan(members, home, threats, false);
+    }
+
+    /**
+     * Plans the retreat of the given members, staging a contested home outside {@link #STAGING_REACH} of the threats
+     * when leaveReach is set, and outside {@link #DANGER_RADIUS} otherwise.
+     *
+     * @param members position of each member
+     * @param home where the squad falls back to
+     * @param threats positions of the enemy threats the retreat avoids
+     * @param leaveReach whether a contested home plan stages out of the threats' reach
+     * @param <K> member key
+     * @return the plan, or null when no walkable tile lies within {@link #SNAP_TILES} of home
+     */
+    <K> Plan<K> plan(Map<K, Position> members, Position home, Collection<Position> threats, boolean leaveReach) {
         TilePosition homeTile = snapToWalkable(home.toTilePosition());
         if (homeTile == null) {
             return null;
         }
         int[][] direct = homeDistances(homeTile);
         List<Position> enemies = new ArrayList<>(threats);
-        boolean[][] danger = dangerTiles(enemies);
+        boolean[][] danger = dangerTiles(enemies, DANGER_RADIUS);
         if (homeContested(homeTile, danger)) {
-            return stagingPlan(members, homeTile, direct, danger, enemies);
+            return stagingPlan(members, homeTile, direct, leaveReach ? dangerTiles(enemies, STAGING_REACH) : danger,
+                    enemies);
         }
         int[][] safe = enemies.isEmpty()
                 ? direct
@@ -199,7 +215,7 @@ final class GroundRetreatRouter {
                 elsewhere.add(enemy);
             }
         }
-        boolean[][] blocked = dangerTiles(elsewhere);
+        boolean[][] blocked = dangerTiles(elsewhere, DANGER_RADIUS);
         int[][] around = elsewhere.isEmpty()
                 ? direct
                 : gameMap.groundStepDistances(homeTile, tile -> blocked[tile.getX()][tile.getY()]);
@@ -237,9 +253,9 @@ final class GroundRetreatRouter {
         return cachedHomeDistances;
     }
 
-    private boolean[][] dangerTiles(List<Position> enemies) {
+    private boolean[][] dangerTiles(List<Position> enemies, int radius) {
         boolean[][] danger = new boolean[gameMap.getWidth()][gameMap.getHeight()];
-        int reachTiles = DANGER_RADIUS / 32 + 1;
+        int reachTiles = radius / 32 + 1;
         for (Position enemy : enemies) {
             TilePosition tile = enemy.toTilePosition();
             for (int x = tile.getX() - reachTiles; x <= tile.getX() + reachTiles; x++) {
@@ -247,7 +263,7 @@ final class GroundRetreatRouter {
                     if (x < 0 || y < 0 || x >= gameMap.getWidth() || y >= gameMap.getHeight()) {
                         continue;
                     }
-                    if (center(new TilePosition(x, y)).getDistance(enemy) <= DANGER_RADIUS) {
+                    if (center(new TilePosition(x, y)).getDistance(enemy) <= radius) {
                         danger[x][y] = true;
                     }
                 }
