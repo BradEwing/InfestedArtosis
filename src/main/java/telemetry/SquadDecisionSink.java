@@ -8,6 +8,7 @@ import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+import unit.squad.SquadStatus;
 import unit.squad.SwarmLock;
 
 import java.util.List;
@@ -182,4 +183,15 @@ public interface SquadDecisionSink {
      * @param release why a SWARM_EXPIRED row's squad dropped its lock, NONE on every other event
      */
     void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames, SwarmLock.Release release);
+
+    /**
+     * A ground squad is one of a pair of neighbours that hold opposite statuses, or was turned to its neighbour's
+     * status.
+     *
+     * @param event OPPOSED_PAIR for a sampled pair, or SHARED_VERDICT for a squad turned to its neighbour's status
+     * @param own the squad's status before the event
+     * @param other the squad's status after the event, or its neighbour's status on an OPPOSED_PAIR
+     */
+    default void onNeighbourStatuses(Squad squad, String event, SquadStatus own, SquadStatus other) {
+    }
 }

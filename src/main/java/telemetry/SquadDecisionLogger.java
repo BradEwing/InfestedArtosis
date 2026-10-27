@@ -118,6 +118,12 @@ import java.util.stream.Collectors;
  * <p>sim_retreat_threshold is the retreat threshold the sim judged the row's ratio against, and -1 on a row whose
  * decision never read a sim snapshot.
  *
+ * <p>OPPOSED_PAIR rows are written every {@link #OPPOSED_PAIR_INTERVAL_FRAMES} frames, after the decision step, for
+ * each pair of ground squads within the support radius that hold FIGHT and RETREAT: the row is the first squad's, with
+ * old_status its status and new_status its neighbour's. SHARED_VERDICT rows are written for a squad the shared verdict
+ * turned to its neighbour's status, with old_status the status it left and new_status the one it took, and are written
+ * only with IA_SQUAD_SHARED_VERDICT on.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class SquadDecisionLogger implements SquadDecisionSink {
@@ -155,6 +161,10 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     static final String EVENT_SWARM_REMOVED = "SWARM_REMOVED";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
+    /** Frames between two samples of the opposed pairs. */
+    public static final int OPPOSED_PAIR_INTERVAL_FRAMES = 24;
+    public static final String EVENT_OPPOSED_PAIR = "OPPOSED_PAIR";
+    public static final String EVENT_SHARED_VERDICT = "SHARED_VERDICT";
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
     private static final String EVENT_LOCK_SUPPRESSED = "LOCK_SUPPRESSED";
     private static final String EVENT_SPLIT_SUPPRESSED = "SPLIT_SUPPRESSED";
@@ -667,6 +677,19 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         return String.join(",", gameId, String.valueOf(frame), event, String.valueOf(swarm.getId()),
                 String.valueOf(swarm.getCenter().getX()), String.valueOf(swarm.getCenter().getY()),
                 String.valueOf(swarm.getRemainingFrames()));
+    }
+
+    @Override
+    public void onNeighbourStatuses(Squad squad, String event, SquadStatus own, SquadStatus other) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(row(squad, game.getFrameCount(), event, own, other, decisions.get(squad.getId()), NONE));
+        } catch (RuntimeException e) {
+            disable();
+        }
     }
 
     @Override

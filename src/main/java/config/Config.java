@@ -57,6 +57,12 @@ public final class Config {
      * unless IA_SPEEDLING_GAS_CUT is set to false.
      */
     public static boolean speedlingGasCut = true;
+    /**
+     * Whether neighbouring ground squads share one fight/retreat decision: a neighbour's fight lock holds a FIGHT
+     * squad, and a pair that still holds opposite statuses after the decision step turns to one status. On unless
+     * IA_SQUAD_SHARED_VERDICT is set to false.
+     */
+    public static boolean squadSharedVerdict = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -152,6 +158,7 @@ public final class Config {
         speedParityGate = enabledUnlessFalse(setting(dotenv, "IA_SPEED_PARITY_GATE"));
         speedlingPReactions = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_P_REACTIONS"));
         speedlingGasCut = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_GAS_CUT"));
+        squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
     }
 
     /**

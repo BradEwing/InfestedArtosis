@@ -41,6 +41,7 @@ import telemetry.RallyRelease;
 import telemetry.RetreatRoute;
 import telemetry.RunbyTelemetry;
 import telemetry.RunbyTick;
+import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
 import telemetry.SpeedParityGate;
@@ -95,6 +96,7 @@ public class SquadManager {
     private Squad overlords = new Squad();
 
     public HashSet<Squad> fightSquads = new HashSet<>();
+    private final Set<Squad> simulatedThisFrame = new HashSet<>();
 
     @Getter
     private HashMap<Base, Squad> defenseSquads = new HashMap<>();
@@ -260,6 +262,7 @@ public class SquadManager {
         airHarass.onFrame(now, fightSquads);
         updateStalemateCommit(now);
         Set<Squad> removed = new HashSet<>();
+        simulatedThisFrame.clear();
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
             if (fightSquad.shouldDisband()) {
@@ -285,6 +288,7 @@ public class SquadManager {
         }
 
         fightSquads.removeAll(removed);
+        shareVerdicts(now);
         evadeOutrangedHits(now);
         updateLurkerFixedFire();
         updateLurkerFire(now);
@@ -1733,8 +1737,63 @@ public class SquadManager {
             return;
         }
 
+        simulatedThisFrame.add(squad);
         simulateFightSquad(squad);
         holdCollapseWrap(squad);
+    }
+
+    /**
+     * Whether two squads are within the radius inside which the sim counts one as the other's support.
+     *
+     * @param first one squad
+     * @param second the other squad
+     * @return true when their centers are within {@link #REINFORCEMENT_RADIUS}
+     */
+    private static boolean withinSupportRadius(Squad first, Squad second) {
+        return first.distance(second) <= REINFORCEMENT_RADIUS;
+    }
+
+    /**
+     * Keeps neighbouring ground squads on one decision after every squad has decided, see {@link SharedVerdict}.
+     * Squads that did not run the sim this frame, hold a collapse or a cornered fight, or stand in a Psionic Storm
+     * keep their status. With {@link Config#squadSharedVerdict} off nothing changes, and the opposed pairs are still
+     * sampled to telemetry.
+     *
+     * @param now current frame
+     */
+    private void shareVerdicts(int now) {
+        List<Squad> squads = new ArrayList<>(fightSquads);
+        if (Config.squadSharedVerdict && gameState.getActiveStormPositions().isEmpty()) {
+            List<Squad> frozen = new ArrayList<>();
+            for (Squad squad : squads) {
+                if (!simulatedThisFrame.contains(squad) || collapseHoldsMembers(squad, now)
+                        || squad.isCorneredFightHeld(now)) {
+                    frozen.add(squad);
+                }
+            }
+            for (Squad turned : SharedVerdict.reconcile(squads, frozen, SquadManager::withinSupportRadius, now,
+                    squad -> turnToFight(squad), squad -> turnToRetreat(squad))) {
+                SquadDecisions.neighbourStatuses(turned, SquadDecisionLogger.EVENT_SHARED_VERDICT,
+                        turned.getStatus() == SquadStatus.FIGHT ? SquadStatus.RETREAT : SquadStatus.FIGHT,
+                        turned.getStatus());
+            }
+        }
+        if (now % SquadDecisionLogger.OPPOSED_PAIR_INTERVAL_FRAMES == 0) {
+            for (List<Squad> pair : SharedVerdict.opposedPairs(squads, SquadManager::withinSupportRadius)) {
+                SquadDecisions.neighbourStatuses(pair.get(0), SquadDecisionLogger.EVENT_OPPOSED_PAIR,
+                        pair.get(0).getStatus(), pair.get(1).getStatus());
+            }
+        }
+    }
+
+    private void turnToFight(Squad squad) {
+        assignFightTargets(squad, squad.getMembers(), true);
+        SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_FIGHT);
+    }
+
+    private void turnToRetreat(Squad squad) {
+        assignRetreatTargets(squad, squad.getMembers());
+        SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_RETREAT);
     }
 
     /**
@@ -2609,7 +2668,9 @@ public class SquadManager {
 
         int now = game.getFrameCount();
         boolean retreatLocked = squad.isRetreatLocked(now);
-        boolean fightLocked = squad.isFightLocked(now);
+        boolean fightLocked = squad.isFightLocked(now) || Config.squadSharedVerdict
+                && SharedVerdict.neighbourFightLock(squad, new ArrayList<>(fightSquads),
+                        SquadManager::withinSupportRadius, now);
 
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
