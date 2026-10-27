@@ -185,7 +185,9 @@ final class SharedVerdict {
      * @param squads every fight squad
      * @param frozen squads whose status must not change; they pull their group to their own status
      * @param pinned FIGHT squads that are never turned but do not pull their group: each counts its supply on the
-     *     FIGHT side as a held fight
+     *     FIGHT side as a held fight. A squad turned to FIGHT by a side held only by a pinned squad or a turn-back
+     *     commit, with no fight lock to adopt, gets a fresh fight lock so the turn cannot recur every frame, and a
+     *     RETREAT squad still holding such a lock is not turned again
      * @param near whether two squads are within the support radius
      * @param now current frame
      * @param onFight called for a squad turned to FIGHT, after its status and locks are set
@@ -208,9 +210,11 @@ final class SharedVerdict {
             }
             int fightUntil = 0;
             int retreatUntil = 0;
+            boolean fightHoldWithoutLock = false;
             for (Squad member : group) {
                 if (member.getStatus() == SquadStatus.FIGHT) {
                     fightUntil = Math.max(fightUntil, member.getFightLockedUntilFrame());
+                    fightHoldWithoutLock |= pinned.contains(member) || member.isTurnBackCommitted(now);
                 } else {
                     retreatUntil = Math.max(retreatUntil, member.getRetreatLockedUntilFrame());
                 }
@@ -219,11 +223,17 @@ final class SharedVerdict {
                 if (frozen.contains(member) || pinned.contains(member) || member.getStatus() == target) {
                     continue;
                 }
+                if (target == SquadStatus.FIGHT && fightHoldWithoutLock && member.isFightLocked(now)) {
+                    continue;
+                }
                 SquadStatus from = member.getStatus();
                 member.setStatus(target);
                 if (target == SquadStatus.FIGHT) {
                     member.clearRetreatLock();
                     member.adoptFightLock(fightUntil);
+                    if (fightHoldWithoutLock && fightUntil <= now) {
+                        member.startFightLock(now);
+                    }
                     onFight.accept(member);
                 } else {
                     member.clearFightLock();
