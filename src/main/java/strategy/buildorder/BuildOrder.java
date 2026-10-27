@@ -1773,4 +1773,12 @@ public abstract class BuildOrder {
     public int hashCode() {
         return Objects.hash(getClass().getName(), name);
     }
+
+    /**
+     * Whether this build commits its army early regardless of upgrades: an all-in or a rush. A ground squad of such a
+     * build waits at a standoff point only for the short rush timeout, see unit.squad.Standoff. False by default.
+     */
+    public boolean isAllInOrRush() {
+        return false;
+    }
 }

@@ -321,4 +321,9 @@ public class NinePoolSpeed extends BuildOrder {
     protected boolean macroHatcheryTechReady(TechProgression techProgression) {
         return false;
     }
+
+    @Override
+    public boolean isAllInOrRush() {
+        return true;
+    }
 }

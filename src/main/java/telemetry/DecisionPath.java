@@ -304,5 +304,16 @@ public enum DecisionPath {
      * A ground squad holding FIGHT turned to RETREAT because the group of neighbouring ground squads within the
      * support radius it belongs to took RETREAT, see unit.squad.SharedVerdict.
      */
-    SHARED_VERDICT_RETREAT
+    SHARED_VERDICT_RETREAT,
+
+    /**
+     * A ground squad with a measured enemy farther than its standoff distance gathered at the standoff point instead
+     * of engaging, see {@link unit.squad.Standoff}.
+     */
+    STANDOFF,
+
+    /**
+     * A squad that would have launched was sent to the rear of a larger friendly army that is fighting or gathering.
+     */
+    REINFORCE_REAR
 }
