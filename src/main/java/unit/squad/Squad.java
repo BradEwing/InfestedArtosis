@@ -96,6 +96,7 @@ public class Squad implements Comparable<Squad> {
     private RetreatRoute retreatRoute = RetreatRoute.NONE;
     private int retreatPlanFrame = 0;
     private boolean stagingInReach = false;
+    private boolean escapeBlockedHold = false;
     private int contestedRetreatEvaluations = 0;
     private int contestedDefendTurns = 0;
     private int corneredEngageSinceFrame = -1;

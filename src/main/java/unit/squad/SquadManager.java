@@ -2010,8 +2010,10 @@ public class SquadManager {
     /**
      * Keeps neighbouring ground squads on one decision after every squad has decided, see {@link SharedVerdict}.
      * Squads that did not run the sim this frame, hold a collapse or a cornered fight, or stand in a Psionic Storm
-     * keep their status. With {@link Config#squadSharedVerdict} off nothing changes, and the opposed pairs are still
-     * sampled to telemetry.
+     * keep their status. A ground FIGHT squad standing at one of our bases, and an escape-blocked FIGHT squad, are
+     * pinned: never turned, and counted on the FIGHT side without pulling the group.
+     * With {@link Config#squadSharedVerdict} off nothing changes, and the opposed pairs are still sampled to
+     * telemetry.
      *
      * @param now current frame
      */
@@ -2022,11 +2024,9 @@ public class SquadManager {
             Set<Squad> pinned = new HashSet<>();
             for (Squad squad : squads) {
                 if (!simulatedThisFrame.contains(squad) || collapseHoldsMembers(squad, now)
-                        || squad.isCorneredFightHeld(now)
-                        || defendsHome(Config.homeContestedFight, squad.isGroundSquad(), squad.getStatus(),
-                        standoffExempt(squad))) {
+                        || squad.isCorneredFightHeld(now)) {
                     frozen.add(squad);
-                } else if (escapeBlockedFight(squad)) {
+                } else if (defendsHomeBase(squad) || escapeBlockedFight(squad)) {
                     pinned.add(squad);
                 }
             }
@@ -2047,13 +2047,26 @@ public class SquadManager {
     }
 
     /**
-     * Whether a squad's status is held by defending a base, so the shared verdict cannot turn it: a ground squad in
-     * FIGHT while a base is threatened or it stands within the home defence radius of one.
+     * Whether a squad is defending a base, so the shared verdict never turns it: a ground squad in FIGHT that stands
+     * within the home defence radius of one of our bases, see {@link #isNearHome}. A squad far from every base is
+     * not a defender whatever threatens home.
+     *
+     * @param squad the squad to test
+     * @return true when the squad is pinned at home
+     */
+    private boolean defendsHomeBase(Squad squad) {
+        boolean nearHome = Config.homeContestedFight && squad.getStatus() == SquadStatus.FIGHT
+                && isNearHome(squad.getCenter());
+        return defendsHome(Config.homeContestedFight, squad.isGroundSquad(), squad.getStatus(), nearHome);
+    }
+
+    /**
+     * Whether a squad's status is held by defending a base: a ground squad in FIGHT that stands at one.
      *
      * @param homeFight whether the contested home fight rule is on
      * @param ground whether the squad is a ground squad
      * @param status status the squad holds
-     * @param nearHome whether a base is threatened or the squad stands at one, see {@link #standoffExempt}
+     * @param nearHome whether the squad stands within the home defence radius of a base, see {@link #isNearHome}
      * @return true when the squad keeps its status
      */
     static boolean defendsHome(boolean homeFight, boolean ground, SquadStatus status, boolean nearHome) {
@@ -3004,12 +3017,24 @@ public class SquadManager {
                 enemyMeasured, snapshot != null && snapshot.getEscapeBlocked() == 1, squad.isStagingInReach());
         DecisionPath turnPath = retreatTurnPath(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
                 ratio, homeDefendFloor(Config.homeContestedFight, engageThreshold, retreatThreshold), stagingFailed);
+        double defendFloor = homeDefendFloor(Config.homeContestedFight, engageThreshold, retreatThreshold);
+        if (rearmsEscapeBlockedHold(Config.homeContestedFight, squad.isEscapeBlockedHold(),
+                squad.getStatus(), squad.isCorneredFightHeld(now), enemyMeasured,
+                snapshot != null && snapshot.getEscapeBlocked() == 1)) {
+            squad.holdCorneredFight(now);
+        } else if (squad.isEscapeBlockedHold() && !squad.isCorneredFightHeld(now)) {
+            squad.setEscapeBlockedHold(false);
+        }
         if (squad.isGroundSquad() && (stagingFailed && turnPath != null
                 || squad.corneredEngagePersisted(turnPath != null, now))) {
             if (turnPath == DecisionPath.HOME_CONTESTED_DEFEND) {
                 squad.countContestedDefendTurn();
             }
             turnCorneredSquadToFight(squad, result, now);
+            squad.setEscapeBlockedHold(Config.homeContestedFight && stagingFailed);
+            if (startsDefendCommit(band, Config.homeContestedFight, turnPath, ratio, defendFloor)) {
+                squad.startTurnBackCommit(now);
+            }
             SquadDecisions.pathTaken(squad, turnPath);
             assignFightTargets(squad, managedFighters, true);
             return;
@@ -5813,6 +5838,42 @@ public class SquadManager {
                                  boolean escapeBlocked, boolean stagingInReach) {
         return homeFight && stagingInReach && enemyMeasured && escapeBlocked && status == SquadStatus.RETREAT
                 && route == RetreatRoute.HOME_CONTESTED;
+    }
+
+    /**
+     * Whether a squad that turned to fight on a failed staging plan stays in FIGHT for another fight hysteresis
+     * window when its hold lapses: it still cannot escape an enemy the sim measured, so leaving would only drop it
+     * through RETREAT for a frame before the failed plan turns it back.
+     *
+     * @param homeFight whether the contested home fight rule is on
+     * @param escapeBlockedHold whether the squad's last turn to fight was on a failed staging plan
+     * @param status status the squad holds
+     * @param holdActive whether the cornered fight hold still holds the squad
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param escapeBlocked whether the sim reads the squad cannot escape the enemy
+     * @return true when the hold is renewed
+     */
+    static boolean rearmsEscapeBlockedHold(boolean homeFight, boolean escapeBlockedHold, SquadStatus status,
+                                           boolean holdActive, boolean enemyMeasured, boolean escapeBlocked) {
+        return homeFight && escapeBlockedHold && status == SquadStatus.FIGHT && !holdActive && enemyMeasured
+                && escapeBlocked;
+    }
+
+    /**
+     * Whether a turn to fight on a HOME_CONTESTED defend read opens the turn-back commit: the fight band is on, the
+     * contested home fight rule is on and the read stands at or above the defend floor, so the squad stays in FIGHT
+     * through the band instead of cycling back to RETREAT when the cornered hold lapses.
+     *
+     * @param band whether the fight band is on for this squad
+     * @param homeFight whether the contested home fight rule is on
+     * @param turnPath the path of the turn
+     * @param ratio the sim's overall strength ratio this frame
+     * @param defendFloor the ratio a measured RETREAT read needs to defend, see {@link #homeDefendFloor}
+     * @return true when the commit starts
+     */
+    static boolean startsDefendCommit(boolean band, boolean homeFight, DecisionPath turnPath, double ratio,
+                                      double defendFloor) {
+        return band && homeFight && turnPath == DecisionPath.HOME_CONTESTED_DEFEND && ratio >= defendFloor;
     }
 
     /**
