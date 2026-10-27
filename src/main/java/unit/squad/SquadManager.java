@@ -2015,7 +2015,9 @@ public class SquadManager {
             Set<Squad> frozen = new HashSet<>();
             for (Squad squad : squads) {
                 if (!simulatedThisFrame.contains(squad) || collapseHoldsMembers(squad, now)
-                        || squad.isCorneredFightHeld(now)) {
+                        || squad.isCorneredFightHeld(now)
+                        || defendsHome(Config.homeContestedFight, squad.isGroundSquad(), squad.getStatus(),
+                        standoffExempt(squad))) {
                     frozen.add(squad);
                 }
             }
@@ -2032,6 +2034,20 @@ public class SquadManager {
                         pair.get(0).getStatus(), pair.get(1).getStatus());
             }
         }
+    }
+
+    /**
+     * Whether a squad's status is held by defending a base, so the shared verdict cannot turn it: a ground squad in
+     * FIGHT while a base is threatened or it stands within the home defence radius of one.
+     *
+     * @param homeFight whether the contested home fight rule is on
+     * @param ground whether the squad is a ground squad
+     * @param status status the squad holds
+     * @param nearHome whether a base is threatened or the squad stands at one, see {@link #standoffExempt}
+     * @return true when the squad keeps its status
+     */
+    static boolean defendsHome(boolean homeFight, boolean ground, SquadStatus status, boolean nearHome) {
+        return homeFight && ground && status == SquadStatus.FIGHT && nearHome;
     }
 
     private void turnToFight(Squad squad) {
@@ -2948,9 +2964,18 @@ public class SquadManager {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT_BAND);
         }
 
+        if (squad.getStatus() == SquadStatus.RETREAT && squad.getRetreatRoute() == RetreatRoute.HOME_CONTESTED) {
+            squad.countContestedRetreatEvaluation();
+        }
+        boolean stagingFailed = stagingFailed(Config.homeContestedFight, squad.getStatus(), squad.getRetreatRoute(),
+                enemyMeasured, snapshot != null && snapshot.getEscapeBlocked() == 1, squad.isStagingInReach());
         DecisionPath turnPath = retreatTurnPath(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
-                ratio, engageThreshold);
-        if (squad.isGroundSquad() && squad.corneredEngagePersisted(turnPath != null, now)) {
+                ratio, homeDefendFloor(Config.homeContestedFight, engageThreshold, retreatThreshold), stagingFailed);
+        if (squad.isGroundSquad() && (stagingFailed && turnPath != null
+                || squad.corneredEngagePersisted(turnPath != null, now))) {
+            if (turnPath == DecisionPath.HOME_CONTESTED_DEFEND) {
+                squad.countContestedDefendTurn();
+            }
             turnCorneredSquadToFight(squad, result, now);
             SquadDecisions.pathTaken(squad, turnPath);
             assignFightTargets(squad, managedFighters, true);
@@ -3082,6 +3107,7 @@ public class SquadManager {
     static void turnCorneredSquadToFight(Squad squad, CombatSimulator.CombatResult result, int now) {
         squad.setStatus(SquadStatus.FIGHT);
         squad.setRetreatRoute(RetreatRoute.NONE);
+        squad.setStagingInReach(false);
         squad.clearRetreatLock();
         squad.holdCorneredFight(now);
         updateFightLock(squad, result, false, now);
@@ -5619,10 +5645,11 @@ public class SquadManager {
                     .filter(enemy -> closesRetreatPath(enemy.getType(), enemy.isAttacking()))
                     .map(Unit::getPosition)
                     .collect(Collectors.toList());
-            plan = groundRetreatRouter.plan(members, rallyPoint, threats);
+            plan = groundRetreatRouter.plan(members, rallyPoint, threats, Config.homeContestedFight);
         }
         RetreatRoute route = plan != null ? plan.getRoute() : RetreatRoute.AWAY;
         squad.setRetreatRoute(route);
+        squad.setStagingInReach(plan != null && plan.isInReach());
         squad.setRetreatPlanFrame(now);
         SquadDecisions.retreatRouted(squad, route);
         return plan != null ? plan.getTargets() : computeGroundRetreatTargets(squad);
@@ -5685,13 +5712,70 @@ public class SquadManager {
      */
     static DecisionPath retreatTurnPath(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,
                                         boolean enemyMeasured, double ratio, double engageThreshold) {
+        return retreatTurnPath(status, route, result, enemyMeasured, ratio,
+                homeDefendFloor(false, engageThreshold, 0), false);
+    }
+
+    /**
+     * The path a squad held in retreat takes if it turns to fight on this frame's read, with the defend floor and the
+     * failed staging verdict of {@link #contestedHomeDefends(SquadStatus, RetreatRoute, CombatSimulator.CombatResult,
+     * boolean, double, double, boolean)}.
+     *
+     * @param status status the squad holds
+     * @param route route of the squad's last ground retreat plan
+     * @param result the sim's verdict this frame
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param defendFloor the ratio a measured RETREAT read needs to defend, see {@link #homeDefendFloor}
+     * @param stagingFailed whether the squad's staging plan failed, see {@link #stagingFailed}
+     * @return the turn's decision path, or null
+     */
+    static DecisionPath retreatTurnPath(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,
+                                        boolean enemyMeasured, double ratio, double defendFloor,
+                                        boolean stagingFailed) {
         if (corneredSquadFights(status, route, result)) {
             return DecisionPath.CORNERED_ENGAGE;
         }
-        if (contestedHomeDefends(status, route, result, enemyMeasured, ratio, engageThreshold)) {
+        if (contestedHomeDefends(status, route, result, enemyMeasured, ratio, defendFloor, stagingFailed)) {
             return DecisionPath.HOME_CONTESTED_DEFEND;
         }
         return null;
+    }
+
+    /**
+     * The ratio a measured RETREAT read needs for a HOME_CONTESTED squad to defend. With the contested home fight rule
+     * on it is the sim's retreat threshold, the bottom of the fight band, where a squad that has taken hits and cannot
+     * reach the engage threshold still counts as viable. With it off it is {@link #CONTESTED_HOME_DEFEND_FRACTION} of
+     * the engage threshold. The squad's escape from faster enemies enters through the retreat threshold, which the sim
+     * lowers for a squad that cannot escape.
+     *
+     * @param homeFight whether the contested home fight rule is on
+     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @param retreatThreshold the retreat threshold the sim judged this frame's ratio against
+     * @return the defend floor, 0 or less when no threshold was judged
+     */
+    static double homeDefendFloor(boolean homeFight, double engageThreshold, double retreatThreshold) {
+        return homeFight ? retreatThreshold : CONTESTED_HOME_DEFEND_FRACTION * engageThreshold;
+    }
+
+    /**
+     * Whether a squad's staging plan for a contested home is a failed plan: the squad is retreating from a
+     * HOME_CONTESTED plan that keeps it within the threats' reach, against an enemy the sim measured, and it cannot
+     * escape them, see {@link HorizonCombatSimulator.DebugSnapshot#getEscapeBlocked}. A failed plan
+     * turns the squad to fight at once instead of after a fight hysteresis window.
+     *
+     * @param homeFight whether the contested home fight rule is on
+     * @param status status the squad holds
+     * @param route route of the squad's last ground retreat plan
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param escapeBlocked whether the sim reads the squad cannot escape the enemy
+     * @param stagingInReach whether the squad's last staging plan keeps it within the threats' reach
+     * @return true when the staging plan failed
+     */
+    static boolean stagingFailed(boolean homeFight, SquadStatus status, RetreatRoute route, boolean enemyMeasured,
+                                 boolean escapeBlocked, boolean stagingInReach) {
+        return homeFight && stagingInReach && enemyMeasured && escapeBlocked && status == SquadStatus.RETREAT
+                && route == RetreatRoute.HOME_CONTESTED;
     }
 
     /**
@@ -5711,14 +5795,37 @@ public class SquadManager {
      */
     static boolean contestedHomeDefends(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,
                                         boolean enemyMeasured, double ratio, double engageThreshold) {
+        return contestedHomeDefends(status, route, result, enemyMeasured, ratio,
+                homeDefendFloor(false, engageThreshold, 0), false);
+    }
+
+    /**
+     * Whether a squad held in retreat reads a contested home it should defend: its last retreat plan was
+     * HOME_CONTESTED, and the sim reads ENGAGE, or a RETREAT measured against a real enemy at or above the defend
+     * floor, or its staging plan failed against a measured enemy, see {@link #stagingFailed}.
+     *
+     * @param status status the squad holds
+     * @param route route of the squad's last ground retreat plan
+     * @param result the sim's verdict this frame
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param defendFloor the ratio a measured RETREAT read needs to defend, see {@link #homeDefendFloor}
+     * @param stagingFailed whether the squad's staging plan failed
+     * @return true when this frame's read counts toward the squad defending its home instead of staging
+     */
+    static boolean contestedHomeDefends(SquadStatus status, RetreatRoute route, CombatSimulator.CombatResult result,
+                                        boolean enemyMeasured, double ratio, double defendFloor,
+                                        boolean stagingFailed) {
         if (status != SquadStatus.RETREAT || route != RetreatRoute.HOME_CONTESTED) {
             return false;
         }
         if (result == CombatSimulator.CombatResult.ENGAGE) {
             return true;
         }
-        return result == CombatSimulator.CombatResult.RETREAT && enemyMeasured && engageThreshold > 0
-                && ratio >= CONTESTED_HOME_DEFEND_FRACTION * engageThreshold;
+        if (result != CombatSimulator.CombatResult.RETREAT || !enemyMeasured) {
+            return false;
+        }
+        return stagingFailed || defendFloor > 0 && ratio >= defendFloor;
     }
 
     /**
