@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 /**
  * Keeps neighbouring ground squads that fight side by side on one fight/retreat decision.
@@ -89,6 +90,36 @@ final class SharedVerdict {
             }
         }
         return false;
+    }
+
+    /**
+     * The squads the reconcile considers: those not held at a standoff point this frame. A held squad reports FIGHT
+     * while it gathers away from the enemy, so it adds no FIGHT supply and must not be turned toward the enemy.
+     *
+     * @param squads every fight squad
+     * @param held whether a squad is held at its standoff point this frame
+     * @return the squads that are not held, in order
+     */
+    static List<Squad> withoutHeld(List<Squad> squads, Predicate<Squad> held) {
+        List<Squad> kept = new ArrayList<>();
+        for (Squad squad : squads) {
+            if (!held.test(squad)) {
+                kept.add(squad);
+            }
+        }
+        return kept;
+    }
+
+    /**
+     * Whether a FIGHT squad keeps its status in the reconcile because it cannot escape the enemy's speed.
+     *
+     * @param relativeSpeed {@link config.Config#relativeSpeed}
+     * @param status the squad's status
+     * @param escapeBlocked the squad's escape reading this frame, 1 when it cannot escape
+     * @return true when the squad is frozen
+     */
+    static boolean escapeBlockedFight(boolean relativeSpeed, SquadStatus status, int escapeBlocked) {
+        return relativeSpeed && status == SquadStatus.FIGHT && escapeBlocked == 1;
     }
 
     /**

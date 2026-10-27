@@ -1629,6 +1629,10 @@ public class SquadManager {
 
     private static final String STANDOFF_RETREAT = "RETREAT";
 
+    private static final String STANDOFF_ENGAGED = "ENGAGED";
+
+    private static final String STANDOFF_CONTAIN = "CONTAIN";
+
     private static final int STANDOFF_SNAPSHOT_FRESH_FRAMES = 96;
 
     /** Pixels a Reaver's Scarab or a Carrier's Interceptors reach, which the weapon table does not give. */
@@ -1735,7 +1739,7 @@ public class SquadManager {
         }
     }
 
-    private void closeStandoff(Squad squad, String reason, int now) {
+    static void closeStandoff(Squad squad, String reason, int now) {
         Standoff.Episode episode = squad.getStandoff();
         if (!episode.isActive()) {
             return;
@@ -1912,7 +1916,9 @@ public class SquadManager {
             boolean holdsNow = holdsForSpeedParity(parity);
             boolean engaged = SpeedParity.exemptWhileEngaged(squad.getStatus(),
                     squad.isFightLocked(game.getFrameCount())
-                            || squad.isTurnBackCommitted(game.getFrameCount()));
+                            || squad.isTurnBackCommitted(game.getFrameCount())
+                            || neighbourLockApplies(squad, fightSquads, SquadManager::withinSupportRadius,
+                                    game.getFrameCount()));
             boolean enforced = holdsNow && !engaged
                     && (!closeThreats || squad.getStatus() == SquadStatus.CONTAIN);
             logSpeedParity(squad, parity, enforced);
@@ -2015,11 +2021,12 @@ public class SquadManager {
             Set<Squad> frozen = new HashSet<>();
             for (Squad squad : squads) {
                 if (!simulatedThisFrame.contains(squad) || collapseHoldsMembers(squad, now)
-                        || squad.isCorneredFightHeld(now)) {
+                        || squad.isCorneredFightHeld(now) || escapeBlockedFight(squad)) {
                     frozen.add(squad);
                 }
             }
-            for (SharedVerdict.Turn turn : SharedVerdict.reconcile(squads, frozen,
+            List<Squad> reconciled = SharedVerdict.withoutHeld(squads, squad -> heldAtStandoff(squad, now));
+            for (SharedVerdict.Turn turn : SharedVerdict.reconcile(reconciled, frozen,
                     SquadManager::withinSupportRadius, now, squad -> turnToFight(squad),
                     squad -> turnToRetreat(squad))) {
                 SquadDecisions.neighbourStatuses(turn.squad, SquadDecisionLogger.EVENT_SHARED_VERDICT, turn.from,
@@ -2034,12 +2041,34 @@ public class SquadManager {
         }
     }
 
+    private boolean heldAtStandoff(Squad squad, int now) {
+        Standoff.Episode episode = squad.getStandoff();
+        return Config.staging && episode.isActive() && episode.getTouchedFrame() == now;
+    }
+
+    private boolean escapeBlockedFight(Squad squad) {
+        HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
+        return snapshot != null && SharedVerdict.escapeBlockedFight(Config.relativeSpeed, squad.getStatus(),
+                snapshot.getEscapeBlocked());
+    }
+
+    private void leaveStandoff(Squad squad, String reason, int now) {
+        leaveStandoff(Config.staging, squad, reason, now);
+    }
+
+    static void leaveStandoff(boolean staging, Squad squad, String reason, int now) {
+        if (staging) {
+            closeStandoff(squad, reason, now);
+        }
+    }
+
     private void turnToFight(Squad squad) {
         assignFightTargets(squad, squad.getMembers(), true);
         SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_FIGHT);
     }
 
     private void turnToRetreat(Squad squad) {
+        leaveStandoff(squad, STANDOFF_RETREAT, game.getFrameCount());
         assignRetreatTargets(squad, squad.getMembers());
         SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_RETREAT);
     }
@@ -2984,6 +3013,9 @@ public class SquadManager {
         boolean commitHolds = turnBackCommitHolds(band && squad.isTurnBackCommitted(now), result, enemyMeasured,
                 ratio, retreatThreshold);
         if (fightHeld(squad, now, lockHolds || commitHolds)) {
+            if (neighbourFightLocked) {
+                leaveStandoff(squad, STANDOFF_ENGAGED, now);
+            }
             SquadDecisions.lockSuppressed(squad, neighbourFightLocked && lockHolds
                     ? SquadLock.NEIGHBOUR_FIGHT
                     : fightHoldLock(fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
@@ -5492,6 +5524,7 @@ public class SquadManager {
         }
         SquadDecisions.rallied(squad, RallyReason.JOIN_CONTAIN);
         SquadDecisions.pathTaken(squad, DecisionPath.RALLY);
+        leaveStandoff(squad, STANDOFF_CONTAIN, game.getFrameCount());
         squad.setStatus(SquadStatus.RALLY);
         for (ManagedUnit managedUnit : squad.getMembers()) {
             managedUnit.setRallyPoint(arc.closestPosition(managedUnit.getPosition()));
