@@ -117,6 +117,18 @@ final class SpeedParity {
     }
 
     /**
+     * Whether a squad is exempt from the hold because it is engaged: it is fighting under an active fight lock, so
+     * turning its back on the enemy is left to the combat simulation.
+     *
+     * @param status the squad's status
+     * @param fightLocked true when the squad's fight lock is active
+     * @return true when the hold must not release the squad
+     */
+    static boolean exemptWhileEngaged(SquadStatus status, boolean fightLocked) {
+        return status == SquadStatus.FIGHT && fightLocked;
+    }
+
+    /**
      * Whether a squad is sent home for the enemy's speed this frame. Close threats leave the decision to the combat
      * simulation, since a squad that runs from a faster enemy is caught.
      *
