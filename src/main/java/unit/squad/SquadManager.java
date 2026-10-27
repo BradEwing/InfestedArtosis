@@ -6,6 +6,7 @@ import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import bwapi.WeaponType;
 import bwapi.WalkPosition;
 import bwem.Base;
@@ -13,9 +14,11 @@ import bwem.CPPath;
 import config.Config;
 import info.GameState;
 import info.ScoutData;
+import info.TechProgression;
 import info.map.BaseArea;
 import info.tracking.DarkSwarm;
 import info.tracking.EnemyReachMemory;
+import info.tracking.EnemySpeedTracker;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
@@ -39,6 +42,8 @@ import telemetry.RunbyTelemetry;
 import telemetry.RunbyTick;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
+import telemetry.SpeedParityGate;
+import telemetry.SpeedParityTelemetry;
 import telemetry.SwarmEvent;
 import telemetry.TargetChoices;
 import unit.managed.Lurker;
@@ -1670,6 +1675,15 @@ public class SquadManager {
 
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
+        if (squad.isGroundSquad()) {
+            SpeedParity.Reading parity = readSpeedParity(squad);
+            logSpeedParity(squad, parity);
+            if (SpeedParity.holdsHome(Config.speedParityGate, parity.isHolds(), closeThreats)) {
+                holdForSpeedParity(squad);
+                return;
+            }
+        }
+
         SquadStatus squadStatus = squad.getStatus();
         if (squadStatus == SquadStatus.CONTAIN) {
             clearCombatSimSnapshot(squad);
@@ -2406,7 +2420,62 @@ public class SquadManager {
         return Math.min(moveOutThreshold, MAX_MOVE_OUT_THRESHOLD);
     }
 
+    private SpeedParity.Reading readSpeedParity(Squad squad) {
+        TechProgression techProgression = gameState.getTechProgression();
+        EnemySpeedTracker.Evidence enemyMetabolicBoost = gameState.getEnemySpeedTracker()
+                .evidence(UpgradeType.Metabolic_Boost, game.getFrameCount());
+        return SpeedParity.read(gameState.getOpponentRace(), squad.getComposition(),
+                gameState.getActiveBuildOrder().isAllInOrRush(), gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
+                techProgression.isMetabolicBoost(), techProgression.isAdrenalGlands(), enemyMetabolicBoost);
+    }
+
+    private void logSpeedParity(Squad squad, SpeedParity.Reading parity) {
+        int frame = game.getFrameCount();
+        String enemySpeed = parity.getEnemyEvidence().name();
+        if (parity.getTerm() == SpeedParity.Term.NONE) {
+            SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), parity.getTerm().name(), false,
+                    parity.getOurSpeed(), enemySpeed, 0, 0, 0, 0));
+            return;
+        }
+        SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), parity.getTerm().name(),
+                Config.speedParityGate, parity.getOurSpeed(), enemySpeed, squadStrength(squad),
+                calculateGroundSquadMoveOutThreshold(squad), groundMoveOutThreshold(squad, false),
+                parity.getZerglings()));
+    }
+
+    /**
+     * Describes the move out threshold a squad is held to and the speed parity term contributing to it, for debug
+     * rendering: strength against threshold, the threshold without the speed parity terms, the upgrade term, and the
+     * gate term in force.
+     *
+     * @param squad fight squad
+     * @return the label
+     */
+    public String describeMoveOut(Squad squad) {
+        int strength = squadStrength(squad);
+        int threshold = calculateMoveOutThreshold(squad);
+        if (!squad.isGroundSquad()) {
+            return String.format("move=%d/%d", strength, threshold);
+        }
+        SpeedParity.Reading parity = readSpeedParity(squad);
+        return String.format("move=%d/%d base=%d up=%+d %s", strength, threshold, groundMoveOutThreshold(squad, false),
+                parity.getUpgradeTerm(), parity.getTerm());
+    }
+
+    private void holdForSpeedParity(Squad squad) {
+        if (squad.getStatus() == SquadStatus.CONTAIN) {
+            containEndedOtherwise();
+            endContainment(squad);
+        }
+        clearCombatSimSnapshot(squad);
+        rallySquad(squad, RallyReason.SPEED_PARITY);
+    }
+
     private int calculateGroundSquadMoveOutThreshold(Squad squad) {
+        return groundMoveOutThreshold(squad, Config.speedParityGate);
+    }
+
+    private int groundMoveOutThreshold(Squad squad, boolean withSpeedParity) {
         if (gameState.isLingFloodHold()) {
             return MAX_MOVE_OUT_THRESHOLD;
         }
@@ -2442,6 +2511,7 @@ public class SquadManager {
         }
         threshold += rushThresholdIncrease;
 
+        threshold = SpeedParity.gatedThreshold(withSpeedParity, threshold, readSpeedParity(squad).getUpgradeTerm());
         return Math.min(threshold, MAX_MOVE_OUT_THRESHOLD);
     }
 

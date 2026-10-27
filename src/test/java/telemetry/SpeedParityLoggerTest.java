@@ -1,0 +1,33 @@
+package telemetry;
+
+import bwapi.UpgradeType;
+import info.tracking.EnemySpeedTracker.Evidence;
+import org.junit.jupiter.api.Test;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+class SpeedParityLoggerTest {
+
+    private static int columns(String csv) {
+        return csv.split(",", -1).length;
+    }
+
+    @Test
+    void aGateRowHasOneCellPerHeaderColumn() {
+        SpeedParityGate gate = new SpeedParityGate("squad-1", "SPEED_PARITY", true, "NONE", "PLAUSIBLE", 12, 24, 4,
+                30);
+
+        String row = SpeedParityLogger.gateRow("game", 4000, gate);
+
+        assertEquals(columns(SpeedParityLogger.HEADER), columns(row));
+        assertEquals("game,4000,GATE,squad-1,SPEED_PARITY,true,NONE,PLAUSIBLE,NONE,NONE,12,24,4,30", row);
+    }
+
+    @Test
+    void anEnemySpeedRowHasOneCellPerHeaderColumn() {
+        String row = SpeedParityLogger.enemySpeedRow("game", 6000, UpgradeType.Metabolic_Boost, Evidence.SEEN);
+
+        assertEquals(columns(SpeedParityLogger.HEADER), columns(row));
+        assertEquals("game,6000,ENEMY_SPEED,NONE,NONE,NONE,NONE,NONE,Metabolic_Boost,SEEN,-1,-1,-1,-1", row);
+    }
+}

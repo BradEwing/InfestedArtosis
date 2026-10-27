@@ -487,6 +487,14 @@ public abstract class BuildOrder {
     }
 
     /**
+     * Whether this build commits its army early regardless of upgrades: an all-in or a rush. The speed parity gate
+     * leaves such a build on its own move out timing. False by default.
+     */
+    public boolean isAllInOrRush() {
+        return false;
+    }
+
+    /**
      * Returns true if Overlord Speed should be researched, based on Lair, game time, enemy tech
      * and the reaction trigger.
      *
