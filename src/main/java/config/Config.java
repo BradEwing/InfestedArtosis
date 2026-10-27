@@ -63,6 +63,12 @@ public final class Config {
      * On unless IA_RELATIVE_SPEED is set to false.
      */
     public static boolean relativeSpeed = true;
+    /**
+     * Whether neighbouring ground squads share one fight/retreat decision: a neighbour's fight lock holds a FIGHT
+     * squad, and a pair that still holds opposite statuses after the decision step turns to one status. On unless
+     * IA_SQUAD_SHARED_VERDICT is set to false.
+     */
+    public static boolean squadSharedVerdict = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -159,6 +165,7 @@ public final class Config {
         speedlingPReactions = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_P_REACTIONS"));
         speedlingGasCut = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_GAS_CUT"));
         relativeSpeed = enabledUnlessFalse(setting(dotenv, "IA_RELATIVE_SPEED"));
+        squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
     }
 
     /**
