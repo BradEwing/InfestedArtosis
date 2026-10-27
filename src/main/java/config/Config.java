@@ -69,6 +69,11 @@ public final class Config {
      * IA_SQUAD_SHARED_VERDICT is set to false.
      */
     public static boolean squadSharedVerdict = true;
+    /**
+     * Whether a ground squad gathers at a standoff point outside the enemy army's reach before it engages, and a
+     * reinforcement rallies to the rear of the friendly squad it is joining. On unless IA_STAGING is set to false.
+     */
+    public static boolean staging = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -166,6 +171,7 @@ public final class Config {
         speedlingGasCut = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_GAS_CUT"));
         relativeSpeed = enabledUnlessFalse(setting(dotenv, "IA_RELATIVE_SPEED"));
         squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
+        staging = enabledUnlessFalse(setting(dotenv, "IA_STAGING"));
     }
 
     /**

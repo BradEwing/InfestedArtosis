@@ -335,7 +335,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
             boolean committed = squad.isFightLocked(currentFrame) || squad.isTurnBackCommitted(currentFrame);
             boolean engaged = FightBand.engaged(Config.fightHysteresis, squad.getStatus(), committed,
                     previous != null ? previous.getResult() : null,
-                    previous != null ? previous.getCapturedFrame() : 0, currentFrame, MAX_SIM_GAP_FRAMES);
+                    previous != null ? previous.getCapturedFrame() : 0, currentFrame, MAX_SIM_GAP_FRAMES)
+                    && !(Config.staging && squad.getStandoff().isActive());
             CombatResult single = result;
             result = FightBand.apply(single, engaged, overallRatio, retreatThresh);
             snapshot.setFightBandSinceFrame(FightBand.heldSinceFrame(result != single,

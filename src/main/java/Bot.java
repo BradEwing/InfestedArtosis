@@ -42,6 +42,8 @@ import telemetry.SpeedParityLogger;
 import telemetry.SpeedParityTelemetry;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
+import telemetry.StagingLogger;
+import telemetry.StagingTelemetry;
 import telemetry.TargetChoiceLogger;
 import telemetry.TargetChoices;
 import unit.UnitManager;
@@ -87,6 +89,7 @@ public class Bot extends DefaultBWListener {
     private FixedFireLogger fixedFireLogger;
     private SpeedParityLogger speedParityLogger;
     private GasCutLogger gasCutLogger;
+    private StagingLogger stagingLogger;
 
     @Override
     public void onStart() {
@@ -129,6 +132,7 @@ public class Bot extends DefaultBWListener {
         startFixedFireLogging();
         startSpeedParityLogging();
         startGasCutLogging();
+        startStagingLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -251,6 +255,15 @@ public class Bot extends DefaultBWListener {
         FixedFireTelemetry.register(fixedFireLogger);
     }
 
+    private void startStagingLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        stagingLogger = new StagingLogger(game, combatTelemetry.getGameId());
+        StagingTelemetry.register(stagingLogger);
+    }
+
     private void startSpeedParityLogging() {
         if (!gameState.getConfig().telemetryCombat) {
             return;
@@ -322,6 +335,9 @@ public class Bot extends DefaultBWListener {
         }
         if (speedParityLogger != null) {
             speedParityLogger.onFrame();
+        }
+        if (stagingLogger != null) {
+            stagingLogger.onFrame();
         }
         if (gasCutLogger != null) {
             gasCutLogger.onFrame();
@@ -431,6 +447,9 @@ public class Bot extends DefaultBWListener {
         }
         if (speedParityLogger != null) {
             speedParityLogger.onEnd();
+        }
+        if (stagingLogger != null) {
+            stagingLogger.onEnd();
         }
         if (gasCutLogger != null) {
             gasCutLogger.onEnd();

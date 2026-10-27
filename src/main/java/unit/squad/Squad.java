@@ -74,6 +74,8 @@ public class Squad implements Comparable<Squad> {
     private int simRetreatReleaseFrame = -1;
     @Getter
     private final BunkerRetreatMemory bunkerRetreatMemory = new BunkerRetreatMemory();
+    @Getter
+    private final Standoff.Episode standoff = new Standoff.Episode();
     private AirHarassState harassState;
     private int harassExitFrame = 0;
     private Set<Integer> regroupingIds = new HashSet<>();
