@@ -264,10 +264,10 @@ public class PlanEventLogger implements PlanEventSink {
      * plan created outside the build order's expansion and macro hatchery paths.
      * <p>
      * <p>
-     * speedling_p_reaction is SPEEDLING_P_SUNKEN on the creep colony and sunken plans, and LARVA_BOUND_HATCH on the
+     * speedling_p_reaction is SPEEDLING_P_SUNKEN on the creep colony and sunken plans, and LARVA_BOUND_HATCH or TWO_GATE_HATCH on the
      * hatchery plan, that SpeedlingAllIn's Protoss reactions created ({@link SpeedlingReaction}), written on every row
      * of the plan. It is blank on other plans. SPEEDLING_DRONE_FLOOR rows carry SUSPENDED or RESUMED in item, once per
-     * transition of the drone floor.
+     * transition of the drone floor, prefixed OBSERVED_ when the switch is off and the floor is not held.
      * <p>
      * BANK_SAMPLE rows are written every {@link #BANK_SAMPLE_INTERVAL_FRAMES} frames and leave
      * every plan column empty. minerals and available_minerals are the bank at the sample, and

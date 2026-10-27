@@ -19,15 +19,46 @@ public final class SpeedlingReactions {
      */
     static final int DRONE_FLOOR_LINGER_FRAMES = 120;
 
+    /**
+     * Economy drones below which the suspended drone floor stops holding, so builders lost to the
+     * sunkens and the hatchery the same reactions ask for cannot shrink the economy to nothing.
+     */
+    static final int SUSPENDED_FLOOR_MINIMUM = 8;
+
     private SpeedlingReactions() {
+    }
+
+    /**
+     * Whether the build plans its third hatchery outright: 2Gate or ProxyGate is detected, exactly
+     * the target number of hatcheries are held or planned, and none is on the way.
+     *
+     * @param twoGateOrProxyGate whether 2Gate or ProxyGate is detected
+     * @param hatcheryTotal completed hatcheries plus hatcheries already queued
+     * @param hatcheryTarget the hatchery count the build holds before extra hatcheries
+     * @param unfinishedHatcheries hatchery plans in flight plus hatcheries under construction
+     */
+    static boolean wantsTwoGateHatchery(boolean twoGateOrProxyGate, int hatcheryTotal, int hatcheryTarget,
+                                        int unfinishedHatcheries) {
+        return twoGateOrProxyGate && hatcheryTotal == hatcheryTarget && unfinishedHatcheries == 0;
+    }
+
+    /**
+     * Whether the suspension actually holds the drone floor back this frame.
+     *
+     * @param suspended whether {@link #droneFloorSuspended} holds
+     * @param switchOn {@link config.Config#speedlingPReactions}
+     */
+    static boolean droneFloorApplied(boolean suspended, boolean switchOn) {
+        return suspended && switchOn;
     }
 
     /**
      * Whether the build is larva bound with its bank piling up: no larva is free, zergling plans are
      * queued waiting on larva, the mined bank is at the bar, and no hatchery is already on the way.
      *
-     * <p>The bank is the mined one, reservations ignored. Queued zergling plans reserve it while they
-     * wait, so the unreserved bank stays low exactly when larva is the limit.
+     * <p>The bank is the mined one, reservations ignored. A queued zergling plan reserves nothing
+     * until it is scheduled, so the signal differs from the unreserved bank only by what scheduled
+     * buildings and upgrades hold.
      *
      * @param larva larva not yet handed to a plan
      * @param queuedZerglingPlans zergling plans waiting in the production queue

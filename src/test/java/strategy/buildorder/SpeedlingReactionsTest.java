@@ -129,4 +129,35 @@ class SpeedlingReactionsTest {
         assertEquals("SUSPENDED", SpeedlingAllIn.droneFloorLabel(true, true));
         assertEquals("RESUMED", SpeedlingAllIn.droneFloorLabel(false, true));
     }
+
+    @Test
+    void theSuspendedFloorStopsHoldingBelowTheMinimum() {
+        int target = SpeedlingAllIn.DRONE_TARGET_ONE_BASE;
+        int below = SpeedlingReactions.SUSPENDED_FLOOR_MINIMUM - 1;
+
+        assertTrue(SpeedlingAllIn.shouldPlanDrone(below, target, 0, true, false, true));
+        assertFalse(SpeedlingAllIn.shouldPlanDrone(below + 1, target, 0, true, false, true));
+    }
+
+    @Test
+    void aDetectedTwoGatePlansTheThirdHatcheryOnlyOnce() {
+        assertTrue(SpeedlingReactions.wantsTwoGateHatchery(true, 2, 2, 0));
+        assertFalse(SpeedlingReactions.wantsTwoGateHatchery(false, 2, 2, 0));
+        assertFalse(SpeedlingReactions.wantsTwoGateHatchery(true, 3, 2, 0));
+        assertFalse(SpeedlingReactions.wantsTwoGateHatchery(true, 2, 2, 1));
+        assertTrue(SpeedlingAllIn.shouldPlanHatchery(2, 0, SpeedlingReactions.wantsTwoGateHatchery(true, 2, 2, 0)));
+    }
+
+    @Test
+    void theSuspensionHoldsTheFloorOnlyWithTheSwitchOn() {
+        assertTrue(SpeedlingReactions.droneFloorApplied(true, true));
+        assertFalse(SpeedlingReactions.droneFloorApplied(true, false));
+        assertFalse(SpeedlingReactions.droneFloorApplied(false, true));
+    }
+
+    @Test
+    void aSunkenTargetFollowsTwoGateAndAZealotSeenOnTheSpeedlingBuild() {
+        assertEquals(1, strategy.buildorder.protoss.ProtossReactions.matchupSunkens(false, true, 1,
+                new util.Time(3, 0), 11));
+    }
 }

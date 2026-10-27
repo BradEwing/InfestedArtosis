@@ -13,6 +13,7 @@ import macro.plan.Plan;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
 import macro.plan.SpeedlingReaction;
+import info.tracking.protoss.ProxyGate;
 import strategy.buildorder.protoss.ProtossBase;
 import telemetry.PlanEvents;
 import util.Time;
@@ -66,9 +67,9 @@ import java.util.function.Predicate;
  * extending it, so a detected 2Gate or ProxyGate with a Zealot seen plans a sunken and the emergency
  * zergling target scales with the Zealots and Gateways seen. A third hatchery is planned when the
  * build is larva bound, see {@link SpeedlingReactions#isLarvaBound}, instead of waiting for
- * unreserved minerals that queued zergling plans keep spent. The drone floor is suspended while
+ * unreserved minerals alone, and is planned outright on a detected 2Gate or ProxyGate. The drone floor is suspended while
  * enemy ground combat units are visible at our bases and for {@link SpeedlingReactions#DRONE_FLOOR_LINGER_FRAMES}
- * frames after, so that larva becomes zerglings.
+ * frames after, so that larva becomes zerglings, but only while at least {@link SpeedlingReactions#SUSPENDED_FLOOR_MINIMUM} economy drones stand.
  *
  * <p>Air is the one threat the ground army cannot answer, so {@link #requiredSpores(GameState)}
  * reads the matchup target of whichever race the opponent turns out to be. The Spore branch sits
@@ -199,7 +200,12 @@ public class SpeedlingAllIn extends BuildOrder {
         boolean larvaBoundHatchery = protossReactions
                 && SpeedlingReactions.isLarvaBound(gameState.numLarva(), queuedZerglings,
                 gameState.getResourceCount().minedMinerals(), gameState.unfinishedHatcheries(), SURPLUS_MINERALS);
-        boolean wantHatchery = shouldPlanHatchery(hatcheryTotal, availableMinerals, larvaBoundHatchery);
+        boolean twoGateHatchery = protossReactions
+                && SpeedlingReactions.wantsTwoGateHatchery(
+                gameState.getStrategyTracker().isAnyDetectedStrategy("2Gate", ProxyGate.NAME), hatcheryTotal,
+                HATCHERY_TARGET, gameState.unfinishedHatcheries());
+        boolean wantHatchery = shouldPlanHatchery(hatcheryTotal, availableMinerals,
+                larvaBoundHatchery || twoGateHatchery);
 
         if (shouldExpand(wantHatchery, baseData.currentAndReservedCount())) {
             Plan expansionPlan = this.planNewBase(gameState);
@@ -212,7 +218,9 @@ public class SpeedlingAllIn extends BuildOrder {
         if (wantHatchery) {
             Plan hatcheryPlan = this.planMacroHatchery(gameState);
             if (hatcheryPlan != null) {
-                if (larvaBoundHatchery && !shouldPlanHatchery(hatcheryTotal, availableMinerals)) {
+                if (twoGateHatchery && !shouldPlanHatchery(hatcheryTotal, availableMinerals)) {
+                    hatcheryPlan.setSpeedlingReaction(SpeedlingReaction.TWO_GATE_HATCH);
+                } else if (larvaBoundHatchery && !shouldPlanHatchery(hatcheryTotal, availableMinerals)) {
                     hatcheryPlan.setSpeedlingReaction(SpeedlingReaction.LARVA_BOUND_HATCH);
                 }
                 plans.add(hatcheryPlan);
@@ -401,7 +409,8 @@ public class SpeedlingAllIn extends BuildOrder {
      */
     static boolean shouldPlanDrone(int economyDrones, int droneTarget, int zerglings, boolean canPlanDrone,
                                    boolean owesZergling, boolean droneFloorSuspended) {
-        if (droneFloorSuspended || !canPlanDrone || economyDrones >= droneTarget) {
+        boolean suspendedHere = droneFloorSuspended && economyDrones >= SpeedlingReactions.SUSPENDED_FLOOR_MINIMUM;
+        if (suspendedHere || !canPlanDrone || economyDrones >= droneTarget) {
             return false;
         }
         if (economyDrones < DRONE_TARGET_ONE_BASE) {
@@ -453,10 +462,10 @@ public class SpeedlingAllIn extends BuildOrder {
 
     /**
      * {@link #shouldPlanHatchery(int, int)} that also plans the hatchery when the build is larva
-     * bound, see {@link SpeedlingReactions#isLarvaBound}: queued zergling plans reserve the bank
-     * while they wait for larva, so the unreserved bank never reaches the bar.
+     * bound, see {@link SpeedlingReactions#isLarvaBound}, or a 2Gate asks for it, see
+     * {@link SpeedlingReactions#wantsTwoGateHatchery}.
      *
-     * @param larvaBound whether {@link SpeedlingReactions#isLarvaBound} holds
+     * @param larvaBound whether the larva-bound or 2Gate reaction asks for the hatchery
      */
     static boolean shouldPlanHatchery(int hatcheryTotal, int availableMinerals, boolean larvaBound) {
         if (hatcheryTotal < HATCHERY_TARGET) {
@@ -488,7 +497,7 @@ public class SpeedlingAllIn extends BuildOrder {
             droneFloorSuspended = suspended;
             PlanEvents.speedlingDroneFloor(droneFloorLabel(suspended, Config.speedlingPReactions));
         }
-        return suspended && Config.speedlingPReactions;
+        return SpeedlingReactions.droneFloorApplied(suspended, Config.speedlingPReactions);
     }
 
     static String droneFloorLabel(boolean suspended, boolean applied) {
