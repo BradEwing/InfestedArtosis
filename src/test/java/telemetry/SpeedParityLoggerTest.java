@@ -30,4 +30,12 @@ class SpeedParityLoggerTest {
         assertEquals(columns(SpeedParityLogger.HEADER), columns(row));
         assertEquals("game,6000,ENEMY_SPEED,NONE,NONE,NONE,NONE,NONE,Metabolic_Boost,SEEN,-1,-1,-1,-1", row);
     }
+
+    @Test
+    void anOwnSpeedRowHasOneCellPerHeaderColumn() {
+        String row = SpeedParityLogger.ownSpeedRow("game", 6011);
+
+        assertEquals(columns(SpeedParityLogger.HEADER), columns(row));
+        assertEquals("game,6011,OWN_SPEED,NONE,NONE,NONE,NONE,NONE,Metabolic_Boost,FINISHED,-1,-1,-1,-1", row);
+    }
 }

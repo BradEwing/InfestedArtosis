@@ -21,6 +21,8 @@ import java.util.Map;
  * <p>An ENEMY_SPEED row is written when the evidence for an enemy upgrade first reaches PLAUSIBLE or SEEN, with the
  * upgrade and the level in evidence. Only those columns apply to it; the rest are NONE or -1.
  *
+ * <p>An OWN_SPEED row is written the first frame our Metabolic Boost is finished, with evidence FINISHED.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class SpeedParityLogger implements SpeedParitySink {
@@ -32,6 +34,7 @@ public class SpeedParityLogger implements SpeedParitySink {
 
     static final String EVENT_GATE = "GATE";
     static final String EVENT_ENEMY_SPEED = "ENEMY_SPEED";
+    static final String EVENT_OWN_SPEED = "OWN_SPEED";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
     private static final int NOT_EVALUATED = -1;
@@ -110,6 +113,19 @@ public class SpeedParityLogger implements SpeedParitySink {
         }
     }
 
+    @Override
+    public void onOwnSpeedFinished(int frame) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(ownSpeedRow(gameId, frame));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
     private void disable() {
         disabled = true;
         SpeedParityTelemetry.clear();
@@ -132,5 +148,14 @@ public class SpeedParityLogger implements SpeedParitySink {
         return String.join(",", gameId, String.valueOf(frame), EVENT_ENEMY_SPEED, NONE, NONE, NONE, NONE, NONE,
                 Csv.name(upgrade), evidence.name(), String.valueOf(NOT_EVALUATED), String.valueOf(NOT_EVALUATED),
                 String.valueOf(NOT_EVALUATED), String.valueOf(NOT_EVALUATED));
+    }
+
+    /**
+     * Builds an OWN_SPEED row in {@link #HEADER} order.
+     */
+    static String ownSpeedRow(String gameId, int frame) {
+        return String.join(",", gameId, String.valueOf(frame), EVENT_OWN_SPEED, NONE, NONE, NONE, NONE, NONE,
+                Csv.name(UpgradeType.Metabolic_Boost), "FINISHED", String.valueOf(NOT_EVALUATED),
+                String.valueOf(NOT_EVALUATED), String.valueOf(NOT_EVALUATED), String.valueOf(NOT_EVALUATED));
     }
 }

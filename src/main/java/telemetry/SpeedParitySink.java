@@ -27,4 +27,11 @@ public interface SpeedParitySink {
      * @param evidence the new level, PLAUSIBLE from timing or SEEN from observed movement
      */
     void onEnemySpeed(int frame, UpgradeType upgrade, EnemySpeedTracker.Evidence evidence);
+
+    /**
+     * Our own Metabolic Boost finished.
+     *
+     * @param frame the first frame the upgrade was seen finished
+     */
+    void onOwnSpeedFinished(int frame);
 }

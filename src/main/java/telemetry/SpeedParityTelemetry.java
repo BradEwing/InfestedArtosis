@@ -37,4 +37,12 @@ public final class SpeedParityTelemetry {
         }
         current.onEnemySpeed(frame, upgrade, evidence);
     }
+
+    public static void ownSpeedFinished(int frame) {
+        SpeedParitySink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onOwnSpeedFinished(frame);
+    }
 }

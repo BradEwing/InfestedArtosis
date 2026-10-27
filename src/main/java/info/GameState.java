@@ -171,6 +171,7 @@ public class GameState {
     private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
     private DarkSwarmTracker darkSwarmTracker = new DarkSwarmTracker();
     private EnemySpeedTracker enemySpeedTracker = new EnemySpeedTracker();
+    private boolean ownSpeedReported = false;
     private StrategyTracker strategyTracker;
 
     // Initialized in InformationManager
@@ -406,6 +407,10 @@ public class GameState {
             enemySpeedTracker.observe(frame, type, Math.hypot(enemy.getVelocityX(), enemy.getVelocityY()));
         }
         enemySpeedTracker.refreshTiming(frame, observedUnitTracker);
+        if (!ownSpeedReported && techProgression.isMetabolicBoost()) {
+            ownSpeedReported = true;
+            SpeedParityTelemetry.ownSpeedFinished(frame);
+        }
         for (UpgradeType upgrade : new UpgradeType[] {UpgradeType.Metabolic_Boost, UpgradeType.Muscular_Augments}) {
             EnemySpeedTracker.Evidence rose = enemySpeedTracker.announce(frame, upgrade);
             if (rose != null) {
