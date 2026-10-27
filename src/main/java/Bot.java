@@ -33,6 +33,8 @@ import telemetry.BurrowLogger;
 import telemetry.BurrowTelemetry;
 import telemetry.BunkerLogger;
 import telemetry.BunkerTelemetry;
+import telemetry.GasCutLogger;
+import telemetry.GasCutTelemetry;
 import telemetry.ReachLogger;
 import telemetry.ReachTelemetry;
 import telemetry.RunbyTelemetry;
@@ -84,6 +86,7 @@ public class Bot extends DefaultBWListener {
     private BurrowLogger burrowLogger;
     private FixedFireLogger fixedFireLogger;
     private SpeedParityLogger speedParityLogger;
+    private GasCutLogger gasCutLogger;
 
     @Override
     public void onStart() {
@@ -125,6 +128,7 @@ public class Bot extends DefaultBWListener {
         startBurrowLogging();
         startFixedFireLogging();
         startSpeedParityLogging();
+        startGasCutLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -220,6 +224,15 @@ public class Bot extends DefaultBWListener {
         BunkerTelemetry.register(bunkerLogger);
     }
 
+    private void startGasCutLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        gasCutLogger = new GasCutLogger(game, combatTelemetry.getGameId());
+        GasCutTelemetry.register(gasCutLogger);
+    }
+
     private void startBurrowLogging() {
         if (!gameState.getConfig().telemetryCombat) {
             return;
@@ -309,6 +322,9 @@ public class Bot extends DefaultBWListener {
         }
         if (speedParityLogger != null) {
             speedParityLogger.onFrame();
+        }
+        if (gasCutLogger != null) {
+            gasCutLogger.onFrame();
         }
         combatTelemetry.onFrame();
         debugMap.onFrame();
@@ -415,6 +431,9 @@ public class Bot extends DefaultBWListener {
         }
         if (speedParityLogger != null) {
             speedParityLogger.onEnd();
+        }
+        if (gasCutLogger != null) {
+            gasCutLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }

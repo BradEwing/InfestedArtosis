@@ -330,6 +330,11 @@ public class SpeedlingAllIn extends BuildOrder {
         return holdsSpeedUpgrade(gameState.getProductionQueue());
     }
 
+    @Override
+    public boolean cutsGasAfterSpeed() {
+        return true;
+    }
+
     boolean holdsSpeedUpgrade(ProductionQueue productionQueue) {
         if (openingZerglings.size() < OPENING_ZERGLING_PLANS) {
             return true;

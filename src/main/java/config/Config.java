@@ -52,6 +52,11 @@ public final class Config {
      * IA_SPEEDLING_P_REACTIONS is set to false.
      */
     public static boolean speedlingPReactions = true;
+    /**
+     * Whether a build that cuts gas after Metabolic Boost keeps its drones off gas while no queued plan costs gas. On
+     * unless IA_SPEEDLING_GAS_CUT is set to false.
+     */
+    public static boolean speedlingGasCut = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -146,6 +151,7 @@ public final class Config {
         fightHysteresis = enabledUnlessFalse(setting(dotenv, "IA_FIGHT_HYSTERESIS"));
         speedParityGate = enabledUnlessFalse(setting(dotenv, "IA_SPEED_PARITY_GATE"));
         speedlingPReactions = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_P_REACTIONS"));
+        speedlingGasCut = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_GAS_CUT"));
     }
 
     /**
