@@ -95,6 +95,9 @@ public class Squad implements Comparable<Squad> {
     private final ContainmentReentryCooldown containmentReentryCooldown = new ContainmentReentryCooldown();
     private RetreatRoute retreatRoute = RetreatRoute.NONE;
     private int retreatPlanFrame = 0;
+    private boolean stagingInReach = false;
+    private int contestedRetreatEvaluations = 0;
+    private int contestedDefendTurns = 0;
     private int corneredEngageSinceFrame = -1;
     private int corneredFightHeldUntilFrame = 0;
     protected Time fightHysteresis = new Time(0, 3);
@@ -575,6 +578,20 @@ public class Squad implements Comparable<Squad> {
     public void startAttritionRetreatLock(int currentFrame) {
         startRetreatLock(currentFrame);
         attritionRetreatLock = true;
+    }
+
+    /**
+     * Counts one evaluation of the squad retreating from a HOME_CONTESTED plan, for telemetry.
+     */
+    public void countContestedRetreatEvaluation() {
+        contestedRetreatEvaluations++;
+    }
+
+    /**
+     * Counts one turn to fight of the squad from a HOME_CONTESTED plan, for telemetry.
+     */
+    public void countContestedDefendTurn() {
+        contestedDefendTurns++;
     }
 
     public void clearRetreatLock() {

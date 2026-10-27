@@ -33,7 +33,8 @@ import java.util.function.Predicate;
  * {@link #DANGER_RADIUS} of a threat, so no path home can stay clear of the enemy. The squad is then not cornered but
  * stages outside the enemy: each member walks the path home that avoids every threat not standing on home, and stops
  * at the last tile before the danger radius of those that are. A member inside any danger radius backs out as above
- * to a tile outside it.
+ * to a tile outside it. A contested home plan is in reach when any member's target lies within
+ * {@link #STAGING_REACH} of a threat, see {@link #keepsInReach}.
  */
 final class GroundRetreatRouter {
 
@@ -55,6 +56,12 @@ final class GroundRetreatRouter {
      * Tuning value: tile radius searched for a walkable tile when a member or home stands on one that is not.
      */
     static final int SNAP_TILES = 3;
+    /**
+     * Tuning value: pixels around a seen enemy threat that a contested home staging target must clear to count as
+     * out of its reach. Twice {@link #DANGER_RADIUS}, ten tiles, so a target at the edge of the danger radius, a few
+     * steps from the threat, is within reach.
+     */
+    static final int STAGING_REACH = 2 * DANGER_RADIUS;
 
     private final GameMap gameMap;
     private TilePosition cachedHome;
@@ -73,11 +80,39 @@ final class GroundRetreatRouter {
     static final class Plan<K> {
         private final RetreatRoute route;
         private final Map<K, Position> targets;
+        private final boolean inReach;
 
         Plan(RetreatRoute route, Map<K, Position> targets) {
+            this(route, targets, false);
+        }
+
+        Plan(RetreatRoute route, Map<K, Position> targets, boolean inReach) {
             this.route = route;
             this.targets = targets;
+            this.inReach = inReach;
         }
+    }
+
+    /**
+     * Whether a staging plan keeps any member within {@link #STAGING_REACH} of a threat, which makes it a plan that
+     * does not leave the threats' reach.
+     *
+     * @param targets each member's target, null for a member left out of the route
+     * @param threats positions of the enemy threats
+     * @return true when some target lies within reach of a threat
+     */
+    static boolean keepsInReach(Collection<Position> targets, Collection<Position> threats) {
+        for (Position target : targets) {
+            if (target == null) {
+                continue;
+            }
+            for (Position threat : threats) {
+                if (target.getDistance(threat) <= STAGING_REACH) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /**
@@ -191,7 +226,7 @@ final class GroundRetreatRouter {
                         : escape.target(staging, enemies)));
             }
         }
-        return new Plan<>(RetreatRoute.HOME_CONTESTED, targets);
+        return new Plan<>(RetreatRoute.HOME_CONTESTED, targets, keepsInReach(targets.values(), enemies));
     }
 
     private int[][] homeDistances(TilePosition homeTile) {

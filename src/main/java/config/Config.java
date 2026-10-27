@@ -74,6 +74,12 @@ public final class Config {
      * reinforcement rallies to the rear of the friendly squad it is joining. On unless IA_STAGING is set to false.
      */
     public static boolean staging = true;
+    /**
+     * Whether a ground squad retreating from a contested home defends once its ratio reaches the retreat threshold, and
+     * treats a staging plan that keeps it within the threats' reach as failed. On unless IA_HOME_CONTESTED_FIGHT is
+     * set to false.
+     */
+    public static boolean homeContestedFight = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -172,6 +178,7 @@ public final class Config {
         relativeSpeed = enabledUnlessFalse(setting(dotenv, "IA_RELATIVE_SPEED"));
         squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
         staging = enabledUnlessFalse(setting(dotenv, "IA_STAGING"));
+        homeContestedFight = enabledUnlessFalse(setting(dotenv, "IA_HOME_CONTESTED_FIGHT"));
     }
 
     /**

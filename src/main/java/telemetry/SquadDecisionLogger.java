@@ -152,7 +152,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
             + "air_commitment_release,"
             + "bunker_hold_release,siege_band,siege_band_frames,siege_band_held_frames,"
-            + "sim_retreat_threshold,sim_own_speed_factor,sim_enemy_speed_factor,escape_blocked";
+            + "sim_retreat_threshold,sim_own_speed_factor,sim_enemy_speed_factor,escape_blocked,"
+            + "contested_retreat_evals,contested_defend_turns,contested_staging_in_reach";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -1023,6 +1024,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(siegeBandCells(context));
         fields.addAll(retreatThresholdCells(context));
         fields.addAll(relativeSpeedCells(context));
+        fields.addAll(homeContestedCells(squad));
         return String.join(",", fields);
     }
 
@@ -1098,6 +1100,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(siegeBandCells(context));
         fields.addAll(retreatThresholdCells(context));
         fields.addAll(relativeSpeedCells(context));
+        fields.addAll(homeContestedCells(squad));
         return String.join(",", fields);
     }
 
@@ -1363,6 +1366,22 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     static List<String> relativeSpeedCells(SquadDecision context) {
         return Arrays.asList(Csv.format(context.getOwnSpeedFactor()), Csv.format(context.getEnemySpeedFactor()),
                 String.valueOf(context.getEscapeBlocked()));
+    }
+
+    /**
+     * Builds the contested home cells: the evaluations the squad spent retreating from a HOME_CONTESTED plan
+     * (contested_retreat_evals), the times it turned to fight from one (contested_defend_turns), both cumulative over
+     * the squad's life, and contested_staging_in_reach, 1 when the squad's last staging plan keeps it within the
+     * threats' reach and 0 when not. They are recorded whether or not IA_HOME_CONTESTED_FIGHT acts on them, so the off
+     * arm is measurable.
+     *
+     * @param squad the squad the row is about
+     * @return the evaluations, turns and in reach cells
+     */
+    static List<String> homeContestedCells(Squad squad) {
+        return Arrays.asList(String.valueOf(squad.getContestedRetreatEvaluations()),
+                String.valueOf(squad.getContestedDefendTurns()),
+                String.valueOf(SquadDecision.tristate(squad.isStagingInReach())));
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {

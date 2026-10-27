@@ -7,6 +7,7 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.map.MapTileType;
 import org.junit.jupiter.api.Test;
+import telemetry.DecisionPath;
 import telemetry.RetreatRoute;
 
 import java.util.Arrays;
@@ -20,6 +21,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -327,6 +329,62 @@ class GroundRetreatRouterTest {
                 homeDistance(map, home, tile), "walks the direct path home");
         assertFalse(SquadManager.corneredSquadFights(SquadStatus.RETREAT, plan.getRoute(),
                 CombatSimulator.CombatResult.ENGAGE));
+    }
+
+    @Test
+    void stagingAtTheEdgeOfAnEnemyOfEqualSpeedIsInReachAndTheSquadFightsInstead() {
+        GameMap map = map(OPEN_FIELD);
+        Position home = tileCenter(21, 10);
+        Position enemy = tileCenter(20, 10);
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("ling", tileCenter(13, 10)), home, Collections.singletonList(enemy));
+
+        assertEquals(RetreatRoute.HOME_CONTESTED, plan.getRoute());
+        assertTrue(plan.isInReach(), "the staging point is within the enemy's reach");
+        assertTrue(SquadManager.stagingFailed(true, SquadStatus.RETREAT, plan.getRoute(), true, plan.isInReach()));
+        assertEquals(DecisionPath.HOME_CONTESTED_DEFEND, turn(true, plan.getRoute(), true, 0.3, plan.isInReach()));
+    }
+
+    @Test
+    void stagingTargetsOutsideTheEnemyReachKeepTheRetreat() {
+        GameMap map = map(OPEN_FIELD);
+        Position home = tileCenter(21, 10);
+        Position enemy = tileCenter(20, 10);
+
+        GroundRetreatRouter.Plan<String> plan = new GroundRetreatRouter(map)
+                .plan(Collections.singletonMap("ling", tileCenter(2, 10)), home, Collections.singletonList(enemy));
+
+        assertEquals(RetreatRoute.HOME_CONTESTED, plan.getRoute());
+        assertTrue(plan.getTargets().get("ling").getDistance(enemy) > GroundRetreatRouter.STAGING_REACH);
+        assertFalse(plan.isInReach());
+        assertFalse(SquadManager.stagingFailed(true, SquadStatus.RETREAT, plan.getRoute(), true, plan.isInReach()));
+        assertNull(turn(true, plan.getRoute(), true, 0.3, plan.isInReach()));
+    }
+
+    @Test
+    void aDamagedSquadAtTheRetreatThresholdDefendsOnlyWithTheSwitchOn() {
+        double ratio = 0.9;
+
+        assertEquals(DecisionPath.HOME_CONTESTED_DEFEND,
+                turn(true, RetreatRoute.HOME_CONTESTED, true, ratio, false));
+        assertNull(turn(false, RetreatRoute.HOME_CONTESTED, true, ratio, true));
+        assertNull(SquadManager.retreatTurnPath(SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED,
+                CombatSimulator.CombatResult.RETREAT, true, ratio, 1.25));
+        assertFalse(SquadManager.stagingFailed(false, SquadStatus.RETREAT, RetreatRoute.HOME_CONTESTED, true, true));
+    }
+
+    @Test
+    void anUnmeasuredReadNeverDefendsBecauseOfAFailedPlan() {
+        assertNull(turn(true, RetreatRoute.HOME_CONTESTED, false, 0.1, true));
+        assertNull(turn(true, RetreatRoute.HOME, true, 2, true));
+    }
+
+    private static DecisionPath turn(boolean on, RetreatRoute route, boolean measured, double ratio,
+                                     boolean inReach) {
+        return SquadManager.retreatTurnPath(SquadStatus.RETREAT, route, CombatSimulator.CombatResult.RETREAT,
+                measured, ratio, SquadManager.homeDefendFloor(on, 1.25, 0.8),
+                SquadManager.stagingFailed(on, SquadStatus.RETREAT, route, measured, inReach));
     }
 
     @Test

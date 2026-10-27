@@ -33,7 +33,7 @@ class FightBandTelemetryTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("sim_retreat_threshold", columns[columns.length - 4]);
+        assertEquals("sim_retreat_threshold", columns[columns.length - 7]);
         assertEquals(Collections.singletonList(Csv.format(SquadDecision.NOT_EVALUATED)),
                 SquadDecisionLogger.retreatThresholdCells(context));
         context.setRetreatThreshold(0.7);
