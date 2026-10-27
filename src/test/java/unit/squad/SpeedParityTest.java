@@ -14,7 +14,9 @@ import strategy.buildorder.opener.TwelveHatch;
 import unit.squad.SpeedParity.Reading;
 import unit.squad.SpeedParity.Term;
 
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -181,6 +183,29 @@ class SpeedParityTest {
     @Test
     void aFightingSquadUnderAFightLockIsNotHeld() {
         assertTrue(SpeedParity.exemptWhileEngaged(SquadStatus.FIGHT, true));
+    }
+
+    @Test
+    void aFightingSquadHeldByANeighbourFightLockIsNotHeldWithTheSharedVerdictOn() {
+        boolean saved = Config.squadSharedVerdict;
+        try {
+            Squad locked = new GroundSquad();
+            locked.setStatus(SquadStatus.FIGHT);
+            locked.startFightLock(1000);
+            Squad neighbour = new GroundSquad();
+            neighbour.setStatus(SquadStatus.FIGHT);
+            List<Squad> squads = Arrays.asList(locked, neighbour);
+
+            Config.squadSharedVerdict = true;
+            boolean held = SquadManager.neighbourLockApplies(neighbour, squads, (a, b) -> true, 1001);
+            assertTrue(SpeedParity.exemptWhileEngaged(SquadStatus.FIGHT, held));
+
+            Config.squadSharedVerdict = false;
+            held = SquadManager.neighbourLockApplies(neighbour, squads, (a, b) -> true, 1001);
+            assertFalse(SpeedParity.exemptWhileEngaged(SquadStatus.FIGHT, held));
+        } finally {
+            Config.squadSharedVerdict = saved;
+        }
     }
 
     @Test

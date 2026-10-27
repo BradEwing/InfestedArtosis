@@ -218,6 +218,85 @@ class SharedVerdictTest {
     }
 
     @Test
+    void aSquadHeldAtItsStandoffPointIsNotCountedAndTheRetreatingNeighbourIsNotTurnedToFight() {
+        Squad held = squad(SquadStatus.FIGHT, 24);
+        Squad retreater = squad(SquadStatus.RETREAT, 8);
+        retreater.startRetreatLock(NOW);
+        List<Squad> squads = Arrays.asList(held, retreater);
+
+        List<Squad> considered = SharedVerdict.withoutHeld(squads, squad -> squad == held);
+        List<SharedVerdict.Turn> turns = reconcile(considered, ALWAYS_NEAR);
+
+        assertEquals(Collections.singletonList(retreater), considered);
+        assertTrue(turns.isEmpty());
+        assertEquals(SquadStatus.RETREAT, retreater.getStatus());
+        assertEquals(SquadStatus.FIGHT, held.getStatus());
+    }
+
+    @Test
+    void withoutTheHeldFilterTheLargerStagedSquadWouldTurnTheNeighbour() {
+        Squad held = squad(SquadStatus.FIGHT, 24);
+        Squad retreater = squad(SquadStatus.RETREAT, 8);
+        retreater.startRetreatLock(NOW);
+
+        reconcile(Arrays.asList(held, retreater), ALWAYS_NEAR);
+
+        assertEquals(SquadStatus.FIGHT, retreater.getStatus());
+    }
+
+    @Test
+    void anEscapeBlockedFightSquadIsNotTurnedAndDoesNotDragAHeavierRetreatingNeighbour() {
+        Squad blocked = squad(SquadStatus.FIGHT, 12);
+        Squad retreater = squad(SquadStatus.RETREAT, 40);
+        retreater.startRetreatLock(NOW);
+        List<Squad> squads = Arrays.asList(blocked, retreater);
+
+        assertTrue(SharedVerdict.escapeBlockedFight(true, blocked.getStatus(), 1));
+        List<SharedVerdict.Turn> turns = SharedVerdict.reconcile(squads, Collections.emptySet(),
+                Collections.singleton(blocked), ALWAYS_NEAR, NOW, squad -> { }, squad -> { });
+
+        assertEquals(SquadStatus.FIGHT, blocked.getStatus());
+        assertEquals(SquadStatus.RETREAT, retreater.getStatus());
+        assertTrue(turns.isEmpty());
+    }
+
+    @Test
+    void aPinnedSquadIsNotTurnedToRetreatWhenAnotherFightSquadInTheGroupIs() {
+        Squad blocked = squad(SquadStatus.FIGHT, 12);
+        Squad other = squad(SquadStatus.FIGHT, 6);
+        Squad retreater = squad(SquadStatus.RETREAT, 40);
+        retreater.startRetreatLock(NOW);
+        List<Squad> squads = Arrays.asList(blocked, other, retreater);
+
+        SharedVerdict.reconcile(squads, Collections.emptySet(), Collections.singleton(blocked), ALWAYS_NEAR, NOW,
+                squad -> { }, squad -> { });
+
+        assertEquals(SquadStatus.FIGHT, blocked.getStatus());
+        assertEquals(SquadStatus.RETREAT, other.getStatus());
+    }
+
+    @Test
+    void theEscapeFreezeNeedsTheSwitchAFightStatusAndABlockedReading() {
+        assertFalse(SharedVerdict.escapeBlockedFight(false, SquadStatus.FIGHT, 1));
+        assertFalse(SharedVerdict.escapeBlockedFight(true, SquadStatus.RETREAT, 1));
+        assertFalse(SharedVerdict.escapeBlockedFight(true, SquadStatus.FIGHT, 0));
+        assertFalse(SharedVerdict.escapeBlockedFight(true, SquadStatus.FIGHT, -1));
+    }
+
+    @Test
+    void leavingTheStandoffClosesAnOpenEpisodeOnlyWithStagingOn() {
+        Squad staged = squad(SquadStatus.FIGHT, 10);
+        staged.getStandoff().begin(NOW, null);
+
+        SquadManager.leaveStandoff(false, staged, "ENGAGED", NOW + 1);
+        assertTrue(staged.getStandoff().isActive());
+
+        SquadManager.leaveStandoff(true, staged, "ENGAGED", NOW + 1);
+        assertFalse(staged.getStandoff().isActive());
+        assertTrue(staged.getStandoff().isReleased(NOW + 2));
+    }
+
+    @Test
     void theSwitchGatesTheNeighbourLockInTheProductionHelper() {
         boolean saved = Config.squadSharedVerdict;
         try {
