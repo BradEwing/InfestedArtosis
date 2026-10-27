@@ -146,6 +146,11 @@ public class SpeedlingAllIn extends BuildOrder {
     }
 
     @Override
+    public boolean isAllInOrRush() {
+        return true;
+    }
+
+    @Override
     protected boolean runsContainHeldRounds(GameState gameState) {
         return runsContainHeldRounds(gameState.ourLivingUnitCount(UnitType.Zerg_Zergling));
     }

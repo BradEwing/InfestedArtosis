@@ -36,6 +36,8 @@ import telemetry.BunkerTelemetry;
 import telemetry.ReachLogger;
 import telemetry.ReachTelemetry;
 import telemetry.RunbyTelemetry;
+import telemetry.SpeedParityLogger;
+import telemetry.SpeedParityTelemetry;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
 import telemetry.TargetChoiceLogger;
@@ -81,6 +83,7 @@ public class Bot extends DefaultBWListener {
     private BunkerLogger bunkerLogger;
     private BurrowLogger burrowLogger;
     private FixedFireLogger fixedFireLogger;
+    private SpeedParityLogger speedParityLogger;
 
     @Override
     public void onStart() {
@@ -121,6 +124,7 @@ public class Bot extends DefaultBWListener {
         startBunkerLogging();
         startBurrowLogging();
         startFixedFireLogging();
+        startSpeedParityLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -234,6 +238,15 @@ public class Bot extends DefaultBWListener {
         FixedFireTelemetry.register(fixedFireLogger);
     }
 
+    private void startSpeedParityLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        speedParityLogger = new SpeedParityLogger(game, combatTelemetry.getGameId());
+        SpeedParityTelemetry.register(speedParityLogger);
+    }
+
     private void startPlanEventLogging(BuildOrder opener) {
         if (!gameState.getConfig().logPlanEvents) {
             return;
@@ -293,6 +306,9 @@ public class Bot extends DefaultBWListener {
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onFrame();
+        }
+        if (speedParityLogger != null) {
+            speedParityLogger.onFrame();
         }
         combatTelemetry.onFrame();
         debugMap.onFrame();
@@ -396,6 +412,9 @@ public class Bot extends DefaultBWListener {
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onEnd();
+        }
+        if (speedParityLogger != null) {
+            speedParityLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }
