@@ -2024,9 +2024,9 @@ public class SquadManager {
             Set<Squad> pinned = new HashSet<>();
             for (Squad squad : squads) {
                 if (!simulatedThisFrame.contains(squad) || collapseHoldsMembers(squad, now)
-                        || squad.isCorneredFightHeld(now)) {
+                        || squad.isCorneredFightHeld(now) && !squad.isEscapeBlockedHold()) {
                     frozen.add(squad);
-                } else if (defendsHomeBase(squad) || escapeBlockedFight(squad)) {
+                } else if (squad.isCorneredFightHeld(now) || defendsHomeBase(squad) || escapeBlockedFight(squad)) {
                     pinned.add(squad);
                 }
             }
@@ -3020,7 +3020,7 @@ public class SquadManager {
         double defendFloor = homeDefendFloor(Config.homeContestedFight, engageThreshold, retreatThreshold);
         if (rearmsEscapeBlockedHold(Config.homeContestedFight, squad.isEscapeBlockedHold(),
                 squad.getStatus(), squad.isCorneredFightHeld(now), enemyMeasured,
-                snapshot != null && snapshot.getEscapeBlocked() == 1)) {
+                snapshot != null && snapshot.getEscapeBlocked() == 1) && isNearHome(squad.getCenter())) {
             squad.holdCorneredFight(now);
         } else if (squad.isEscapeBlockedHold() && !squad.isCorneredFightHeld(now)) {
             squad.setEscapeBlockedHold(false);
@@ -5842,8 +5842,9 @@ public class SquadManager {
 
     /**
      * Whether a squad that turned to fight on a failed staging plan stays in FIGHT for another fight hysteresis
-     * window when its hold lapses: it still cannot escape an enemy the sim measured, so leaving would only drop it
-     * through RETREAT for a frame before the failed plan turns it back.
+     * window when its hold lapses while it still stands at home: it still cannot escape an enemy the sim measured,
+     * so leaving would only drop it through RETREAT for a frame before the failed plan turns it back. The hold is
+     * pinned in the shared verdict, never frozen.
      *
      * @param homeFight whether the contested home fight rule is on
      * @param escapeBlockedHold whether the squad's last turn to fight was on a failed staging plan

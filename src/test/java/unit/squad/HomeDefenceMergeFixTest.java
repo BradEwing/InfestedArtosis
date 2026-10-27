@@ -132,6 +132,22 @@ class HomeDefenceMergeFixTest {
     }
 
     @Test
+    void aRetreatingSquadStillHoldingTheFightLockAPinnedSquadGaveItIsNotTurnedAgain() {
+        Squad pinned = squad(SquadStatus.FIGHT, 12);
+        Squad retreater = squad(SquadStatus.RETREAT, 8);
+        retreater.startRetreatLock(NOW);
+        SharedVerdict.reconcile(Arrays.asList(pinned, retreater), Collections.emptySet(),
+                Collections.singleton(pinned), ALWAYS_NEAR, NOW, s -> { }, s -> { });
+        retreater.setStatus(SquadStatus.RETREAT);
+
+        List<SharedVerdict.Turn> turns = SharedVerdict.reconcile(Arrays.asList(pinned, retreater),
+                Collections.emptySet(), Collections.singleton(pinned), ALWAYS_NEAR, NOW + 1, s -> { }, s -> { });
+
+        assertTrue(turns.isEmpty());
+        assertEquals(SquadStatus.RETREAT, retreater.getStatus());
+    }
+
+    @Test
     void aSquadTurnedWithoutAHoldWithNoLockStaysUnlocked() {
         Squad fighter = squad(SquadStatus.FIGHT, 20);
         Squad retreater = squad(SquadStatus.RETREAT, 4);
