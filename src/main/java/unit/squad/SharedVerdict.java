@@ -2,6 +2,7 @@ package unit.squad;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -116,7 +117,7 @@ final class SharedVerdict {
      * @param relativeSpeed {@link config.Config#relativeSpeed}
      * @param status the squad's status
      * @param escapeBlocked the squad's escape reading this frame, 1 when it cannot escape
-     * @return true when the squad is frozen
+     * @return true when the squad is pinned, see the pinned parameter of {@link #reconcile}
      */
     static boolean escapeBlockedFight(boolean relativeSpeed, SquadStatus status, int escapeBlocked) {
         return relativeSpeed && status == SquadStatus.FIGHT && escapeBlocked == 1;
@@ -175,6 +176,25 @@ final class SharedVerdict {
      */
     static List<Turn> reconcile(List<Squad> squads, Set<Squad> frozen, BiPredicate<Squad, Squad> near, int now,
                                 Consumer<Squad> onFight, Consumer<Squad> onRetreat) {
+        return reconcile(squads, frozen, Collections.emptySet(), near, now, onFight, onRetreat);
+    }
+
+    /**
+     * Same as {@link #reconcile(List, Set, BiPredicate, int, Consumer, Consumer)}, with squads that are pinned.
+     *
+     * @param squads every fight squad
+     * @param frozen squads whose status must not change; they pull their group to their own status
+     * @param pinned FIGHT squads that are never turned but do not pull their group: each counts its supply on the
+     *     FIGHT side as a held fight
+     * @param near whether two squads are within the support radius
+     * @param now current frame
+     * @param onFight called for a squad turned to FIGHT, after its status and locks are set
+     * @param onRetreat called for a squad turned to RETREAT, after its status and locks are set
+     * @return the squads that were turned
+     */
+    static List<Turn> reconcile(List<Squad> squads, Set<Squad> frozen, Set<Squad> pinned,
+                                BiPredicate<Squad, Squad> near, int now, Consumer<Squad> onFight,
+                                Consumer<Squad> onRetreat) {
         List<Turn> turns = new ArrayList<>();
         Set<Squad> seen = new HashSet<>();
         for (Squad start : squads) {
@@ -182,7 +202,7 @@ final class SharedVerdict {
                 continue;
             }
             List<Squad> group = group(start, squads, near, seen);
-            SquadStatus target = target(group, frozen, now);
+            SquadStatus target = target(group, frozen, pinned, now);
             if (target == null) {
                 continue;
             }
@@ -196,7 +216,7 @@ final class SharedVerdict {
                 }
             }
             for (Squad member : group) {
-                if (frozen.contains(member) || member.getStatus() == target) {
+                if (frozen.contains(member) || pinned.contains(member) || member.getStatus() == target) {
                     continue;
                 }
                 SquadStatus from = member.getStatus();
@@ -238,7 +258,7 @@ final class SharedVerdict {
         return group;
     }
 
-    private static SquadStatus target(List<Squad> group, Set<Squad> frozen, int now) {
+    private static SquadStatus target(List<Squad> group, Set<Squad> frozen, Set<Squad> pinned, int now) {
         int fightSupply = 0;
         int retreatSupply = 0;
         boolean fightHeld = false;
@@ -249,7 +269,8 @@ final class SharedVerdict {
             boolean fighting = member.getStatus() == SquadStatus.FIGHT;
             if (fighting) {
                 fightSupply += member.getSupply();
-                fightHeld |= member.isFightLocked(now) || member.isTurnBackCommitted(now);
+                fightHeld |= member.isFightLocked(now) || member.isTurnBackCommitted(now)
+                        || pinned.contains(member);
             } else {
                 retreatSupply += member.getSupply();
                 retreatHeld |= member.isRetreatLocked(now);

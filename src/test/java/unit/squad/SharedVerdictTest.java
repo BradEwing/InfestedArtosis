@@ -245,19 +245,34 @@ class SharedVerdictTest {
     }
 
     @Test
-    void anEscapeBlockedFightSquadPullsItsGroupToFightAndIsNotTurned() {
+    void anEscapeBlockedFightSquadIsNotTurnedAndDoesNotDragAHeavierRetreatingNeighbour() {
         Squad blocked = squad(SquadStatus.FIGHT, 12);
-        Squad retreater = squad(SquadStatus.RETREAT, 16);
+        Squad retreater = squad(SquadStatus.RETREAT, 40);
         retreater.startRetreatLock(NOW);
         List<Squad> squads = Arrays.asList(blocked, retreater);
 
         assertTrue(SharedVerdict.escapeBlockedFight(true, blocked.getStatus(), 1));
-        List<SharedVerdict.Turn> turns = SharedVerdict.reconcile(squads, Collections.singleton(blocked),
-                ALWAYS_NEAR, NOW, squad -> { }, squad -> { });
+        List<SharedVerdict.Turn> turns = SharedVerdict.reconcile(squads, Collections.emptySet(),
+                Collections.singleton(blocked), ALWAYS_NEAR, NOW, squad -> { }, squad -> { });
 
         assertEquals(SquadStatus.FIGHT, blocked.getStatus());
-        assertEquals(SquadStatus.FIGHT, retreater.getStatus());
-        assertEquals(1, turns.size());
+        assertEquals(SquadStatus.RETREAT, retreater.getStatus());
+        assertTrue(turns.isEmpty());
+    }
+
+    @Test
+    void aPinnedSquadIsNotTurnedToRetreatWhenAnotherFightSquadInTheGroupIs() {
+        Squad blocked = squad(SquadStatus.FIGHT, 12);
+        Squad other = squad(SquadStatus.FIGHT, 6);
+        Squad retreater = squad(SquadStatus.RETREAT, 40);
+        retreater.startRetreatLock(NOW);
+        List<Squad> squads = Arrays.asList(blocked, other, retreater);
+
+        SharedVerdict.reconcile(squads, Collections.emptySet(), Collections.singleton(blocked), ALWAYS_NEAR, NOW,
+                squad -> { }, squad -> { });
+
+        assertEquals(SquadStatus.FIGHT, blocked.getStatus());
+        assertEquals(SquadStatus.RETREAT, other.getStatus());
     }
 
     @Test

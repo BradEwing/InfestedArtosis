@@ -2019,14 +2019,17 @@ public class SquadManager {
         List<Squad> squads = new ArrayList<>(fightSquads);
         if (Config.squadSharedVerdict && gameState.getActiveStormPositions().isEmpty()) {
             Set<Squad> frozen = new HashSet<>();
+            Set<Squad> pinned = new HashSet<>();
             for (Squad squad : squads) {
                 if (!simulatedThisFrame.contains(squad) || collapseHoldsMembers(squad, now)
-                        || squad.isCorneredFightHeld(now) || escapeBlockedFight(squad)) {
+                        || squad.isCorneredFightHeld(now)) {
                     frozen.add(squad);
+                } else if (escapeBlockedFight(squad)) {
+                    pinned.add(squad);
                 }
             }
             List<Squad> reconciled = SharedVerdict.withoutHeld(squads, squad -> heldAtStandoff(squad, now));
-            for (SharedVerdict.Turn turn : SharedVerdict.reconcile(reconciled, frozen,
+            for (SharedVerdict.Turn turn : SharedVerdict.reconcile(reconciled, frozen, pinned,
                     SquadManager::withinSupportRadius, now, squad -> turnToFight(squad),
                     squad -> turnToRetreat(squad))) {
                 SquadDecisions.neighbourStatuses(turn.squad, SquadDecisionLogger.EVENT_SHARED_VERDICT, turn.from,
@@ -2063,6 +2066,7 @@ public class SquadManager {
     }
 
     private void turnToFight(Squad squad) {
+        leaveStandoff(squad, STANDOFF_ENGAGED, game.getFrameCount());
         assignFightTargets(squad, squad.getMembers(), true);
         SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_FIGHT);
     }
