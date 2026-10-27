@@ -3,6 +3,7 @@ package strategy.buildorder;
 import bwapi.Race;
 import bwapi.UnitType;
 import bwapi.UpgradeType;
+import config.Config;
 import info.BaseData;
 import info.GameState;
 import info.Readiness;
@@ -11,6 +12,10 @@ import macro.ProductionQueue;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import macro.plan.PlanType;
+import macro.plan.SpeedlingReaction;
+import info.tracking.protoss.ProxyGate;
+import strategy.buildorder.protoss.ProtossBase;
+import telemetry.PlanEvents;
 import util.Time;
 
 import java.util.ArrayList;
@@ -53,9 +58,18 @@ import java.util.function.Predicate;
  * level 1 and carapace is skipped, because a second Evolution Chamber upgrade would make
  * {@link TechProgression#needLairForNextEvolutionChamberUpgrades()} true and pull in a Lair.
  *
- * <p>Static defense and rush zerglings are left to {@link #planDefense(GameState)} with the base
- * class defaults. Static defense reaches this build through the race agnostic floors in
- * {@link #requiredSunkens(GameState)}, because it overrides no matchup class of its own.
+ * <p>Static defense and rush zerglings are left to {@link #planDefense(GameState)}. Static defense
+ * reaches this build through {@link #requiredSunkens(GameState)}: the race agnostic floors, and
+ * against Protoss the Protoss sunken target, because it extends no matchup class of its own.
+ *
+ * <p>Against a Protoss opponent, while {@link Config#speedlingPReactions} is on, the build reads the
+ * Protoss matchup's sunken and zergling targets through {@link ProtossBase}'s static helpers without
+ * extending it, so a detected 2Gate or ProxyGate with a Zealot seen plans a sunken and the emergency
+ * zergling target scales with the Zealots and Gateways seen. A third hatchery is planned when the
+ * build is larva bound, see {@link SpeedlingReactions#isLarvaBound}, instead of waiting for
+ * unreserved minerals alone, and is planned outright on a detected 2Gate or ProxyGate. The drone floor is suspended while
+ * enemy ground combat units are visible at our bases and for {@link SpeedlingReactions#DRONE_FLOOR_LINGER_FRAMES}
+ * frames after, so that larva becomes zerglings, but only while at least {@link SpeedlingReactions#SUSPENDED_FLOOR_MINIMUM} economy drones stand.
  *
  * <p>Air is the one threat the ground army cannot answer, so {@link #requiredSpores(GameState)}
  * reads the matchup target of whichever race the opponent turns out to be. The Spore branch sits
@@ -136,6 +150,10 @@ public class SpeedlingAllIn extends BuildOrder {
 
     private final List<Plan> openingZerglings = new ArrayList<>();
 
+    private int lastEnemyAtBasesFrame = Integer.MIN_VALUE / 2;
+
+    private boolean droneFloorSuspended;
+
     public SpeedlingAllIn() {
         super("SpeedlingAllIn");
     }
@@ -179,8 +197,20 @@ public class SpeedlingAllIn extends BuildOrder {
             return plans;
         }
 
+        boolean protossReactions = protossReactions(gameState);
+        boolean droneFloorOff = updateDroneFloor(gameState, gameState.getOpponentRace() == Race.Protoss);
+        int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
         int hatcheryTotal = gameState.hatcheryCount() + Math.max(0, gameState.getPlannedHatcheries());
-        boolean wantHatchery = shouldPlanHatchery(hatcheryTotal, gameState.getResourceCount().availableMinerals());
+        int availableMinerals = gameState.getResourceCount().availableMinerals();
+        boolean larvaBoundHatchery = protossReactions
+                && SpeedlingReactions.isLarvaBound(gameState.numLarva(), queuedZerglings,
+                gameState.getResourceCount().minedMinerals(), gameState.unfinishedHatcheries(), SURPLUS_MINERALS);
+        boolean twoGateHatchery = protossReactions
+                && SpeedlingReactions.wantsTwoGateHatchery(
+                gameState.getStrategyTracker().isAnyDetectedStrategy("2Gate", ProxyGate.NAME), hatcheryTotal,
+                HATCHERY_TARGET, gameState.unfinishedHatcheries());
+        boolean wantHatchery = shouldPlanHatchery(hatcheryTotal, availableMinerals,
+                larvaBoundHatchery || twoGateHatchery);
 
         if (shouldExpand(wantHatchery, baseData.currentAndReservedCount())) {
             Plan expansionPlan = this.planNewBase(gameState);
@@ -193,6 +223,11 @@ public class SpeedlingAllIn extends BuildOrder {
         if (wantHatchery) {
             Plan hatcheryPlan = this.planMacroHatchery(gameState);
             if (hatcheryPlan != null) {
+                if (twoGateHatchery && !shouldPlanHatchery(hatcheryTotal, availableMinerals)) {
+                    hatcheryPlan.setSpeedlingReaction(SpeedlingReaction.TWO_GATE_HATCH);
+                } else if (larvaBoundHatchery && !shouldPlanHatchery(hatcheryTotal, availableMinerals)) {
+                    hatcheryPlan.setSpeedlingReaction(SpeedlingReaction.LARVA_BOUND_HATCH);
+                }
                 plans.add(hatcheryPlan);
                 return plans;
             }
@@ -220,14 +255,13 @@ public class SpeedlingAllIn extends BuildOrder {
             }
         }
 
-        int queuedZerglings = gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling);
         boolean owesZergling = shouldPlanZergling(queuedZerglings, techProgression.isSpawningPool());
 
         int zerglingCount = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
         int usableHatcheries = gameState.structureCount(HATCHERY_READINESS, HATCHERY_TYPES);
         int droneTarget = droneTarget(baseData.currentBaseCount(), usableHatcheries);
         if (shouldPlanDrone(gameState.numEconomyDrones(), droneTarget, zerglingCount, gameState.canPlanDrone(),
-                owesZergling)) {
+                owesZergling, droneFloorOff)) {
             plans.add(this.planUnit(gameState, UnitType.Zerg_Drone));
             return plans;
         }
@@ -368,7 +402,20 @@ public class SpeedlingAllIn extends BuildOrder {
      */
     static boolean shouldPlanDrone(int economyDrones, int droneTarget, int zerglings, boolean canPlanDrone,
                                    boolean owesZergling) {
-        if (!canPlanDrone || economyDrones >= droneTarget) {
+        return shouldPlanDrone(economyDrones, droneTarget, zerglings, canPlanDrone, owesZergling, false);
+    }
+
+    /**
+     * {@link #shouldPlanDrone(int, int, int, boolean, boolean)} with the floor suspended: no drone is
+     * planned while enemy ground army units are in our bases, so the larva a dead drone would have
+     * taken becomes zerglings.
+     *
+     * @param droneFloorSuspended whether the Protoss reaction has suspended the floor this frame
+     */
+    static boolean shouldPlanDrone(int economyDrones, int droneTarget, int zerglings, boolean canPlanDrone,
+                                   boolean owesZergling, boolean droneFloorSuspended) {
+        boolean suspendedHere = droneFloorSuspended && economyDrones >= SpeedlingReactions.SUSPENDED_FLOOR_MINIMUM;
+        if (suspendedHere || !canPlanDrone || economyDrones >= droneTarget) {
             return false;
         }
         if (economyDrones < DRONE_TARGET_ONE_BASE) {
@@ -415,10 +462,98 @@ public class SpeedlingAllIn extends BuildOrder {
      * @param availableMinerals minerals mined and not reserved by a queued plan
      */
     static boolean shouldPlanHatchery(int hatcheryTotal, int availableMinerals) {
+        return shouldPlanHatchery(hatcheryTotal, availableMinerals, false);
+    }
+
+    /**
+     * {@link #shouldPlanHatchery(int, int)} that also plans the hatchery when the build is larva
+     * bound, see {@link SpeedlingReactions#isLarvaBound}, or a 2Gate asks for it, see
+     * {@link SpeedlingReactions#wantsTwoGateHatchery}.
+     *
+     * @param larvaBound whether the larva-bound or 2Gate reaction asks for the hatchery
+     */
+    static boolean shouldPlanHatchery(int hatcheryTotal, int availableMinerals, boolean larvaBound) {
         if (hatcheryTotal < HATCHERY_TARGET) {
             return true;
         }
-        return hatcheryTotal < MAX_HATCHERIES && availableMinerals >= SURPLUS_MINERALS;
+        return hatcheryTotal < MAX_HATCHERIES && (availableMinerals >= SURPLUS_MINERALS || larvaBound);
+    }
+
+    /**
+     * Whether the drone floor is suspended this frame, announcing each change once.
+     *
+     * <p>Enemy ground combat units visible at our bases suspend it against a Protoss opponent. With
+     * {@link Config#speedlingPReactions} off the change is still announced, as an observation, and the
+     * floor is never suspended.
+     *
+     * @return true when no drone may be planned this frame
+     */
+    private boolean updateDroneFloor(GameState gameState, boolean protossOpponent) {
+        if (!protossOpponent) {
+            return false;
+        }
+        int frame = gameState.getGameTime().getFrames();
+        int visible = gameState.visibleEnemyMobileGroundCombatUnitsAtOurBases();
+        if (visible > 0) {
+            lastEnemyAtBasesFrame = frame;
+        }
+        boolean suspended = SpeedlingReactions.droneFloorSuspended(visible, frame - lastEnemyAtBasesFrame);
+        if (suspended != droneFloorSuspended) {
+            droneFloorSuspended = suspended;
+            PlanEvents.speedlingDroneFloor(droneFloorLabel(suspended, Config.speedlingPReactions));
+        }
+        return SpeedlingReactions.droneFloorApplied(suspended, Config.speedlingPReactions);
+    }
+
+    static String droneFloorLabel(boolean suspended, boolean applied) {
+        String change = suspended ? "SUSPENDED" : "RESUMED";
+        return applied ? change : "OBSERVED_" + change;
+    }
+
+    /**
+     * @param switchOn {@link Config#speedlingPReactions}
+     * @param opponentRace the opponent's race
+     * @return true when the Protoss reactions apply
+     */
+    static boolean reactionsActive(boolean switchOn, Race opponentRace) {
+        return switchOn && opponentRace == Race.Protoss;
+    }
+
+    private boolean protossReactions(GameState gameState) {
+        return reactionsActive(Config.speedlingPReactions, gameState.getOpponentRace());
+    }
+
+    /**
+     * The Protoss matchup's sunken target against a Protoss opponent, zero otherwise. The race
+     * agnostic floors in {@link #requiredSunkens(GameState)} still apply above it.
+     */
+    @Override
+    protected int matchupSunkens(GameState gameState) {
+        if (!protossReactions(gameState)) {
+            return super.matchupSunkens(gameState);
+        }
+        return ProtossBase.protossMatchupSunkens(gameState);
+    }
+
+    /**
+     * The Protoss matchup's zergling total against a Protoss opponent, which the emergency defence
+     * plans up to while rushed, scaled by the Zealots and Gateways seen.
+     */
+    @Override
+    protected int zerglingsNeeded(GameState gameState) {
+        if (!protossReactions(gameState)) {
+            return super.zerglingsNeeded(gameState);
+        }
+        return ProtossBase.protossZerglingTarget(gameState);
+    }
+
+    @Override
+    public List<Plan> planDefense(GameState gameState) {
+        List<Plan> plans = super.planDefense(gameState);
+        if (protossReactions(gameState) && ProtossBase.protossMatchupSunkens(gameState) > 0) {
+            SpeedlingReactions.tagSunkenPlans(plans);
+        }
+        return plans;
     }
 
     /**

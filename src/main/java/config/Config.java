@@ -46,6 +46,12 @@ public final class Config {
      * IA_SPEED_PARITY_GATE is set to false.
      */
     public static boolean speedParityGate = true;
+    /**
+     * Whether SpeedlingAllIn answers a Protoss opponent with the Protoss sunken and zergling targets, a larva-bound
+     * hatchery, and a drone floor suspended while enemy ground units are in our bases. On unless
+     * IA_SPEEDLING_P_REACTIONS is set to false.
+     */
+    public static boolean speedlingPReactions = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -139,6 +145,7 @@ public final class Config {
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
         fightHysteresis = enabledUnlessFalse(setting(dotenv, "IA_FIGHT_HYSTERESIS"));
         speedParityGate = enabledUnlessFalse(setting(dotenv, "IA_SPEED_PARITY_GATE"));
+        speedlingPReactions = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_P_REACTIONS"));
     }
 
     /**
