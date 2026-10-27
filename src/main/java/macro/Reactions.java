@@ -395,7 +395,7 @@ public class Reactions {
      * @param plansBuilding plans whose research or construction has begun
      * @return true once research has begun
      */
-    static boolean isSpeedStarted(boolean metabolicBoostResearched, Set<Plan> plansBuilding) {
+    public static boolean isSpeedStarted(boolean metabolicBoostResearched, Set<Plan> plansBuilding) {
         return metabolicBoostResearched || plansBuilding.stream().anyMatch(IS_SPEED_UPGRADE);
     }
 

@@ -124,6 +124,22 @@ public class ProductionQueue implements Iterable<Plan> {
     }
 
     /**
+     * The gas-priced queued plan production reaches first.
+     *
+     * @return the first gas-priced plan in queue order, or null when no queued plan costs gas
+     */
+    public Plan gasDemandHead() {
+        PlanComparator order = new PlanComparator();
+        Plan head = null;
+        for (Plan plan : queue) {
+            if (plan.gasPrice() > 0 && (head == null || order.compare(plan, head) < 0)) {
+                head = plan;
+            }
+        }
+        return head;
+    }
+
+    /**
      * Sums the mineral price of queued unit plans in the advanced unit band. A queued plan has not
      * reserved yet, so these minerals are invisible to the unreserved bank.
      *
