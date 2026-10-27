@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import lombok.Getter;
 import lombok.Value;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.function.Predicate;
 
@@ -135,6 +136,19 @@ public final class Standoff {
             startFrame = -1;
             touchedFrame = -1;
             point = null;
+        }
+
+        void foldFrom(Collection<Episode> sources) {
+            for (Episode source : sources) {
+                releasedUntilFrame = Math.max(releasedUntilFrame, source.releasedUntilFrame);
+                if (source.isActive() && (!isActive() || source.startFrame < startFrame)) {
+                    startFrame = source.startFrame;
+                    point = source.point;
+                }
+                if (source.isActive()) {
+                    touchedFrame = Math.max(touchedFrame, source.touchedFrame);
+                }
+            }
         }
 
         void release(int frame) {
