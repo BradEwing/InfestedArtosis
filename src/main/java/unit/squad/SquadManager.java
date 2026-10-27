@@ -71,6 +71,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
@@ -1754,6 +1755,21 @@ public class SquadManager {
     }
 
     /**
+     * Whether a neighbouring squad's fight lock holds a FIGHT squad, always false with
+     * {@link Config#squadSharedVerdict} off.
+     *
+     * @param squad the squad about to decide
+     * @param squads every fight squad
+     * @param near whether two squads are within the support radius
+     * @param now current frame
+     * @return true when a neighbour's fight lock holds the squad
+     */
+    static boolean neighbourLockApplies(Squad squad, Collection<Squad> squads,
+                                        BiPredicate<Squad, Squad> near, int now) {
+        return Config.squadSharedVerdict && SharedVerdict.neighbourFightLock(squad, squads, near, now);
+    }
+
+    /**
      * Keeps neighbouring ground squads on one decision after every squad has decided, see {@link SharedVerdict}.
      * Squads that did not run the sim this frame, hold a collapse or a cornered fight, or stand in a Psionic Storm
      * keep their status. With {@link Config#squadSharedVerdict} off nothing changes, and the opposed pairs are still
@@ -1764,18 +1780,18 @@ public class SquadManager {
     private void shareVerdicts(int now) {
         List<Squad> squads = new ArrayList<>(fightSquads);
         if (Config.squadSharedVerdict && gameState.getActiveStormPositions().isEmpty()) {
-            List<Squad> frozen = new ArrayList<>();
+            Set<Squad> frozen = new HashSet<>();
             for (Squad squad : squads) {
                 if (!simulatedThisFrame.contains(squad) || collapseHoldsMembers(squad, now)
                         || squad.isCorneredFightHeld(now)) {
                     frozen.add(squad);
                 }
             }
-            for (Squad turned : SharedVerdict.reconcile(squads, frozen, SquadManager::withinSupportRadius, now,
-                    squad -> turnToFight(squad), squad -> turnToRetreat(squad))) {
-                SquadDecisions.neighbourStatuses(turned, SquadDecisionLogger.EVENT_SHARED_VERDICT,
-                        turned.getStatus() == SquadStatus.FIGHT ? SquadStatus.RETREAT : SquadStatus.FIGHT,
-                        turned.getStatus());
+            for (SharedVerdict.Turn turn : SharedVerdict.reconcile(squads, frozen,
+                    SquadManager::withinSupportRadius, now, squad -> turnToFight(squad),
+                    squad -> turnToRetreat(squad))) {
+                SquadDecisions.neighbourStatuses(turn.squad, SquadDecisionLogger.EVENT_SHARED_VERDICT, turn.from,
+                        turn.to);
             }
         }
         if (now % SquadDecisionLogger.OPPOSED_PAIR_INTERVAL_FRAMES == 0) {
@@ -2668,9 +2684,10 @@ public class SquadManager {
 
         int now = game.getFrameCount();
         boolean retreatLocked = squad.isRetreatLocked(now);
-        boolean fightLocked = squad.isFightLocked(now) || Config.squadSharedVerdict
-                && SharedVerdict.neighbourFightLock(squad, new ArrayList<>(fightSquads),
-                        SquadManager::withinSupportRadius, now);
+        boolean ownFightLocked = squad.isFightLocked(now);
+        boolean neighbourFightLocked = !ownFightLocked
+                && neighbourLockApplies(squad, fightSquads, SquadManager::withinSupportRadius, now);
+        boolean fightLocked = ownFightLocked || neighbourFightLocked;
 
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
@@ -2735,7 +2752,9 @@ public class SquadManager {
         boolean commitHolds = turnBackCommitHolds(band && squad.isTurnBackCommitted(now), result, enemyMeasured,
                 ratio, retreatThreshold);
         if (fightHeld(squad, now, lockHolds || commitHolds)) {
-            SquadDecisions.lockSuppressed(squad, fightHoldLock(fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
+            SquadDecisions.lockSuppressed(squad, neighbourFightLocked && lockHolds
+                    ? SquadLock.NEIGHBOUR_FIGHT
+                    : fightHoldLock(fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
             return;

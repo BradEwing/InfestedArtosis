@@ -3,9 +3,9 @@ package unit.squad;
 import config.Config;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.function.BiPredicate;
 
@@ -19,14 +19,31 @@ class SharedVerdictTest {
     private static final BiPredicate<Squad, Squad> ALWAYS_NEAR = (first, second) -> true;
     private static final BiPredicate<Squad, Squad> NEVER_NEAR = (first, second) -> false;
 
+    private static class SizedSquad extends GroundSquad {
+        private final int supply;
+
+        SizedSquad(int supply) {
+            this.supply = supply;
+        }
+
+        @Override
+        public int getSupply() {
+            return supply;
+        }
+    }
+
     private static Squad squad(SquadStatus status) {
-        Squad squad = new GroundSquad();
+        return squad(status, 0);
+    }
+
+    private static Squad squad(SquadStatus status, int supply) {
+        Squad squad = new SizedSquad(supply);
         squad.setStatus(status);
         return squad;
     }
 
-    private static List<Squad> reconcile(List<Squad> squads, BiPredicate<Squad, Squad> near) {
-        return SharedVerdict.reconcile(squads, Collections.emptyList(), near, NOW, squad -> { }, squad -> { });
+    private static List<SharedVerdict.Turn> reconcile(List<Squad> squads, BiPredicate<Squad, Squad> near) {
+        return SharedVerdict.reconcile(squads, Collections.emptySet(), near, NOW, squad -> { }, squad -> { });
     }
 
     @Test
@@ -44,8 +61,8 @@ class SharedVerdictTest {
     @Test
     void anyMixOfLocksLeavesNoOpposedPair() {
         for (int mask = 0; mask < 4; mask++) {
-            Squad fighter = squad(SquadStatus.FIGHT);
-            Squad retreater = squad(SquadStatus.RETREAT);
+            Squad fighter = squad(SquadStatus.FIGHT, 6);
+            Squad retreater = squad(SquadStatus.RETREAT, 4);
             if ((mask & 1) != 0) {
                 fighter.startFightLock(NOW);
             }
@@ -61,48 +78,98 @@ class SharedVerdictTest {
     }
 
     @Test
-    void threeNeighboursEndOnOneStatus() {
-        List<Squad> squads = new ArrayList<>(Arrays.asList(squad(SquadStatus.FIGHT), squad(SquadStatus.RETREAT),
-                squad(SquadStatus.FIGHT)));
+    void aChainOfSquadsSettlesOnOneStatusAndStaysThereOnTheNextFrame() {
+        Squad a = squad(SquadStatus.FIGHT, 10);
+        a.startFightLock(NOW);
+        Squad b = squad(SquadStatus.RETREAT, 5);
+        Squad c = squad(SquadStatus.RETREAT, 20);
+        c.startRetreatLock(NOW);
+        List<Squad> squads = Arrays.asList(a, b, c);
+        BiPredicate<Squad, Squad> chain = (first, second) -> first != second && (first == b || second == b);
 
-        reconcile(squads, ALWAYS_NEAR);
+        List<SharedVerdict.Turn> first = reconcile(squads, chain);
+        List<SharedVerdict.Turn> second = reconcile(squads, chain);
 
-        assertEquals(0, SharedVerdict.countOpposed(squads, ALWAYS_NEAR));
+        assertEquals(0, SharedVerdict.countOpposed(squads, chain));
+        assertTrue(second.isEmpty());
+        assertEquals(first.size(), first.stream().map(turn -> turn.squad).distinct().count());
+        assertEquals(a.getStatus(), b.getStatus());
+        assertEquals(b.getStatus(), c.getStatus());
     }
 
     @Test
-    void aFightLockOnTheFightingSideHoldsTheNeighbourInFight() {
-        Squad fighter = squad(SquadStatus.FIGHT);
-        fighter.startFightLock(NOW);
-        Squad retreater = squad(SquadStatus.RETREAT);
+    void aFrozenSquadPullsItsNeighbourToItsOwnStatus() {
+        Squad frozenFighter = squad(SquadStatus.FIGHT);
+        Squad retreater = squad(SquadStatus.RETREAT, 30);
+        retreater.startRetreatLock(NOW);
 
-        reconcile(Arrays.asList(fighter, retreater), ALWAYS_NEAR);
+        SharedVerdict.reconcile(Arrays.asList(frozenFighter, retreater), Collections.singleton(frozenFighter),
+                ALWAYS_NEAR, NOW, squad -> { }, squad -> { });
 
+        assertEquals(SquadStatus.FIGHT, frozenFighter.getStatus());
         assertEquals(SquadStatus.FIGHT, retreater.getStatus());
-        assertTrue(retreater.isFightLocked(NOW + 1));
-        assertFalse(retreater.isRetreatLocked(NOW + 1));
     }
 
     @Test
-    void aRetreatLockOnTheRetreatingSideHoldsTheNeighbourInRetreat() {
+    void frozenSquadsThatDisagreeLeaveTheGroupAlone() {
         Squad fighter = squad(SquadStatus.FIGHT);
         Squad retreater = squad(SquadStatus.RETREAT);
+
+        List<SharedVerdict.Turn> turns = SharedVerdict.reconcile(Arrays.asList(fighter, retreater),
+                new HashSet<>(Arrays.asList(fighter, retreater)), ALWAYS_NEAR, NOW, squad -> { }, squad -> { });
+
+        assertTrue(turns.isEmpty());
+    }
+
+    @Test
+    void aTurnedSquadAdoptsTheWinningSidesLockAndDropsTheOther() {
+        Squad fighter = squad(SquadStatus.FIGHT, 20);
+        fighter.startFightLock(NOW);
+        Squad retreater = squad(SquadStatus.RETREAT, 4);
+        retreater.startRetreatLock(NOW);
+
+        List<SharedVerdict.Turn> turns = reconcile(Arrays.asList(fighter, retreater), ALWAYS_NEAR);
+
+        assertEquals(1, turns.size());
+        assertEquals(SquadStatus.RETREAT, turns.get(0).from);
+        assertEquals(SquadStatus.FIGHT, turns.get(0).to);
+        assertEquals(fighter.getFightLockedUntilFrame(), retreater.getFightLockedUntilFrame());
+        assertFalse(retreater.isRetreatLocked(NOW));
+    }
+
+    @Test
+    void aSquadTurnedToRetreatLosesItsFightLock() {
+        Squad fighter = squad(SquadStatus.FIGHT, 2);
+        fighter.startFightLock(NOW);
+        Squad retreater = squad(SquadStatus.RETREAT, 20);
         retreater.startRetreatLock(NOW);
 
         reconcile(Arrays.asList(fighter, retreater), ALWAYS_NEAR);
 
         assertEquals(SquadStatus.RETREAT, fighter.getStatus());
-        assertTrue(fighter.isRetreatLocked(NOW + 1));
+        assertFalse(fighter.isFightLocked(NOW));
+        assertTrue(fighter.isRetreatLocked(NOW));
     }
 
     @Test
-    void withoutLocksOrSupplyTheTieGoesToRetreat() {
-        assertFalse(SharedVerdict.fightWins(false, false, 10, 10));
-        assertTrue(SharedVerdict.fightWins(false, false, 11, 10));
-        assertFalse(SharedVerdict.fightWins(false, false, 9, 10));
-        assertTrue(SharedVerdict.fightWins(true, false, 1, 50));
-        assertFalse(SharedVerdict.fightWins(false, true, 50, 1));
-        assertTrue(SharedVerdict.fightWins(true, true, 11, 10));
+    void aLockDoublesASidesSupplyButDoesNotBeatAMuchLargerOne() {
+        assertFalse(SharedVerdict.fightWins(10, false, 10, false));
+        assertTrue(SharedVerdict.fightWins(11, false, 10, false));
+        assertTrue(SharedVerdict.fightWins(6, true, 10, false));
+        assertFalse(SharedVerdict.fightWins(40, false, 21, true));
+        assertTrue(SharedVerdict.fightWins(40, false, 4, true));
+        assertFalse(SharedVerdict.fightWins(10, true, 10, true));
+    }
+
+    @Test
+    void aTurnBackCommitCountsAsAHoldOnTheFightSide() {
+        Squad fighter = squad(SquadStatus.FIGHT, 6);
+        fighter.startTurnBackCommit(NOW);
+        Squad retreater = squad(SquadStatus.RETREAT, 4);
+
+        reconcile(Arrays.asList(fighter, retreater), ALWAYS_NEAR);
+
+        assertEquals(SquadStatus.FIGHT, retreater.getStatus());
     }
 
     @Test
@@ -110,21 +177,9 @@ class SharedVerdictTest {
         Squad fighter = squad(SquadStatus.FIGHT);
         Squad retreater = squad(SquadStatus.RETREAT);
 
-        List<Squad> turned = reconcile(Arrays.asList(fighter, retreater), NEVER_NEAR);
+        List<SharedVerdict.Turn> turned = reconcile(Arrays.asList(fighter, retreater), NEVER_NEAR);
 
         assertTrue(turned.isEmpty());
-        assertEquals(SquadStatus.FIGHT, fighter.getStatus());
-        assertEquals(SquadStatus.RETREAT, retreater.getStatus());
-    }
-
-    @Test
-    void aFrozenSquadKeepsItsStatus() {
-        Squad fighter = squad(SquadStatus.FIGHT);
-        Squad retreater = squad(SquadStatus.RETREAT);
-
-        SharedVerdict.reconcile(Arrays.asList(fighter, retreater), Collections.singletonList(retreater), ALWAYS_NEAR,
-                NOW, squad -> { }, squad -> { });
-
         assertEquals(SquadStatus.FIGHT, fighter.getStatus());
         assertEquals(SquadStatus.RETREAT, retreater.getStatus());
     }
@@ -163,27 +218,21 @@ class SharedVerdictTest {
     }
 
     @Test
-    void theSwitchIsOnByDefault() {
-        assertTrue(Config.squadSharedVerdict);
-    }
-
-    @Test
-    void withTheSwitchOffTheFightLockDecisionIsMainsAndTheNeighbourLockIsIgnored() {
+    void theSwitchGatesTheNeighbourLockInTheProductionHelper() {
         boolean saved = Config.squadSharedVerdict;
         try {
-            Config.squadSharedVerdict = false;
             Squad locked = squad(SquadStatus.FIGHT);
             locked.startFightLock(NOW);
             Squad neighbour = squad(SquadStatus.FIGHT);
             List<Squad> squads = Arrays.asList(locked, neighbour);
 
-            boolean onMain = neighbour.isFightLocked(NOW + 1);
-            boolean fightLocked = onMain || Config.squadSharedVerdict
-                    && SharedVerdict.neighbourFightLock(neighbour, squads, ALWAYS_NEAR, NOW + 1);
+            Config.squadSharedVerdict = false;
+            assertFalse(SquadManager.neighbourLockApplies(neighbour, squads, ALWAYS_NEAR, NOW + 1));
+            assertFalse(SquadManager.fightLockHolds(neighbour.isFightLocked(NOW + 1),
+                    CombatSimulator.CombatResult.RETREAT, true, 1.0, 1.3));
 
-            assertFalse(fightLocked);
-            assertFalse(SquadManager.fightLockHolds(fightLocked, CombatSimulator.CombatResult.RETREAT, true, 1.0,
-                    1.3));
+            Config.squadSharedVerdict = true;
+            assertTrue(SquadManager.neighbourLockApplies(neighbour, squads, ALWAYS_NEAR, NOW + 1));
         } finally {
             Config.squadSharedVerdict = saved;
         }

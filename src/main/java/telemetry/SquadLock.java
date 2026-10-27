@@ -22,5 +22,9 @@ public enum SquadLock {
     /**
      * The commit window a turn back out of a retreat opened held a RETREAT read at or above the retreat threshold.
      */
-    COMMIT_WINDOW
+    COMMIT_WINDOW,
+    /**
+     * A neighbouring ground squad's fight lock held a RETREAT read of a squad whose own fight lock was not active.
+     */
+    NEIGHBOUR_FIGHT
 }

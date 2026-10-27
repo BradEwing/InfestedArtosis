@@ -1,7 +1,10 @@
 package unit.squad;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 
@@ -10,17 +13,33 @@ import java.util.function.Consumer;
  *
  * <p>The sim counts a ground squad's neighbours inside the reinforcement radius as support, yet each squad applies
  * its own verdict, so two such squads can hold FIGHT and RETREAT on the same frame. After every squad has decided,
- * {@link #reconcile} pairs the ground squads that hold FIGHT against ones that hold RETREAT and turns one of the pair
- * to the other's status. A fight lock or a retreat lock held by exactly one of them decides the pair, and otherwise
- * the squad with more supply does, a tie going to RETREAT. The squad that turns takes the matching lock, so its own
- * verdict does not turn it back on the next frame. Before they decide, {@link #neighbourFightLock} lets one squad's
- * active fight lock hold a FIGHT neighbour.
+ * {@link #reconcile} groups the ground squads holding FIGHT or RETREAT into connected groups of squads within the
+ * radius of one another, and gives each group that holds both statuses one status, turning each squad at most once.
+ * A frozen squad, one whose status is held by something other than its verdict, keeps its status and pulls the group
+ * to it. Otherwise the side with more supply wins, a side holding a lock counting double and a tie going to RETREAT.
+ * A squad that turns adopts the remaining lock of the winning side, so its own verdict does not undo the turn at
+ * once. Before they decide, {@link #neighbourFightLock} lets one squad's active fight lock hold a FIGHT neighbour.
  */
 final class SharedVerdict {
 
-    private static final int MAX_PASSES = 3;
+    private static final int LOCK_WEIGHT = 2;
 
     private SharedVerdict() {
+    }
+
+    /**
+     * A squad the shared verdict turned, with the status it left and the one it took.
+     */
+    static final class Turn {
+        final Squad squad;
+        final SquadStatus from;
+        final SquadStatus to;
+
+        Turn(Squad squad, SquadStatus from, SquadStatus to) {
+            this.squad = squad;
+            this.from = from;
+            this.to = to;
+        }
     }
 
     /**
@@ -36,19 +55,16 @@ final class SharedVerdict {
     }
 
     /**
-     * Whether the FIGHT side of an opposed pair wins it.
+     * Whether the FIGHT side of an opposed group wins it. A side's supply counts double while it holds a lock.
      *
-     * @param fightLocked whether the FIGHT squad's fight lock is active
-     * @param retreatLocked whether the RETREAT squad's retreat lock is active
-     * @param fightSupply supply of the FIGHT squad
-     * @param retreatSupply supply of the RETREAT squad
-     * @return true when the pair fights, false when it retreats
+     * @param fightSupply supply of the squads holding FIGHT
+     * @param fightHeld whether one of them holds a fight lock or a turn-back commit
+     * @param retreatSupply supply of the squads holding RETREAT
+     * @param retreatHeld whether one of them holds a retreat lock
+     * @return true when the group fights, false when it retreats
      */
-    static boolean fightWins(boolean fightLocked, boolean retreatLocked, int fightSupply, int retreatSupply) {
-        if (fightLocked != retreatLocked) {
-            return fightLocked;
-        }
-        return fightSupply > retreatSupply;
+    static boolean fightWins(int fightSupply, boolean fightHeld, int retreatSupply, boolean retreatHeld) {
+        return fightSupply * (fightHeld ? LOCK_WEIGHT : 1) > retreatSupply * (retreatHeld ? LOCK_WEIGHT : 1);
     }
 
     /**
@@ -61,7 +77,8 @@ final class SharedVerdict {
      * @param now current frame
      * @return true when a neighbour's fight lock holds the squad
      */
-    static boolean neighbourFightLock(Squad squad, List<Squad> squads, BiPredicate<Squad, Squad> near, int now) {
+    static boolean neighbourFightLock(Squad squad, Collection<Squad> squads, BiPredicate<Squad, Squad> near,
+                                      int now) {
         if (!squad.isGroundSquad() || squad.getStatus() != SquadStatus.FIGHT) {
             return false;
         }
@@ -72,17 +89,6 @@ final class SharedVerdict {
             }
         }
         return false;
-    }
-
-    /**
-     * Counts the pairs of ground squads that hold opposite statuses within the radius.
-     *
-     * @param squads every fight squad
-     * @param near whether two squads are within the radius
-     * @return the number of opposed pairs
-     */
-    static int countOpposed(List<Squad> squads, BiPredicate<Squad, Squad> near) {
-        return opposedPairs(squads, near).size();
     }
 
     /**
@@ -114,50 +120,127 @@ final class SharedVerdict {
     }
 
     /**
-     * Turns one squad of every opposed pair to the status of the other until no pair is opposed, or the pass limit is
-     * reached. A pair with a squad in {@code frozen} is left as it is.
+     * Counts the pairs of ground squads that hold opposite statuses within the radius.
      *
      * @param squads every fight squad
-     * @param frozen squads whose status must not change
+     * @param near whether two squads are within the radius
+     * @return the number of opposed pairs
+     */
+    static int countOpposed(List<Squad> squads, BiPredicate<Squad, Squad> near) {
+        return opposedPairs(squads, near).size();
+    }
+
+    /**
+     * Gives every connected group of neighbouring ground squads that holds both FIGHT and RETREAT one status.
+     *
+     * @param squads every fight squad
+     * @param frozen squads whose status must not change; they pull their group to their own status, and a group
+     *     whose frozen squads disagree is left as it is
      * @param near whether two squads are within the support radius
      * @param now current frame
-     * @param onFight called for a squad turned to FIGHT, after its status and lock are set
-     * @param onRetreat called for a squad turned to RETREAT, after its status and lock are set
+     * @param onFight called for a squad turned to FIGHT, after its status and locks are set
+     * @param onRetreat called for a squad turned to RETREAT, after its status and locks are set
      * @return the squads that were turned
      */
-    static List<Squad> reconcile(List<Squad> squads, List<Squad> frozen, BiPredicate<Squad, Squad> near, int now,
-                                 Consumer<Squad> onFight, Consumer<Squad> onRetreat) {
-        List<Squad> turned = new ArrayList<>();
-        for (int pass = 0; pass < MAX_PASSES; pass++) {
-            boolean changed = false;
-            for (List<Squad> pair : opposedPairs(squads, near)) {
-                if (frozen.contains(pair.get(0)) || frozen.contains(pair.get(1))) {
-                    continue;
-                }
-                Squad fighter = pair.get(0).getStatus() == SquadStatus.FIGHT ? pair.get(0) : pair.get(1);
-                Squad retreater = fighter == pair.get(0) ? pair.get(1) : pair.get(0);
-                if (fighter.getStatus() != SquadStatus.FIGHT || retreater.getStatus() != SquadStatus.RETREAT) {
-                    continue;
-                }
-                if (fightWins(fighter.isFightLocked(now), retreater.isRetreatLocked(now), fighter.getSupply(),
-                        retreater.getSupply())) {
-                    retreater.setStatus(SquadStatus.FIGHT);
-                    retreater.clearRetreatLock();
-                    retreater.startFightLock(now);
-                    onFight.accept(retreater);
-                    turned.add(retreater);
-                } else {
-                    fighter.setStatus(SquadStatus.RETREAT);
-                    fighter.startRetreatLock(now);
-                    onRetreat.accept(fighter);
-                    turned.add(fighter);
-                }
-                changed = true;
+    static List<Turn> reconcile(List<Squad> squads, Set<Squad> frozen, BiPredicate<Squad, Squad> near, int now,
+                                Consumer<Squad> onFight, Consumer<Squad> onRetreat) {
+        List<Turn> turns = new ArrayList<>();
+        Set<Squad> seen = new HashSet<>();
+        for (Squad start : squads) {
+            if (seen.contains(start) || !decided(start)) {
+                continue;
             }
-            if (!changed) {
-                break;
+            List<Squad> group = group(start, squads, near, seen);
+            SquadStatus target = target(group, frozen, now);
+            if (target == null) {
+                continue;
+            }
+            int fightUntil = 0;
+            int retreatUntil = 0;
+            for (Squad member : group) {
+                if (member.getStatus() == SquadStatus.FIGHT) {
+                    fightUntil = Math.max(fightUntil, member.getFightLockedUntilFrame());
+                } else {
+                    retreatUntil = Math.max(retreatUntil, member.getRetreatLockedUntilFrame());
+                }
+            }
+            for (Squad member : group) {
+                if (frozen.contains(member) || member.getStatus() == target) {
+                    continue;
+                }
+                SquadStatus from = member.getStatus();
+                member.setStatus(target);
+                if (target == SquadStatus.FIGHT) {
+                    member.clearRetreatLock();
+                    member.adoptFightLock(fightUntil);
+                    onFight.accept(member);
+                } else {
+                    member.clearFightLock();
+                    member.adoptRetreatLock(retreatUntil);
+                    onRetreat.accept(member);
+                }
+                turns.add(new Turn(member, from, target));
             }
         }
-        return turned;
+        return turns;
+    }
+
+    private static boolean decided(Squad squad) {
+        return squad.isGroundSquad()
+                && (squad.getStatus() == SquadStatus.FIGHT || squad.getStatus() == SquadStatus.RETREAT);
+    }
+
+    private static List<Squad> group(Squad start, List<Squad> squads, BiPredicate<Squad, Squad> near,
+                                     Set<Squad> seen) {
+        List<Squad> group = new ArrayList<>();
+        group.add(start);
+        seen.add(start);
+        for (int i = 0; i < group.size(); i++) {
+            Squad current = group.get(i);
+            for (Squad other : squads) {
+                if (!seen.contains(other) && decided(other) && near.test(current, other)) {
+                    seen.add(other);
+                    group.add(other);
+                }
+            }
+        }
+        return group;
+    }
+
+    private static SquadStatus target(List<Squad> group, Set<Squad> frozen, int now) {
+        int fightSupply = 0;
+        int retreatSupply = 0;
+        boolean fightHeld = false;
+        boolean retreatHeld = false;
+        boolean frozenFight = false;
+        boolean frozenRetreat = false;
+        for (Squad member : group) {
+            boolean fighting = member.getStatus() == SquadStatus.FIGHT;
+            if (fighting) {
+                fightSupply += member.getSupply();
+                fightHeld |= member.isFightLocked(now) || member.isTurnBackCommitted(now);
+            } else {
+                retreatSupply += member.getSupply();
+                retreatHeld |= member.isRetreatLocked(now);
+            }
+            if (frozen.contains(member)) {
+                frozenFight |= fighting;
+                frozenRetreat |= !fighting;
+            }
+        }
+        boolean hasFight = false;
+        boolean hasRetreat = false;
+        for (Squad member : group) {
+            hasFight |= member.getStatus() == SquadStatus.FIGHT;
+            hasRetreat |= member.getStatus() == SquadStatus.RETREAT;
+        }
+        if (!hasFight || !hasRetreat || frozenFight && frozenRetreat) {
+            return null;
+        }
+        if (frozenFight || frozenRetreat) {
+            return frozenFight ? SquadStatus.FIGHT : SquadStatus.RETREAT;
+        }
+        return fightWins(fightSupply, fightHeld, retreatSupply, retreatHeld) ? SquadStatus.FIGHT
+                : SquadStatus.RETREAT;
     }
 }

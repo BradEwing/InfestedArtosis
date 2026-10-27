@@ -513,6 +513,31 @@ public class Squad implements Comparable<Squad> {
         return fightLockedUntilFrame > 0 && currentFrame < fightLockedUntilFrame + fightHysteresis.getFrames();
     }
 
+    /**
+     * Holds the fight lock until the given frame at the latest, without starting a new window.
+     *
+     * @param untilFrame frame the adopted lock ends
+     */
+    public void adoptFightLock(int untilFrame) {
+        fightLockedUntilFrame = Math.max(fightLockedUntilFrame, untilFrame);
+    }
+
+    /**
+     * Holds the retreat lock until the given frame at the latest, without starting a new window.
+     *
+     * @param untilFrame frame the adopted lock ends
+     */
+    public void adoptRetreatLock(int untilFrame) {
+        retreatLockedUntilFrame = Math.max(retreatLockedUntilFrame, untilFrame);
+    }
+
+    /**
+     * Drops the fight lock.
+     */
+    public void clearFightLock() {
+        fightLockedUntilFrame = 0;
+    }
+
     public void startRetreatLock(int currentFrame) {
         retreatLockedUntilFrame = currentFrame + retreatHysteresis.getFrames();
         attritionRetreatLock = false;
