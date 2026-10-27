@@ -7,6 +7,7 @@ import bwapi.Unit;
 import bwapi.UnitSizeType;
 import bwapi.UnitType;
 import bwapi.WeaponType;
+import config.Config;
 import info.GameState;
 import info.TechProgression;
 import info.tracking.DarkSwarm;
@@ -293,15 +294,22 @@ public class HorizonCombatSimulator implements CombatSimulator {
         snapshot.setOverallRatio(overallRatio);
 
         double engageThresh = engageThreshold(gameState.getOpponentRace());
-        double retreatThresh = retreatThreshold(gameState.getOpponentRace());
         if (ownStaticDefense.coversThreat) {
             engageThresh = Math.min(engageThresh, DEFAULT_ENGAGE_THRESHOLD);
         }
+        double retreatThresh = FightBand.retreatThreshold(retreatThreshold(gameState.getOpponentRace()), engageThresh);
 
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
 
         if (!airSquad) {
+            DebugSnapshot previous = lastSnapshots.get(squad.getId());
+            boolean engaged = previous != null && FightBand.engaged(Config.fightHysteresis, squad.getStatus(),
+                    previous.getResult(), previous.getCapturedFrame(), currentFrame, MAX_SIM_GAP_FRAMES);
+            CombatResult single = result;
+            result = FightBand.apply(single, engaged, overallRatio, retreatThresh);
+            snapshot.setFightBandSinceFrame(FightBand.heldSinceFrame(result != single,
+                    engaged ? previous.getFightBandSinceFrame() : -1, currentFrame));
             boolean tankInBand = SiegeBandHysteresis.inBand(nearestSiegedTank);
             CombatResult raw = result;
             boolean retreating = squad.getStatus() == SquadStatus.RETREAT
@@ -1368,7 +1376,14 @@ public class HorizonCombatSimulator implements CombatSimulator {
         }
     }
 
-    private double retreatThreshold(Race opponentRace) {
+    /**
+     * Strength ratio below which an engaged ground squad leaves a fight, see {@link FightBand}. Between it and
+     * {@link #engageThreshold} an engaged squad keeps fighting and one that is not engaged keeps away.
+     *
+     * @param opponentRace race of the opponent
+     * @return the retreat threshold for that matchup
+     */
+    public static double retreatThreshold(Race opponentRace) {
         switch (opponentRace) {
             case Terran:  return 1.0;
             case Protoss: return 0.8;
@@ -1419,6 +1434,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private int siegeBand = -1;
         private int siegeBandFrames = -1;
         private int siegeBandHeldFrames = -1;
+        private int fightBandSinceFrame = -1;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }

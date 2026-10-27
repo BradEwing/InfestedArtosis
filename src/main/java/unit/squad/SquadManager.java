@@ -43,6 +43,7 @@ import telemetry.SwarmEvent;
 import telemetry.TargetChoices;
 import unit.managed.Lurker;
 import unit.managed.ManagedUnit;
+import unit.squad.horizon.FightBand;
 import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
 import util.Arc;
@@ -2470,6 +2471,12 @@ public class SquadManager {
      * has held over a fight hysteresis window (see {@link #retreatLockYieldsToEngage}), and the FIGHT episode that
      * yield opens arms no commitment.
      *
+     * <p>With {@link Config#fightHysteresis} on, a ground squad is judged against the band between the retreat and
+     * engage thresholds (see {@link FightBand}): its fight lock holds a RETREAT read at or above the retreat threshold
+     * and renews on any ENGAGE read above it, and a squad that turns back out of a retreat is held in FIGHT against
+     * such reads for {@link Squad#TURN_BACK_COMMIT_FRAMES} (see {@link #turnBackCommitHolds}). A RETREAT read below
+     * the retreat threshold always gets the squad out.
+     *
      * @param squad fight squad to tick
      */
     private void simulateFightSquad(Squad squad) {
@@ -2509,6 +2516,8 @@ public class SquadManager {
         boolean threatBeyondRadius = snapshot != null && snapshot.isThreatBeyondRadius();
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
+        double retreatThreshold = snapshot != null ? snapshot.getRetreatThreshold() : 0;
+        boolean band = Config.fightHysteresis && squad.isGroundSquad();
 
         boolean exitLockBroken = AirHarassEvaluator.breaksExitLock(squad.isHarassExitLocked(now), result,
                 enemyMeasured);
@@ -2522,6 +2531,9 @@ public class SquadManager {
         SquadDecisions.pathTaken(squad, exitLockBroken
                 ? DecisionPath.HARASS_EXIT_ENGAGE
                 : requestPath(noVisionMarch, result));
+        if (snapshot != null && snapshot.getFightBandSinceFrame() >= 0) {
+            SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT_BAND);
+        }
 
         DecisionPath turnPath = retreatTurnPath(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
                 ratio, engageThreshold);
@@ -2553,8 +2565,13 @@ public class SquadManager {
                 return;
             }
         }
-        if (fightHeld(squad, now, fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
-            SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
+        boolean lockHoldsAtEngage = fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold);
+        boolean lockHolds = fightLockHolds(fightLocked, result, enemyMeasured, ratio,
+                FightBand.fightLockReleaseThreshold(band, engageThreshold, retreatThreshold));
+        boolean commitHolds = turnBackCommitHolds(band && squad.isTurnBackCommitted(now), result, enemyMeasured,
+                ratio, retreatThreshold);
+        if (fightHeld(squad, now, lockHolds || commitHolds)) {
+            SquadDecisions.lockSuppressed(squad, fightHoldLock(fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
             return;
@@ -2614,9 +2631,13 @@ public class SquadManager {
                 break;
 
             case ENGAGE:
+                if (band && squad.getStatus() == SquadStatus.RETREAT) {
+                    squad.startTurnBackCommit(now);
+                }
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
-                updateFightLock(squad, result, retreatLocked, now);
+                updateFightLock(squad, result, retreatLocked,
+                        FightBand.holdsAboveRetreat(band, enemyMeasured, ratio, retreatThreshold), now);
                 if (squad.isAirSquad() && snapshot != null && enemyMeasured) {
                     ((AirSquad) squad).armEngageCommitment(now, flockHitPoints(managedFighters));
                 }
@@ -2697,8 +2718,25 @@ public class SquadManager {
      */
     static void updateFightLock(Squad squad, CombatSimulator.CombatResult result,
                                 boolean retreatLocked, int currentFrame) {
+        updateFightLock(squad, result, retreatLocked, false, currentFrame);
+    }
+
+    /**
+     * Arms or renews the fight lock on an ENGAGE verdict, as {@link #updateFightLock(Squad,
+     * CombatSimulator.CombatResult, boolean, int)} does, except that a read holding the squad above the retreat
+     * threshold renews the lock whatever supply the squad has lost (see {@link Squad#canRenewFightLock(int, boolean)}).
+     *
+     * @param squad squad whose verdict this is
+     * @param result this frame's combat sim verdict
+     * @param retreatLocked whether the squad's retreat lock is currently active
+     * @param aboveRetreat whether this frame's read holds the squad above the retreat threshold, see
+     *     {@link FightBand#holdsAboveRetreat}
+     * @param currentFrame current frame
+     */
+    static void updateFightLock(Squad squad, CombatSimulator.CombatResult result,
+                                boolean retreatLocked, boolean aboveRetreat, int currentFrame) {
         if (result == CombatSimulator.CombatResult.ENGAGE && !retreatLocked
-                && squad.canRenewFightLock(currentFrame)) {
+                && squad.canRenewFightLock(currentFrame, aboveRetreat)) {
             squad.startFightLock(currentFrame);
         }
     }
@@ -2844,23 +2882,58 @@ public class SquadManager {
      * Whether an active fight lock still holds against this frame's verdict.
      *
      * <p>The lock holds a squad in FIGHT against ENGAGE and ADVANCE verdicts, and breaks for a
-     * RETREAT that was measured against a real enemy below the engage threshold the sim judged it
-     * by. Every RETREAT from the Horizon sim is measured and below that threshold by construction,
-     * so the lock never discards one. A simulator that leaves no snapshot reports a ratio and a
-     * threshold of 0, which holds.
+     * RETREAT that was measured against a real enemy below the release threshold. A ground squad with the band on
+     * is released at the retreat threshold, so the lock holds a RETREAT read inside the band and a squad being ground
+     * down below the band still gets out at once; with the band off it is released at the engage threshold, which
+     * every Horizon RETREAT is below, so the lock discards none (see {@link FightBand#fightLockReleaseThreshold}). A
+     * simulator that leaves no snapshot reports a ratio and a threshold of 0, which holds.
      *
      * @param fightLocked whether the squad's fight lock is currently active
      * @param result this frame's combat sim verdict
      * @param enemyMeasured whether the sim measured a real enemy this frame
      * @param ratio the sim's overall strength ratio this frame
-     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @param releaseThreshold the ratio below which a measured RETREAT releases the lock
      * @return true if the lock should still suppress this frame's verdict
      */
     static boolean fightLockHolds(boolean fightLocked, CombatSimulator.CombatResult result,
-                                  boolean enemyMeasured, double ratio, double engageThreshold) {
+                                  boolean enemyMeasured, double ratio, double releaseThreshold) {
         if (!fightLocked) return false;
         if (result != CombatSimulator.CombatResult.RETREAT) return true;
-        return !enemyMeasured || ratio >= engageThreshold;
+        return !enemyMeasured || ratio >= releaseThreshold;
+    }
+
+    /**
+     * Whether a ground squad's turn-back commit holds it in FIGHT against this frame's verdict: the squad is inside
+     * the window its last turn back out of a retreat opened, see {@link Squad#isTurnBackCommitted}, and the verdict is
+     * a RETREAT measured at or above the retreat threshold. A RETREAT below that threshold, or any other verdict,
+     * passes through.
+     *
+     * @param committed whether the band is on for the squad and it is inside its commit window
+     * @param result this frame's combat sim verdict
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param retreatThreshold the retreat threshold the sim judged this frame's ratio against
+     * @return true if the commit suppresses this frame's verdict
+     */
+    static boolean turnBackCommitHolds(boolean committed, CombatSimulator.CombatResult result,
+                                       boolean enemyMeasured, double ratio, double retreatThreshold) {
+        return committed && result == CombatSimulator.CombatResult.RETREAT
+                && (!enemyMeasured || ratio >= retreatThreshold);
+    }
+
+    /**
+     * Names what held a FIGHT squad against this frame's verdict: FIGHT when it would have been held without the band
+     * (the fight lock judged at the engage threshold, a collapse or a cornered hold), FIGHT_LOCK_BAND when the fight
+     * lock held only because the band moved its release down to the retreat threshold, and COMMIT_WINDOW when only
+     * the turn-back commit held it.
+     *
+     * @param heldWithoutBand whether the squad is held with the fight lock judged at the engage threshold
+     * @param lockHolds whether the fight lock holds at the release threshold the band sets
+     * @return the lock to name in suppressed_by
+     */
+    static SquadLock fightHoldLock(boolean heldWithoutBand, boolean lockHolds) {
+        if (heldWithoutBand) return SquadLock.FIGHT;
+        return lockHolds ? SquadLock.FIGHT_LOCK_BAND : SquadLock.COMMIT_WINDOW;
     }
 
     /**

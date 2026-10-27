@@ -109,7 +109,14 @@ import java.util.stream.Collectors;
  * other row carries NONE.
  *
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
- * frame, the overridden verdict, and the branch that asked for it.
+ * frame, the overridden verdict, and the branch that asked for it. suppressed_by names the lock: RETREAT and FIGHT
+ * for the retreat and fight locks, FIGHT_BAND when the sim's fight band turned an engaged ground squad's RETREAT
+ * read into ENGAGE (keyed on the frame that run of band-held reads began rather than an expiry), FIGHT_LOCK_BAND
+ * when the fight lock held a RETREAT read only because the band released it at the retreat threshold, and
+ * COMMIT_WINDOW when only a turn-back commit held one (keyed on the end of the commit window).
+ *
+ * <p>sim_retreat_threshold is the retreat threshold the sim judged the row's ratio against, and -1 on a row whose
+ * decision never read a sim snapshot.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -138,7 +145,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "retreat_route,"
             + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
             + "air_commitment_release,"
-            + "bunker_hold_release,siege_band,siege_band_frames,siege_band_held_frames";
+            + "bunker_hold_release,siege_band,siege_band_frames,siege_band_held_frames,"
+            + "sim_retreat_threshold";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -878,6 +886,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setEnemyStrength(snapshot.getEnemyTotal());
         decision.setRatio(snapshot.getOverallRatio());
         decision.setEngageThreshold(snapshot.getEngageThreshold());
+        decision.setRetreatThreshold(snapshot.getRetreatThreshold());
         decision.setEnemySupplyBelieved(believedEnemySupply(snapshot));
         String composition = Csv.sanitize(HorizonCombatSimulator.enemyComposition(snapshot));
         decision.setEnemyComposition(composition.isEmpty() ? NONE : composition);
@@ -911,6 +920,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             return status == SquadStatus.RETREAT && result != null
                     && result != CombatSimulator.CombatResult.RETREAT;
         }
+        if (lock == SquadLock.FIGHT_BAND) {
+            return status == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.ENGAGE;
+        }
         return status == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.RETREAT;
     }
 
@@ -926,7 +938,17 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     }
 
     private static int lockUntilFrame(Squad squad, SquadLock lock) {
-        return lock == SquadLock.RETREAT ? squad.getRetreatLockedUntilFrame() : squad.getFightLockedUntilFrame();
+        switch (lock) {
+            case RETREAT:
+                return squad.getRetreatLockedUntilFrame();
+            case FIGHT_BAND:
+                HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
+                return snapshot != null ? snapshot.getFightBandSinceFrame() : SquadDecision.NOT_EVALUATED;
+            case COMMIT_WINDOW:
+                return squad.getTurnBackCommitUntilFrame();
+            default:
+                return squad.getFightLockedUntilFrame();
+        }
     }
 
     private static String squadType(Squad squad) {
@@ -973,6 +995,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(commitmentReleaseCells(context));
         fields.addAll(bunkerHoldReleaseCells(context));
         fields.addAll(siegeBandCells(context));
+        fields.addAll(retreatThresholdCells(context));
         return String.join(",", fields);
     }
 
@@ -1046,6 +1069,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(commitmentReleaseCells(context));
         fields.addAll(bunkerHoldReleaseCells(context));
         fields.addAll(siegeBandCells(context));
+        fields.addAll(retreatThresholdCells(context));
         return String.join(",", fields);
     }
 
@@ -1283,6 +1307,17 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     static List<String> siegeBandCells(SquadDecision context) {
         return Arrays.asList(String.valueOf(context.getSiegeBand()), String.valueOf(context.getSiegeBandFrames()),
                 String.valueOf(context.getSiegeBandHeldFrames()));
+    }
+
+    /**
+     * Builds the sim_retreat_threshold cell: the retreat threshold the sim judged the row's ratio against, and -1 on a
+     * row whose decision never read a sim snapshot.
+     *
+     * @param context the decision the row is built from
+     * @return the retreat threshold cell
+     */
+    static List<String> retreatThresholdCells(SquadDecision context) {
+        return Collections.singletonList(Csv.format(context.getRetreatThreshold()));
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {
