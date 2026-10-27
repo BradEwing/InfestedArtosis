@@ -6,6 +6,8 @@ import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
 import util.Time;
 
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -35,27 +37,56 @@ class NinePoolGasHatchSpeed8DTest {
     private static final Time FIVE_MINUTES = new Time(5, 0);
 
     @Test
-    void isAZvZOpenerOnly() {
+    void isAZergAndRandomOpenerOnly() {
         NinePoolGasHatchSpeed8D opener = new NinePoolGasHatchSpeed8D();
 
         assertEquals(NAME, opener.getName());
         assertTrue(opener.isOpener());
         assertTrue(opener.playsRace(Race.Zerg));
+        assertTrue(opener.playsRace(Race.Unknown));
         assertFalse(opener.playsRace(Race.Terran));
         assertFalse(opener.playsRace(Race.Protoss));
-        assertFalse(opener.playsRace(Race.Unknown));
     }
 
     @Test
-    void theFactoryOffersItAgainstZergOnly() {
-        BuildOrderFactory zerg = new BuildOrderFactory(START_LOCATIONS, Race.Zerg);
-        assertTrue(zerg.getOpenerNames().contains(NAME));
-        assertTrue(zerg.isPlayableOpener(zerg.getByName(NAME)));
+    void theFactoryOffersItAgainstZergAndUnknownOnly() {
+        for (Race race : new Race[]{Race.Zerg, Race.Unknown}) {
+            BuildOrderFactory factory = new BuildOrderFactory(START_LOCATIONS, race);
+            assertTrue(factory.getOpenerNames().contains(NAME), race.toString());
+            assertTrue(factory.isPlayableOpener(factory.getByName(NAME)), race.toString());
+        }
 
-        for (Race race : new Race[]{Race.Terran, Race.Protoss, Race.Unknown}) {
+        for (Race race : new Race[]{Race.Terran, Race.Protoss}) {
             BuildOrderFactory factory = new BuildOrderFactory(START_LOCATIONS, race);
             assertFalse(factory.getOpenerNames().contains(NAME), race.toString());
             assertEquals(NAME, factory.getByName(NAME).getName(), race.toString());
+        }
+    }
+
+    @Test
+    void aTerranOrProtossRaceEndsTheOpenerOnceSpeedAndTheOpeningPairsAreQueued() {
+        int opening = NinePoolGasHatchSpeed8D.FIRST_ZERGLING_PLANS + NinePoolGasHatchSpeed8D.SECOND_ZERGLING_PLANS;
+
+        for (Race race : new Race[]{Race.Terran, Race.Protoss}) {
+            assertTrue(NinePoolGasHatchSpeed8D.earlyHandOver(race, true, opening), race.toString());
+            assertFalse(NinePoolGasHatchSpeed8D.earlyHandOver(race, false, opening), race.toString());
+            assertFalse(NinePoolGasHatchSpeed8D.earlyHandOver(race, true, opening - 1), race.toString());
+        }
+        assertFalse(NinePoolGasHatchSpeed8D.earlyHandOver(Race.Zerg, true, opening));
+        assertFalse(NinePoolGasHatchSpeed8D.earlyHandOver(Race.Unknown, true, opening));
+    }
+
+    @Test
+    void theHandOverAfterTheRaceResolvesIsLegalForEachRace() {
+        for (Race race : new Race[]{Race.Terran, Race.Protoss, Race.Zerg}) {
+            Set<BuildOrder> next = OpenerTransitions.forRace(race);
+
+            assertFalse(next.isEmpty(), race.toString());
+            for (BuildOrder buildOrder : next) {
+                assertTrue(buildOrder.playsRace(race), race + " " + buildOrder.getName());
+                assertFalse(buildOrder.isOpener(), race + " " + buildOrder.getName());
+                assertFalse(buildOrder.isRetired(), race + " " + buildOrder.getName());
+            }
         }
     }
 

@@ -20,7 +20,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 9 Pool Gas Hatch Speed, 8 drones, against Zerg: drones to 9, Spawning Pool at 9, drone, the
+ * 9 Pool Gas Hatch Speed, 8 drones, against Zerg or a Random opponent: drones to 9, Spawning Pool at 9, drone, the
  * extractor trick, Overlord, 3 zergling pairs, Extractor, a Hatchery in the main, 2 zergling pairs,
  * Metabolic Boost, then 35 zergling pairs while the drone count is held at 8.
  *
@@ -35,7 +35,8 @@ import java.util.Set;
  * <p>The opener hands over once all {@link #TOTAL_ZERGLING_PLANS} zergling pairs are queued, once
  * the {@link LingFloodHold Zergling flood hold} stands, or at {@link #HAND_OVER_DEADLINE}, so a
  * starved Zergling count or the hold's Drone floor and home-kept army cannot keep the bot on a
- * Zergling-only build with no tech.
+ * Zergling-only build with no tech. Against Terran or Protoss, which a Random opponent can turn
+ * out to be, it also hands over once Metabolic Boost and the opening zergling pairs are queued.
  */
 public class NinePoolGasHatchSpeed8D extends BuildOrder {
     private static final int POOL_SUPPLY = 18;
@@ -89,7 +90,23 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
 
     @Override
     protected boolean openerComplete(GameState gameState) {
-        return openerComplete(zerglingPlans, gameState.isLingFloodHold(), gameState.getGameTime());
+        return openerComplete(zerglingPlans, gameState.isLingFloodHold(), gameState.getGameTime())
+                || earlyHandOver(gameState.getOpponentRace(), speedQueued, zerglingPlans);
+    }
+
+    /**
+     * Whether a Random opponent that resolved to Terran or Protoss ends the opener early: Metabolic
+     * Boost and the opening zergling pairs are queued, and the Zergling flood is a Zerg answer.
+     *
+     * @param race the opponent's race
+     * @param speedQueued whether Metabolic Boost has been queued
+     * @param zerglingPlans zergling plans this opener has queued so far
+     * @return true when the opener hands over before the flood
+     */
+    static boolean earlyHandOver(Race race, boolean speedQueued, int zerglingPlans) {
+        return (race == Race.Terran || race == Race.Protoss)
+                && speedQueued
+                && zerglingPlans >= FIRST_ZERGLING_PLANS + SECOND_ZERGLING_PLANS;
     }
 
     /**
@@ -165,8 +182,10 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
         if (shouldPlanZergling(usablePools, zerglingPlans, TOTAL_ZERGLING_PLANS,
                 gameState.queuedUnitPlanCount(UnitType.Zerg_Zergling))) {
             plans.add(planZergling(gameState));
+            return plans;
         }
 
+        plans.addAll(planUnknownRaceMacro(gameState));
         return plans;
     }
 
@@ -216,7 +235,7 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
 
     @Override
     public boolean playsRace(Race race) {
-        return race == Race.Zerg;
+        return race == Race.Zerg || race == Race.Unknown;
     }
 
     @Override
