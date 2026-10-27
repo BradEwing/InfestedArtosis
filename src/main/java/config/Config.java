@@ -57,6 +57,11 @@ public final class Config {
      * unless IA_SPEEDLING_GAS_CUT is set to false.
      */
     public static boolean speedlingGasCut = true;
+    /**
+     * Whether a ground squad gathers at a standoff point outside the enemy army's reach before it engages, and a
+     * reinforcement rallies to the rear of the friendly squad it is joining. On unless IA_STAGING is set to false.
+     */
+    public static boolean staging = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -152,6 +157,7 @@ public final class Config {
         speedParityGate = enabledUnlessFalse(setting(dotenv, "IA_SPEED_PARITY_GATE"));
         speedlingPReactions = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_P_REACTIONS"));
         speedlingGasCut = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_GAS_CUT"));
+        staging = enabledUnlessFalse(setting(dotenv, "IA_STAGING"));
     }
 
     /**

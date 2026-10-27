@@ -286,5 +286,16 @@ public enum DecisionPath {
      * hysteresis window, and the lock was dropped so the verdict could act. The FIGHT episode it opens arms no
      * engage commitment.
      */
-    AIR_RETREAT_LOCK_YIELD
+    AIR_RETREAT_LOCK_YIELD,
+
+    /**
+     * A ground squad with a measured enemy farther than its standoff distance gathered at the standoff point instead
+     * of engaging, see {@link unit.squad.Standoff}.
+     */
+    STANDOFF,
+
+    /**
+     * A squad that would have launched was sent to the rear of a larger friendly army that is fighting or gathering.
+     */
+    REINFORCE_REAR
 }
