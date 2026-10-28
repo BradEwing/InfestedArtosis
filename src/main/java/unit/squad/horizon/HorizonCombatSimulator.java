@@ -43,6 +43,11 @@ public class HorizonCombatSimulator implements CombatSimulator {
     static final int SIEGE_BAND_IN = 1;
     static final int SIEGE_BAND_HELD = 2;
     static final int MAX_SIM_GAP_FRAMES = 5;
+    /**
+     * DebugSnapshot contact value for a read that took no fresh contact check: an air squad, or a ground squad
+     * evaluated outside its fight tick (a contain, runby or swarm read).
+     */
+    public static final int CONTACT_UNREAD = -1;
     private static final double MAX_ENGAGEMENT_RADIUS = 320;
     private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
@@ -331,8 +336,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         snapshot.setEngageThreshold(engageThresh);
         snapshot.setRetreatThreshold(retreatThresh);
-        snapshot.setHoldThreshold(holdThresh);
-        snapshot.setInContact(inContact);
+        if (!airSquad) {
+            snapshot.setHoldThreshold(holdThresh);
+            snapshot.setContact(squad.getContactScanFrame() != currentFrame ? CONTACT_UNREAD : inContact ? 1 : 0);
+        }
         snapshot.setStaticDefenseCover(ownStaticDefense.coversThreat);
         snapshot.setResult(result);
         lastSnapshots.put(squad.getId(), snapshot);
@@ -1442,8 +1449,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private int siegeBandFrames = -1;
         private int siegeBandHeldFrames = -1;
         private int fightBandSinceFrame = -1;
-        private double holdThreshold;
-        private boolean inContact;
+        private double holdThreshold = -1;
+        private int contact = CONTACT_UNREAD;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }

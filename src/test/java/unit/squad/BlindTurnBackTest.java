@@ -120,6 +120,44 @@ class BlindTurnBackTest {
     }
 
     @Test
+    void everyExitFromRetreatEndsTheGate() {
+        Squad cornered = leftOnAMeasuredRetreat();
+        SquadManager.turnCorneredSquadToFight(cornered, ENGAGE, LEFT + 1);
+        Squad contained = leftOnAMeasuredRetreat();
+        contained.setStatus(SquadStatus.CONTAIN);
+        Squad rallied = leftOnAMeasuredRetreat();
+        rallied.setStatus(SquadStatus.RALLY);
+        Squad stillRetreating = leftOnAMeasuredRetreat();
+        stillRetreating.setStatus(SquadStatus.RETREAT);
+
+        assertFalse(cornered.isBlindTurnBackGated(LEFT + 2), "a cornered turn to FIGHT");
+        assertFalse(contained.isBlindTurnBackGated(LEFT + 2), "a contain join");
+        assertFalse(rallied.isBlindTurnBackGated(LEFT + 2));
+        assertTrue(stillRetreating.isBlindTurnBackGated(LEFT + 2), "staying in RETREAT keeps the gate");
+    }
+
+    @Test
+    void aLaterUnmeasuredRetreatIsNotHeldByAnEarlierGate() {
+        Squad squad = leftOnAMeasuredRetreat();
+        squad.setStatus(SquadStatus.FIGHT);
+        squad.setStatus(SquadStatus.RETREAT);
+
+        assertFalse(SquadManager.holdsBlindTurnBack(squad, true, ADVANCE, LEFT + Squad.GROUND_RETREAT_LOCK_FRAMES));
+    }
+
+    @Test
+    void aMergedSquadOutOfRetreatCarriesNoGate() {
+        Squad retreating = leftOnAMeasuredRetreat();
+        Squad fighting = new GroundSquad();
+        fighting.setStatus(SquadStatus.FIGHT);
+        Squad merged = new GroundSquad();
+        merged.inheritStateFrom(Arrays.asList(retreating, fighting));
+
+        assertEquals(SquadStatus.FIGHT, merged.getStatus());
+        assertFalse(merged.isBlindTurnBackGated(LEFT + 1));
+    }
+
+    @Test
     void theTurnBackCommitStartsOnlyForARetreatingSquadWithTheBandOn() {
         Squad retreating = new GroundSquad();
         retreating.setStatus(SquadStatus.RETREAT);

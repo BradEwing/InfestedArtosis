@@ -120,7 +120,8 @@ import java.util.stream.Collectors;
  * <p>sim_retreat_threshold is the retreat threshold the sim judged the row's ratio against, and -1 on a row whose
  * decision never read a sim snapshot.
  * sim_hold_threshold is the ratio below which an engaged ground squad's RETREAT read stood, and band_contact is 1
- * when a member attacked or was hit recently and 0 otherwise; both are -1 on such a row too.
+ * when a member attacked or was hit recently and 0 otherwise; both are -1 on such a row too and on an air squad's
+ * row, and band_contact is also -1 on a ground squad's row from a read outside its fight tick (contain, runby, swarm).
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -892,7 +893,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setEngageThreshold(snapshot.getEngageThreshold());
         decision.setRetreatThreshold(snapshot.getRetreatThreshold());
         decision.setHoldThreshold(snapshot.getHoldThreshold());
-        decision.setInContact(snapshot.isInContact() ? 1 : 0);
+        decision.setInContact(snapshot.getContact());
         decision.setEnemySupplyBelieved(believedEnemySupply(snapshot));
         String composition = Csv.sanitize(HorizonCombatSimulator.enemyComposition(snapshot));
         decision.setEnemyComposition(composition.isEmpty() ? NONE : composition);
@@ -1333,7 +1334,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     /**
      * Builds the sim_hold_threshold and band_contact cells: the ratio below which an engaged ground squad's RETREAT
      * read stood this frame, see {@link unit.squad.horizon.FightBand#holdThreshold}, and 1 when a member attacked or
-     * was hit recently, 0 when none did. Both are -1 on a row whose decision never read a sim snapshot.
+     * was hit recently, 0 when none did. Both are -1 on a row whose decision never read a sim snapshot and on an air
+     * squad's row; band_contact is also -1 when the read took no fresh contact check.
      *
      * @param context the decision the row is built from
      * @return the hold threshold and contact cells

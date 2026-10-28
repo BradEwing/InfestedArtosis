@@ -94,6 +94,14 @@ class FightBandTest {
     }
 
     @Test
+    void aSnapshotWithoutAGroundReadCarriesNoHoldThresholdOrContact() {
+        HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
+
+        assertEquals(-1, snapshot.getHoldThreshold());
+        assertEquals(HorizonCombatSimulator.CONTACT_UNREAD, snapshot.getContact());
+    }
+
+    @Test
     void aUnitIsInContactWhenItFiredIsAttackingOrIsHit() {
         assertTrue(FightBand.unitInContact(3, 0, false, false));
         assertTrue(FightBand.unitInContact(0, 3, false, false));

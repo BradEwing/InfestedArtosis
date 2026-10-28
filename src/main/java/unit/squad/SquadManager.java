@@ -2511,8 +2511,11 @@ public class SquadManager {
         boolean retreatLocked = squad.isRetreatLocked(now);
         boolean fightLocked = squad.isFightLocked(now);
 
-        if (squad.isGroundSquad() && anyMemberInContact(managedFighters)) {
-            squad.noteContact(now);
+        if (squad.isGroundSquad()) {
+            squad.noteContactScan(now);
+            if (anyMemberInContact(managedFighters)) {
+                squad.noteContact(now);
+            }
         }
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()

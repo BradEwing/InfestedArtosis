@@ -125,6 +125,7 @@ public class Squad implements Comparable<Squad> {
 
     protected int blindTurnBackGateUntilFrame = 0;
     protected int lastContactFrame = -1;
+    protected int contactScanFrame = -1;
 
     private static final double SMOOTHING_ALPHA = 0.85;
     private static final int SPLIT_MERGE_COOLDOWN = 100;
@@ -378,6 +379,9 @@ public class Squad implements Comparable<Squad> {
         }
 
         this.status = mergedStatus;
+        if (mergedStatus != SquadStatus.RETREAT) {
+            this.blindTurnBackGateUntilFrame = 0;
+        }
         this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
         this.containmentArc = mergedStatus == SquadStatus.CONTAIN ? inheritedArc : null;
         this.runbyState = mergedStatus == SquadStatus.RUNBY ? inheritedRunby : null;
@@ -546,6 +550,19 @@ public class Squad implements Comparable<Squad> {
     }
 
     /**
+     * Sets the squad's status. Any status other than RETREAT ends the blind turn-back gate, so a later retreat that
+     * no measured read opened is not held by the gate of an earlier one.
+     *
+     * @param status new status
+     */
+    public void setStatus(SquadStatus status) {
+        this.status = status;
+        if (status != SquadStatus.RETREAT) {
+            clearBlindTurnBackGate();
+        }
+    }
+
+    /**
      * Whether the squad is within {@link #BLIND_TURN_BACK_GATE_FRAMES} of its last measured RETREAT read, so a
      * retreat it is in waits for a measured ENGAGE before turning back into FIGHT.
      *
@@ -563,6 +580,16 @@ public class Squad implements Comparable<Squad> {
      */
     public void noteContact(int currentFrame) {
         lastContactFrame = currentFrame;
+    }
+
+    /**
+     * Records that the squad's members were checked for contact on this frame, whatever the check found, so a sim
+     * read on the same frame can tell a fresh contact reading from a stale one.
+     *
+     * @param currentFrame frame of the check
+     */
+    public void noteContactScan(int currentFrame) {
+        contactScanFrame = currentFrame;
     }
 
     /**
