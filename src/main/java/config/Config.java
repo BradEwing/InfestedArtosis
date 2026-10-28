@@ -35,9 +35,11 @@ public final class Config {
     public static boolean bunkerEcon = true;
     /**
      * Whether a ground squad's fight/retreat decision uses a band between the retreat and engage thresholds: an
-     * engaged squad stays in FIGHT until its ratio falls below the retreat threshold, its fight lock holds a RETREAT
-     * read above that threshold and renews despite lost supply there, and a squad that turns back out of a retreat
-     * commits to FIGHT for a window. On unless IA_FIGHT_HYSTERESIS is set to false.
+     * engaged squad in contact stays in FIGHT until its ratio falls below the retreat threshold and one out of contact
+     * until the fight scores below even, its fight lock holds a RETREAT read above that hold threshold and renews
+     * despite lost supply above the retreat threshold, a squad that turns back out of a retreat commits to FIGHT for a
+     * window, and a squad that retreated on a measured read turns back only on a measured ENGAGE for a window. On
+     * unless IA_FIGHT_HYSTERESIS is set to false.
      */
     public static boolean fightHysteresis = true;
     public boolean enabledAutoObserver = false;

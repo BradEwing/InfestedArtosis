@@ -2472,10 +2472,13 @@ public class SquadManager {
      * yield opens arms no commitment.
      *
      * <p>With {@link Config#fightHysteresis} on, a ground squad is judged against the band between the retreat and
-     * engage thresholds (see {@link FightBand}): its fight lock holds a RETREAT read at or above the retreat threshold
-     * and renews on any ENGAGE read above it, and a squad that turns back out of a retreat is held in FIGHT against
-     * such reads for {@link Squad#TURN_BACK_COMMIT_FRAMES} (see {@link #turnBackCommitHolds}). A RETREAT read below
-     * the retreat threshold always gets the squad out.
+     * engage thresholds (see {@link FightBand}): its fight lock holds a RETREAT read at or above the hold threshold
+     * (the retreat threshold in contact, an even fight out of it, see {@link FightBand#holdThreshold}) and renews on
+     * any ENGAGE read above the retreat threshold, and a squad that turns back out of a retreat is held in FIGHT
+     * against RETREAT reads at or above the retreat threshold for {@link Squad#TURN_BACK_COMMIT_FRAMES} (see
+     * {@link #turnBackCommitHolds}). A RETREAT read below the retreat threshold always gets the squad out. A squad
+     * retreating within {@link Squad#BLIND_TURN_BACK_GATE_FRAMES} of a measured RETREAT read turns back only on a
+     * measured ENGAGE, not on an ADVANCE that measured no enemy (see {@link #holdsBlindTurnBack}).
      *
      * @param squad fight squad to tick
      */
@@ -2508,6 +2511,9 @@ public class SquadManager {
         boolean retreatLocked = squad.isRetreatLocked(now);
         boolean fightLocked = squad.isFightLocked(now);
 
+        if (squad.isGroundSquad() && anyMemberInContact(managedFighters)) {
+            squad.noteContact(now);
+        }
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
                 .evaluate(squad, adjacentSquads, gameState);
@@ -2517,6 +2523,7 @@ public class SquadManager {
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
         double retreatThreshold = snapshot != null ? snapshot.getRetreatThreshold() : 0;
+        double holdThreshold = snapshot != null ? snapshot.getHoldThreshold() : 0;
         boolean band = Config.fightHysteresis && squad.isGroundSquad();
 
         boolean exitLockBroken = AirHarassEvaluator.breaksExitLock(squad.isHarassExitLocked(now), result,
@@ -2559,6 +2566,7 @@ public class SquadManager {
                         ? DecisionPath.AIR_RETREAT_LOCK_YIELD
                         : DecisionPath.RETREAT_LOCK_BROKEN);
             } else {
+                noteRetreatRead(squad, band, result, enemyMeasured, now);
                 assignRetreatTargets(squad, managedFighters);
                 SquadDecisions.lockSuppressed(squad, SquadLock.RETREAT);
                 SquadDecisions.pathTaken(squad, DecisionPath.RETREAT_LOCK);
@@ -2567,7 +2575,7 @@ public class SquadManager {
         }
         boolean lockHoldsAtEngage = fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold);
         boolean lockHolds = fightLockHolds(fightLocked, result, enemyMeasured, ratio,
-                FightBand.fightLockReleaseThreshold(band, engageThreshold, retreatThreshold));
+                FightBand.fightLockReleaseThreshold(band, engageThreshold, holdThreshold));
         boolean commitHolds = turnBackCommitHolds(band && squad.isTurnBackCommitted(now), result, enemyMeasured,
                 ratio, retreatThreshold);
         if (fightHeld(squad, now, lockHolds || commitHolds)) {
@@ -2610,6 +2618,12 @@ public class SquadManager {
                     SquadDecisions.pathTaken(squad, DecisionPath.HARASS_HOLD);
                     break;
                 }
+                if (holdsBlindTurnBack(squad, band, result, now)) {
+                    assignRetreatTargets(squad, managedFighters);
+                    SquadDecisions.lockSuppressed(squad, SquadLock.BLIND_TURN_BACK);
+                    SquadDecisions.pathTaken(squad, DecisionPath.BLIND_TURN_BACK_HOLD);
+                    break;
+                }
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
                 break;
@@ -2627,13 +2641,12 @@ public class SquadManager {
                     squad.setStatus(SquadStatus.RETREAT);
                     assignRetreatTargets(squad, managedFighters);
                     squad.startRetreatLock(now);
+                    noteRetreatRead(squad, band, result, enemyMeasured, now);
                 }
                 break;
 
             case ENGAGE:
-                if (band && squad.getStatus() == SquadStatus.RETREAT) {
-                    squad.startTurnBackCommit(now);
-                }
+                beginTurnBack(squad, band, now);
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
                 updateFightLock(squad, result, retreatLocked,
@@ -2646,6 +2659,70 @@ public class SquadManager {
             default:
                 break;
         }
+    }
+
+    /**
+     * Opens the turn-back commit of a ground squad turning back into FIGHT out of a retreat on an ENGAGE read with the
+     * band on, see {@link Squad#startTurnBackCommit}, and ends its blind turn-back gate. A squad in any other status,
+     * or with the band off, is left as it is.
+     *
+     * @param squad squad acting on an ENGAGE read
+     * @param band whether the band is on for the squad
+     * @param now current frame
+     */
+    static void beginTurnBack(Squad squad, boolean band, int now) {
+        if (!band || squad.getStatus() != SquadStatus.RETREAT) return;
+        squad.startTurnBackCommit(now);
+        squad.clearBlindTurnBackGate();
+    }
+
+    /**
+     * Opens or extends a retreating ground squad's blind turn-back gate on a measured RETREAT read, see
+     * {@link FightBand#measuredRetreat} and {@link Squad#noteMeasuredRetreat}.
+     *
+     * @param squad squad in or entering RETREAT on this frame's read
+     * @param band whether the band is on for the squad
+     * @param result this frame's combat sim verdict
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param now current frame
+     */
+    static void noteRetreatRead(Squad squad, boolean band, CombatSimulator.CombatResult result,
+                                boolean enemyMeasured, int now) {
+        if (FightBand.measuredRetreat(band, result, enemyMeasured)) {
+            squad.noteMeasuredRetreat(now);
+        }
+    }
+
+    /**
+     * Whether a retreating ground squad stays in RETREAT on a read that measured no enemy because its blind turn-back
+     * gate stands, see {@link FightBand#blindTurnBackHeld}.
+     *
+     * @param squad squad acting on this frame's read
+     * @param band whether the band is on for the squad
+     * @param result this frame's combat sim verdict
+     * @param now current frame
+     * @return true when the squad keeps retreating
+     */
+    static boolean holdsBlindTurnBack(Squad squad, boolean band, CombatSimulator.CombatResult result, int now) {
+        return FightBand.blindTurnBackHeld(band, squad.getStatus(), result, squad.isBlindTurnBackGated(now));
+    }
+
+    /**
+     * Whether any member other than an Overlord attacked or was hit this frame, see {@link FightBand#unitInContact}.
+     *
+     * @param members squad members
+     * @return true when the squad is in contact this frame
+     */
+    private static boolean anyMemberInContact(Collection<ManagedUnit> members) {
+        for (ManagedUnit member : members) {
+            if (member.getUnitType() == UnitType.Zerg_Overlord) continue;
+            Unit unit = member.getUnit();
+            if (FightBand.unitInContact(unit.getGroundWeaponCooldown(), unit.getAirWeaponCooldown(),
+                    unit.isStartingAttack(), unit.isUnderAttack())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

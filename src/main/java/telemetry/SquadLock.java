@@ -6,7 +6,8 @@ package telemetry;
  *
  * <p>Named from the status the lock protects, matching Squad.startRetreatLock and
  * Squad.startFightLock. The three band entries name a ground squad held in FIGHT by the fight band
- * (FightBand) where the single engage cut would have let it go.
+ * (FightBand) where the single engage cut would have let it go, and BLIND_TURN_BACK names a ground squad held in
+ * RETREAT where an ADVANCE that measured no enemy would have turned it back.
  */
 public enum SquadLock {
     RETREAT,
@@ -22,5 +23,10 @@ public enum SquadLock {
     /**
      * The commit window a turn back out of a retreat opened held a RETREAT read at or above the retreat threshold.
      */
-    COMMIT_WINDOW
+    COMMIT_WINDOW,
+    /**
+     * A retreating ground squad's blind turn-back gate kept it in RETREAT on an ADVANCE that measured no enemy, within
+     * the gate its last measured RETREAT read opened.
+     */
+    BLIND_TURN_BACK
 }

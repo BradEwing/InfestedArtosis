@@ -286,5 +286,11 @@ public enum DecisionPath {
      * hysteresis window, and the lock was dropped so the verdict could act. The FIGHT episode it opens arms no
      * engage commitment.
      */
-    AIR_RETREAT_LOCK_YIELD
+    AIR_RETREAT_LOCK_YIELD,
+
+    /**
+     * A retreating ground squad inside its blind turn-back gate stayed in RETREAT on a sim ADVANCE that measured no
+     * enemy, waiting for a measured ENGAGE before turning back into FIGHT.
+     */
+    BLIND_TURN_BACK_HOLD
 }

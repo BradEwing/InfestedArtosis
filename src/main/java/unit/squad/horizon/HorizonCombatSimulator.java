@@ -298,6 +298,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
             engageThresh = Math.min(engageThresh, DEFAULT_ENGAGE_THRESHOLD);
         }
         double retreatThresh = FightBand.retreatThreshold(retreatThreshold(gameState.getOpponentRace()), engageThresh);
+        boolean inContact = squad.isInContact(currentFrame);
+        double holdThresh = FightBand.holdThreshold(inContact, retreatThresh, engageThresh);
 
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
@@ -309,7 +311,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
                     previous != null ? previous.getResult() : null,
                     previous != null ? previous.getCapturedFrame() : 0, currentFrame, MAX_SIM_GAP_FRAMES);
             CombatResult single = result;
-            result = FightBand.apply(single, engaged, overallRatio, retreatThresh);
+            result = FightBand.apply(single, engaged, overallRatio, holdThresh);
             snapshot.setFightBandSinceFrame(FightBand.heldSinceFrame(result != single,
                     previous != null && currentFrame - previous.getCapturedFrame() <= MAX_SIM_GAP_FRAMES
                             ? previous.getFightBandSinceFrame() : -1, currentFrame));
@@ -329,6 +331,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         snapshot.setEngageThreshold(engageThresh);
         snapshot.setRetreatThreshold(retreatThresh);
+        snapshot.setHoldThreshold(holdThresh);
+        snapshot.setInContact(inContact);
         snapshot.setStaticDefenseCover(ownStaticDefense.coversThreat);
         snapshot.setResult(result);
         lastSnapshots.put(squad.getId(), snapshot);
@@ -1438,6 +1442,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private int siegeBandFrames = -1;
         private int siegeBandHeldFrames = -1;
         private int fightBandSinceFrame = -1;
+        private double holdThreshold;
+        private boolean inContact;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
     }

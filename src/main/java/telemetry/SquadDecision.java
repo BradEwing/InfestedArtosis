@@ -29,6 +29,8 @@ final class SquadDecision {
     private double ratio = NOT_EVALUATED;
     private double engageThreshold = NOT_EVALUATED;
     private double retreatThreshold = NOT_EVALUATED;
+    private double holdThreshold = NOT_EVALUATED;
+    private int inContact = NOT_EVALUATED;
     private int enemySupplyBelieved = NOT_EVALUATED;
     private String enemyComposition = "NONE";
     private int enemyUnscoredSupply = NOT_EVALUATED;

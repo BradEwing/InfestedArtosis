@@ -52,7 +52,72 @@ class FightBandTest {
 
     @Test
     void aRetreatingSquadInsideTheBandKeepsRetreat() {
-        assertEquals(RETREAT, verdict(IN_BAND, false, true));
+        int gap = HorizonCombatSimulator.MAX_SIM_GAP_FRAMES;
+        boolean retreating = FightBand.engaged(true, SquadStatus.RETREAT, true, ENGAGE, FRAME - 1, FRAME, gap);
+        boolean fighting = FightBand.engaged(true, SquadStatus.FIGHT, true, ENGAGE, FRAME - 1, FRAME, gap);
+
+        assertFalse(retreating, "a committed squad with a fresh ENGAGE read is not engaged while it retreats");
+        assertEquals(RETREAT, verdict(IN_BAND, retreating, true));
+        assertEquals(ENGAGE, verdict(IN_BAND, fighting, false), "the same reads keep a FIGHT squad fighting");
+    }
+
+    @Test
+    void inContactTheHoldThresholdIsTheRetreatThreshold() {
+        for (Race race : new Race[] {Race.Zerg, Race.Protoss, Race.Terran}) {
+            double retreat = HorizonCombatSimulator.retreatThreshold(race);
+            assertEquals(retreat, FightBand.holdThreshold(true, retreat,
+                    HorizonCombatSimulator.engageThreshold(race)), race.name());
+        }
+    }
+
+    @Test
+    void outOfContactTheHoldThresholdIsAnEvenFightNeverAboveEngage() {
+        assertEquals(FightBand.EVEN_RATIO, FightBand.holdThreshold(false, RETREAT_THRESH, ENGAGE_THRESH));
+        assertEquals(FightBand.EVEN_RATIO, FightBand.holdThreshold(false,
+                HorizonCombatSimulator.retreatThreshold(Race.Protoss), HorizonCombatSimulator.engageThreshold(Race.Protoss)));
+        assertEquals(HorizonCombatSimulator.retreatThreshold(Race.Terran), FightBand.holdThreshold(false,
+                HorizonCombatSimulator.retreatThreshold(Race.Terran), HorizonCombatSimulator.engageThreshold(Race.Terran)));
+        assertEquals(0.9, FightBand.holdThreshold(false, 0.6, 0.9), "a lowered engage threshold caps it");
+        assertTrue(FightBand.holdThreshold(false, RETREAT_THRESH, ENGAGE_THRESH) >= RETREAT_THRESH);
+    }
+
+    @Test
+    void anEngagedSquadOutOfContactRetreatsFromAFightScoredLostAndKeepsAnEvenOne() {
+        double losing = 0.9;
+        double outOfContact = FightBand.holdThreshold(false, RETREAT_THRESH, ENGAGE_THRESH);
+        double inContact = FightBand.holdThreshold(true, RETREAT_THRESH, ENGAGE_THRESH);
+
+        assertEquals(RETREAT, FightBand.apply(RETREAT, true, losing, outOfContact));
+        assertEquals(ENGAGE, FightBand.apply(RETREAT, true, losing, inContact));
+        assertEquals(ENGAGE, FightBand.apply(RETREAT, true, FightBand.EVEN_RATIO, outOfContact));
+        assertEquals(RETREAT, FightBand.apply(RETREAT, true, BELOW_RETREAT, inContact), "IA-355 still holds");
+    }
+
+    @Test
+    void aUnitIsInContactWhenItFiredIsAttackingOrIsHit() {
+        assertTrue(FightBand.unitInContact(3, 0, false, false));
+        assertTrue(FightBand.unitInContact(0, 3, false, false));
+        assertTrue(FightBand.unitInContact(0, 0, true, false));
+        assertTrue(FightBand.unitInContact(0, 0, false, true));
+        assertFalse(FightBand.unitInContact(0, 0, false, false));
+    }
+
+    @Test
+    void aBlindTurnBackIsHeldOnlyOnAnAdvanceOfARetreatingGatedSquadWithTheBandOn() {
+        assertTrue(FightBand.blindTurnBackHeld(true, SquadStatus.RETREAT, ADVANCE, true));
+        assertFalse(FightBand.blindTurnBackHeld(true, SquadStatus.RETREAT, ENGAGE, true), "a measured ENGAGE");
+        assertFalse(FightBand.blindTurnBackHeld(true, SquadStatus.RETREAT, ADVANCE, false), "the gate ran out");
+        assertFalse(FightBand.blindTurnBackHeld(false, SquadStatus.RETREAT, ADVANCE, true), "switch off");
+        assertFalse(FightBand.blindTurnBackHeld(true, SquadStatus.FIGHT, ADVANCE, true));
+    }
+
+    @Test
+    void onlyAMeasuredRetreatWithTheBandOnIsAMeasuredRetreat() {
+        assertTrue(FightBand.measuredRetreat(true, RETREAT, true));
+        assertFalse(FightBand.measuredRetreat(true, RETREAT, false));
+        assertFalse(FightBand.measuredRetreat(true, ADVANCE, false));
+        assertFalse(FightBand.measuredRetreat(true, ENGAGE, true));
+        assertFalse(FightBand.measuredRetreat(false, RETREAT, true));
     }
 
     @Test
