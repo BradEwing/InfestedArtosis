@@ -20,6 +20,7 @@ import util.Arc;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -130,7 +131,8 @@ import java.util.stream.Collectors;
  * the pair. SHARED_VERDICT rows are written for each squad the shared verdict turned, with old_status the status it
  * decided and new_status the one it took, partner_squad_id and partner_distance the squad that stood for the winning
  * side, and shared_verdict_basis what decided it. suppressed_by NEIGHBOUR_FIGHT on a LOCK_SUPPRESSED row marks a
- * FIGHT squad held only by a neighbour's fight lock. See {@link #neighbourCells}.
+ * FIGHT squad held only by a neighbour's fight lock, keyed on the end of that lock, see {@link #neighbourLockUntilFrame}.
+ * See {@link #neighbourCells}.
  *
  * <p>Constructed only when combat telemetry is enabled.
  */
@@ -278,8 +280,10 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 return;
             }
 
-            String episode = lock.name() + "@" + lockUntilFrame(squad, lock) + ":" + decision.getResult()
-                    + ":" + decision.getDecisionPath();
+            int untilFrame = lock == SquadLock.NEIGHBOUR_FIGHT
+                    ? neighbourLockUntilFrame(squad, squadManager.fightSquads, game.getFrameCount())
+                    : lockUntilFrame(squad, lock);
+            String episode = suppressionEpisode(lock, untilFrame, decision.getResult(), decision.getDecisionPath());
             if (episode.equals(lastSuppression.get(squad.getId()))) {
                 return;
             }
@@ -1003,6 +1007,43 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      */
     static List<String> bunkerHoldReleaseCells(SquadDecision context) {
         return Collections.singletonList(context.getBunkerHoldRelease().name());
+    }
+
+    /**
+     * Builds the key a LOCK_SUPPRESSED row is deduplicated on: the lock, the frame it ends (or the frame its run of
+     * band holds began), the overridden verdict and the branch that asked for it. A row is written only when a squad's
+     * key differs from the last one written for it.
+     *
+     * @param lock the lock that held the squad
+     * @param untilFrame the frame the episode is keyed on
+     * @param result the verdict the lock overrode
+     * @param path the branch that asked for the overridden status
+     * @return the episode key
+     */
+    static String suppressionEpisode(SquadLock lock, int untilFrame, CombatSimulator.CombatResult result,
+                                     DecisionPath path) {
+        return lock.name() + "@" + untilFrame + ":" + result + ":" + path;
+    }
+
+    /**
+     * Returns the frame the neighbouring fight lock that holds a squad ends: the latest end among the other ground
+     * squads in FIGHT within the support radius whose fight lock is active, or -1 when none is. A NEIGHBOUR_FIGHT
+     * episode is keyed on it, so a hold under a different or renewed neighbour lock writes a new row.
+     *
+     * @param squad the held squad
+     * @param squads every fight squad
+     * @param frame current frame
+     * @return the end frame of the holding neighbour lock, or -1
+     */
+    static int neighbourLockUntilFrame(Squad squad, Collection<Squad> squads, int frame) {
+        int until = SquadDecision.NOT_EVALUATED;
+        for (Squad other : squads) {
+            if (other != squad && other.isGroundSquad() && other.getStatus() == SquadStatus.FIGHT
+                    && other.isFightLocked(frame) && SquadManager.withinSupportRadius(squad, other)) {
+                until = Math.max(until, other.getFightLockedUntilFrame());
+            }
+        }
+        return until;
     }
 
     private static int lockUntilFrame(Squad squad, SquadLock lock) {

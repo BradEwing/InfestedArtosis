@@ -572,6 +572,13 @@ public class Squad implements Comparable<Squad> {
     }
 
     /**
+     * Ends the turn-back commit, as a squad sent back into a retreat no longer holds the turn it committed to.
+     */
+    public void clearTurnBackCommit() {
+        turnBackCommitUntilFrame = 0;
+    }
+
+    /**
      * Records a measured RETREAT read taken while the squad retreats, or on the frame it starts to: for
      * {@link #BLIND_TURN_BACK_GATE_FRAMES} from this frame the squad does not turn back on a read that measured no
      * enemy, see {@link #isBlindTurnBackGated}.

@@ -214,17 +214,74 @@ class SharedVerdictTest {
 
         assertTrue(outcome.turns.isEmpty());
         assertEquals(SquadStatus.RETREAT, leaving.getStatus());
-        assertEquals(SharedVerdict.Exclusion.BELOW_RETREAT, outcome.opposed.get(0).exclusion);
+        assertEquals(SharedVerdict.Exclusion.BELOW_RELEASE, outcome.opposed.get(0).exclusion);
+    }
+
+    private static boolean leaves(boolean band, boolean inContact, double ratio) {
+        double hold = FightBand.holdThreshold(inContact, RETREAT_THRESHOLD, ENGAGE_THRESHOLD);
+        return SquadManager.leavesFight(band, CombatSimulator.CombatResult.RETREAT, true, ratio, ENGAGE_THRESHOLD,
+                hold);
     }
 
     @Test
-    void onlyAMeasuredRetreatReadBelowTheRetreatThresholdCountsAsLeaving() {
+    void aSquadLeavesOnAMeasuredRetreatBelowTheThresholdItsFightLockIsReleasedAt() {
+        assertTrue(leaves(true, true, 0.69));
+        assertFalse(leaves(true, true, 0.8));
+        assertTrue(leaves(true, false, 0.9));
+        assertFalse(leaves(true, false, 1.0));
+        assertTrue(leaves(false, true, 1.1));
+        assertFalse(leaves(false, true, ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void onlyAMeasuredRetreatReadCountsAsLeaving() {
         CombatSimulator.CombatResult retreat = CombatSimulator.CombatResult.RETREAT;
-        assertTrue(SharedVerdict.belowRetreat(retreat, true, 0.69, RETREAT_THRESHOLD));
-        assertFalse(SharedVerdict.belowRetreat(retreat, true, RETREAT_THRESHOLD, RETREAT_THRESHOLD));
-        assertFalse(SharedVerdict.belowRetreat(retreat, false, 0.1, RETREAT_THRESHOLD));
-        assertFalse(SharedVerdict.belowRetreat(CombatSimulator.CombatResult.ADVANCE, true, 0, RETREAT_THRESHOLD));
-        assertFalse(SharedVerdict.belowRetreat(retreat, true, 0, 0));
+        assertTrue(SharedVerdict.leaves(retreat, true, 0.69, RETREAT_THRESHOLD));
+        assertFalse(SharedVerdict.leaves(retreat, true, RETREAT_THRESHOLD, RETREAT_THRESHOLD));
+        assertFalse(SharedVerdict.leaves(retreat, false, 0.1, RETREAT_THRESHOLD));
+        assertFalse(SharedVerdict.leaves(CombatSimulator.CombatResult.ADVANCE, true, 0, RETREAT_THRESHOLD));
+        assertFalse(SquadManager.leavesFight(true, retreat, true, 0, 0, 0));
+    }
+
+    @Test
+    void aRetreatingSquadReadingInsideTheBandOutOfContactIsNotTurnedOnEitherFrame() {
+        Squad locked = squad(SquadStatus.FIGHT, 20);
+        locked.startFightLock(NOW);
+        Squad retreater = squad(SquadStatus.RETREAT, 4);
+        decideRetreat(retreater, NOW);
+        List<Squad> squads = Arrays.asList(locked, retreater);
+        Set<Squad> leaving = leaves(true, false, 0.9) ? Collections.singleton(retreater) : Collections.emptySet();
+
+        SquadManager.SharedOutcome first = share(squads, new HashSet<>(squads), leaving, ALWAYS_NEAR, NOW);
+        SquadManager.SharedOutcome second = share(squads, new HashSet<>(squads), leaving, ALWAYS_NEAR, NOW + 1);
+
+        assertTrue(first.turns.isEmpty());
+        assertTrue(second.turns.isEmpty());
+        assertEquals(SquadStatus.RETREAT, retreater.getStatus());
+        assertTrue(retreater.isRetreatLocked(NOW + 1));
+    }
+
+    @Test
+    void aNeighbourHoldIsNamedOnlyWhenNothingOfTheSquadsOwnHeldIt() {
+        assertEquals(telemetry.SquadLock.NEIGHBOUR_FIGHT, SquadManager.neighbourHoldLock(true, false, false, true));
+        assertEquals(telemetry.SquadLock.NEIGHBOUR_FIGHT, SquadManager.neighbourHoldLock(true, false, true, true));
+        assertEquals(telemetry.SquadLock.COMMIT_WINDOW, SquadManager.neighbourHoldLock(true, true, false, false));
+        assertEquals(telemetry.SquadLock.FIGHT, SquadManager.neighbourHoldLock(true, true, true, true));
+        assertEquals(telemetry.SquadLock.FIGHT, SquadManager.neighbourHoldLock(false, false, true, true));
+        assertEquals(telemetry.SquadLock.FIGHT_LOCK_BAND, SquadManager.neighbourHoldLock(false, false, false, true));
+    }
+
+    @Test
+    void aSquadTurnedToRetreatLosesItsTurnBackCommit() {
+        Squad retreater = squad(SquadStatus.RETREAT, 20);
+        retreater.startRetreatLock(NOW);
+        Squad committed = squad(SquadStatus.FIGHT, 2);
+        committed.startTurnBackCommit(NOW);
+
+        share(retreater, committed);
+
+        assertEquals(SquadStatus.RETREAT, committed.getStatus());
+        assertFalse(committed.isTurnBackCommitted(NOW + 1));
     }
 
     @Test
@@ -442,6 +499,14 @@ class SharedVerdictTest {
             assertTrue(held);
             assertTrue(SquadManager.fightLockHolds(held, CombatSimulator.CombatResult.RETREAT, true, 0.8, release));
             assertFalse(SquadManager.fightLockHolds(held, CombatSimulator.CombatResult.RETREAT, true, 0.69, release));
+            for (boolean contact : new boolean[] {true, false}) {
+                double hold = FightBand.holdThreshold(contact, RETREAT_THRESHOLD, ENGAGE_THRESHOLD);
+                for (double ratio : new double[] {0.69, 0.8, 0.9, 1.0, 1.2}) {
+                    assertEquals(!SquadManager.fightLockHolds(true, CombatSimulator.CombatResult.RETREAT, true, ratio,
+                            FightBand.fightLockReleaseThreshold(true, ENGAGE_THRESHOLD, hold)),
+                            leaves(true, contact, ratio), "contact " + contact + " ratio " + ratio);
+                }
+            }
         } finally {
             Config.squadSharedVerdict = saved;
         }

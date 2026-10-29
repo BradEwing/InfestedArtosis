@@ -26,13 +26,14 @@ import java.util.function.Consumer;
  * <p>A squad turned to FIGHT adopts the remaining fight lock of the FIGHT side, or a fresh fight lock of its own
  * when that side holds none, and drops its retreat lock. A squad turned to RETREAT adopts the remaining retreat lock
  * and blind turn-back gate of the RETREAT side, or a fresh retreat lock when that side holds none, and drops its
- * fight lock. Either way the turned squad's own verdict on the next frames is held on the new status by a lock, so it
- * is not turned again on every frame.
+ * fight lock and any turn-back commit. Either way the turned squad's own verdict on the next frames is held on the new
+ * status by a lock, so it is not turned again on every frame.
  *
- * <p>A RETREAT squad is never turned to FIGHT when its own read this frame was a measured RETREAT below its retreat
- * threshold, when it still holds a fight lock (it left a fight its lock no longer held), or when its blind turn-back
- * gate stands and nothing on the FIGHT side holds a lock, a commit or a frozen fight. The first keeps a squad that is
- * losing free to leave on the frame it reads the loss; the second stops a squad that broke an adopted lock from being
+ * <p>A RETREAT squad is never turned to FIGHT when its own read this frame was a measured RETREAT below its release
+ * threshold, the ratio below which a fight lock no longer holds it (see {@link #leaves}), when it still holds a fight
+ * lock (it left a fight its lock no longer held), or when its blind turn-back gate stands and nothing on the FIGHT
+ * side holds a lock, a commit or a frozen fight. The first keeps a squad free to leave on any read on which it would
+ * leave a fight it was turned into; the second stops a squad that broke an adopted lock from being
  * turned straight back before that lock has run out; the third keeps a turn back out of a measured retreat waiting
  * for a measured reason to fight, as the gate does for the squad's own verdict.
  *
@@ -51,7 +52,7 @@ final class SharedVerdict {
         STORM,
         FROZEN,
         FROZEN_SPLIT,
-        BELOW_RETREAT,
+        BELOW_RELEASE,
         LOCK_BROKEN,
         BLIND_GATE
     }
@@ -154,18 +155,21 @@ final class SharedVerdict {
     }
 
     /**
-     * Whether a read is a RETREAT measured against a real enemy below the retreat threshold: the read on which a
-     * squad leaves whatever holds it, and on which the shared verdict does not turn it to FIGHT.
+     * Whether a read is a RETREAT measured against a real enemy below the squad's release threshold: the read on
+     * which a fight lock no longer holds the squad, so it would leave a fight it was turned into, and on which the
+     * shared verdict does not turn it to FIGHT. The release threshold is the hold threshold with the band on and the
+     * engage threshold with it off, see {@link unit.squad.horizon.FightBand#fightLockReleaseThreshold}, and never
+     * below the retreat threshold.
      *
      * @param result this frame's combat sim verdict
      * @param enemyMeasured whether the sim measured a real enemy this frame
      * @param ratio the sim's overall strength ratio this frame
-     * @param retreatThreshold the retreat threshold the sim judged the ratio against
-     * @return true when the read is below the retreat threshold
+     * @param releaseThreshold the ratio below which a measured RETREAT releases the squad's fight lock
+     * @return true when the read is below the release threshold
      */
-    static boolean belowRetreat(CombatSimulator.CombatResult result, boolean enemyMeasured, double ratio,
-                                double retreatThreshold) {
-        return result == CombatSimulator.CombatResult.RETREAT && enemyMeasured && ratio < retreatThreshold;
+    static boolean leaves(CombatSimulator.CombatResult result, boolean enemyMeasured, double ratio,
+                          double releaseThreshold) {
+        return result == CombatSimulator.CombatResult.RETREAT && enemyMeasured && ratio < releaseThreshold;
     }
 
     /**
@@ -244,8 +248,8 @@ final class SharedVerdict {
      * @param squads every fight squad
      * @param frozen squads whose status must not change; they pull their group to their own status, and a group
      *     whose frozen squads disagree is left as it is
-     * @param leaving squads whose own read this frame was a measured RETREAT below their retreat threshold, see
-     *     {@link #belowRetreat}
+     * @param leaving squads whose own read this frame was a measured RETREAT below their release threshold, see
+     *     {@link #leaves}
      * @param near whether two squads are within the support radius
      * @param now current frame
      * @param onFight called for a squad turned to FIGHT, after its status and locks are set
@@ -303,7 +307,7 @@ final class SharedVerdict {
      *
      * @param member a RETREAT squad of the group
      * @param frozen squads whose status must not change
-     * @param leaving squads whose own read this frame was below their retreat threshold
+     * @param leaving squads whose own read this frame was below their release threshold
      * @param fightSideHeld whether the group's FIGHT side holds a fight lock, a turn-back commit or a frozen squad
      * @param now current frame
      * @return the reason the squad keeps RETREAT, or NONE
@@ -314,7 +318,7 @@ final class SharedVerdict {
             return Exclusion.FROZEN;
         }
         if (leaving.contains(member)) {
-            return Exclusion.BELOW_RETREAT;
+            return Exclusion.BELOW_RELEASE;
         }
         if (member.isFightLocked(now)) {
             return Exclusion.LOCK_BROKEN;
@@ -342,6 +346,7 @@ final class SharedVerdict {
     private static void turnToRetreat(Squad member, int retreatUntil, int gateUntil, int now) {
         member.setStatus(SquadStatus.RETREAT);
         member.clearFightLock();
+        member.clearTurnBackCommit();
         if (retreatUntil > now) {
             member.adoptRetreatLock(retreatUntil);
         } else {

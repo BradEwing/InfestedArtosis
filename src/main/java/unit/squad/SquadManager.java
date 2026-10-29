@@ -1740,7 +1740,7 @@ public class SquadManager {
      * @param second the other squad
      * @return true when their centers are within {@link #REINFORCEMENT_RADIUS}
      */
-    static boolean withinSupportRadius(Squad first, Squad second) {
+    public static boolean withinSupportRadius(Squad first, Squad second) {
         return first.distance(second) <= REINFORCEMENT_RADIUS;
     }
 
@@ -1782,7 +1782,7 @@ public class SquadManager {
      * @param skipped SWITCH_OFF or STORM when the reconcile does not run, NONE when it does
      * @param squads every fight squad
      * @param simulated squads that ran the sim this frame
-     * @param leaving squads whose own read this frame was below their retreat threshold
+     * @param leaving squads whose own read this frame was below their release threshold, see {@link #leavesFight}
      * @param near whether two squads are within the support radius
      * @param now current frame
      * @param onFight called for a squad turned to FIGHT
@@ -2684,7 +2684,8 @@ public class SquadManager {
         double retreatThreshold = snapshot != null ? snapshot.getRetreatThreshold() : 0;
         double holdThreshold = snapshot != null ? snapshot.getHoldThreshold() : 0;
         boolean band = Config.fightHysteresis && squad.isGroundSquad();
-        if (squad.isGroundSquad() && SharedVerdict.belowRetreat(result, enemyMeasured, ratio, retreatThreshold)) {
+        if (squad.isGroundSquad()
+                && leavesFight(band, result, enemyMeasured, ratio, engageThreshold, holdThreshold)) {
             leavingThisFrame.add(squad);
         }
 
@@ -2741,9 +2742,8 @@ public class SquadManager {
         boolean commitHolds = turnBackCommitHolds(band && squad.isTurnBackCommitted(now), result, enemyMeasured,
                 ratio, retreatThreshold);
         if (fightHeld(squad, now, lockHolds || commitHolds)) {
-            SquadDecisions.lockSuppressed(squad, neighbourFightLocked && !fightHeld(squad, now, commitHolds)
-                    ? SquadLock.NEIGHBOUR_FIGHT
-                    : fightHoldLock(fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
+            SquadDecisions.lockSuppressed(squad, neighbourHoldLock(neighbourFightLocked,
+                    fightHeld(squad, now, commitHolds), fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
             return;
@@ -3175,6 +3175,43 @@ public class SquadManager {
     static SquadLock fightHoldLock(boolean heldWithoutBand, boolean lockHolds) {
         if (heldWithoutBand) return SquadLock.FIGHT;
         return lockHolds ? SquadLock.FIGHT_LOCK_BAND : SquadLock.COMMIT_WINDOW;
+    }
+
+    /**
+     * Names what held a FIGHT squad against this frame's verdict when a neighbour's fight lock may be the lock that
+     * held it: NEIGHBOUR_FIGHT when the neighbour's lock held a squad that nothing of its own held (no own fight lock,
+     * see {@link #neighbourLockApplies}, and neither a commit, a collapse nor a cornered hold), otherwise what
+     * {@link #fightHoldLock} names.
+     *
+     * @param neighbourFightLocked whether the fight lock the squad was judged with is only a neighbour's
+     * @param heldWithoutLock whether the squad is held with no fight lock, by a commit, a collapse or a cornered hold
+     * @param heldWithoutBand whether the squad is held with the fight lock judged at the engage threshold
+     * @param lockHolds whether the fight lock holds at the release threshold the band sets
+     * @return the lock to name in suppressed_by
+     */
+    static SquadLock neighbourHoldLock(boolean neighbourFightLocked, boolean heldWithoutLock, boolean heldWithoutBand,
+                                       boolean lockHolds) {
+        if (neighbourFightLocked && !heldWithoutLock) return SquadLock.NEIGHBOUR_FIGHT;
+        return fightHoldLock(heldWithoutBand, lockHolds);
+    }
+
+    /**
+     * Whether a ground squad's read this frame is one on which it leaves a fight, see {@link SharedVerdict#leaves}:
+     * a measured RETREAT below the ratio at which its fight lock is released, see
+     * {@link FightBand#fightLockReleaseThreshold}.
+     *
+     * @param band whether the band is on for the squad
+     * @param result this frame's combat sim verdict
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param engageThreshold the engage threshold the sim judged the ratio against
+     * @param holdThreshold the hold threshold the sim judged the ratio against, see {@link FightBand#holdThreshold}
+     * @return true when the squad would leave a fight on this read
+     */
+    static boolean leavesFight(boolean band, CombatSimulator.CombatResult result, boolean enemyMeasured, double ratio,
+                               double engageThreshold, double holdThreshold) {
+        return SharedVerdict.leaves(result, enemyMeasured, ratio,
+                FightBand.fightLockReleaseThreshold(band, engageThreshold, holdThreshold));
     }
 
     /**

@@ -35,6 +35,33 @@ class SharedVerdictTelemetryTest {
     }
 
     @Test
+    void aNeighbourHoldIsKeyedOnTheHoldingNeighboursLockSoARenewedLockWritesANewRow() {
+        int now = 1000;
+        unit.squad.Squad held = new unit.squad.GroundSquad();
+        held.setStatus(SquadStatus.FIGHT);
+        unit.squad.Squad neighbour = new unit.squad.GroundSquad();
+        neighbour.setStatus(SquadStatus.FIGHT);
+        java.util.List<unit.squad.Squad> squads = Arrays.asList(held, neighbour);
+        unit.squad.CombatSimulator.CombatResult retreat = unit.squad.CombatSimulator.CombatResult.RETREAT;
+
+        assertEquals(SquadDecision.NOT_EVALUATED, SquadDecisionLogger.neighbourLockUntilFrame(held, squads, now));
+        neighbour.startFightLock(now);
+        int first = SquadDecisionLogger.neighbourLockUntilFrame(held, squads, now + 1);
+        String firstEpisode = SquadDecisionLogger.suppressionEpisode(SquadLock.NEIGHBOUR_FIGHT, first, retreat,
+                DecisionPath.SIM_RETREAT);
+        String sameEpisode = SquadDecisionLogger.suppressionEpisode(SquadLock.NEIGHBOUR_FIGHT,
+                SquadDecisionLogger.neighbourLockUntilFrame(held, squads, now + 5), retreat, DecisionPath.SIM_RETREAT);
+        neighbour.startFightLock(now + 10);
+        String renewedEpisode = SquadDecisionLogger.suppressionEpisode(SquadLock.NEIGHBOUR_FIGHT,
+                SquadDecisionLogger.neighbourLockUntilFrame(held, squads, now + 11), retreat,
+                DecisionPath.SIM_RETREAT);
+
+        assertEquals(neighbour.getFightLockedUntilFrame() - 10, first);
+        assertEquals(firstEpisode, sameEpisode);
+        assertFalse(firstEpisode.equals(renewedEpisode));
+    }
+
+    @Test
     void aNeighbourHoldOverridesARetreatReadOfAFightSquadOnly() {
         assertTrue(SquadDecisionLogger.overridesVerdict(SquadStatus.FIGHT, SquadLock.NEIGHBOUR_FIGHT,
                 unit.squad.CombatSimulator.CombatResult.RETREAT));
