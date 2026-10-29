@@ -33,6 +33,12 @@ public final class Config {
      * Whether Drones are added while an enemy Bunker stance stands. On unless IA_BUNKER_ECON is set to false.
      */
     public static boolean bunkerEcon = true;
+    /**
+     * Whether a ling-heavy ground squad needs more supply to move out until a ling upgrade finishes, and a ZvZ ling
+     * squad without Metabolic Boost holds near home against an enemy with, or plausibly with, it. On unless
+     * IA_SPEED_PARITY_GATE is set to false.
+     */
+    public static boolean speedParityGate = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -124,6 +130,7 @@ public final class Config {
         lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
         racePrior = Boolean.parseBoolean(setting(dotenv, "IA_RACE_PRIOR"));
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
+        speedParityGate = enabledUnlessFalse(setting(dotenv, "IA_SPEED_PARITY_GATE"));
     }
 
     /**
