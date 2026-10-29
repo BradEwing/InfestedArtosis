@@ -512,6 +512,46 @@ public class Squad implements Comparable<Squad> {
     }
 
     /**
+     * Holds the fight lock until the given frame at the latest, without starting a window of the squad's own. The
+     * squad's current supply becomes the strength it committed with, as {@link #startFightLock} records it.
+     *
+     * @param currentFrame frame the lock is adopted on
+     * @param untilFrame frame the adopted lock ends
+     */
+    public void adoptFightLock(int currentFrame, int untilFrame) {
+        fightLockSupply = continuesFightLock(currentFrame) ? Math.max(fightLockSupply, cachedSupply) : cachedSupply;
+        fightLockedUntilFrame = Math.max(fightLockedUntilFrame, untilFrame);
+    }
+
+    /**
+     * Drops the fight lock.
+     */
+    public void clearFightLock() {
+        fightLockedUntilFrame = 0;
+    }
+
+    /**
+     * Holds the retreat lock until the given frame at the latest, without starting a window of the squad's own. The
+     * adopted lock is not an attrition lock.
+     *
+     * @param untilFrame frame the adopted lock ends
+     */
+    public void adoptRetreatLock(int untilFrame) {
+        retreatLockedUntilFrame = Math.max(retreatLockedUntilFrame, untilFrame);
+        attritionRetreatLock = false;
+        strongEngageSinceFrame = -1;
+    }
+
+    /**
+     * Holds the blind turn-back gate until the given frame at the latest, see {@link #isBlindTurnBackGated}.
+     *
+     * @param untilFrame frame the adopted gate ends
+     */
+    public void adoptBlindTurnBackGate(int untilFrame) {
+        blindTurnBackGateUntilFrame = Math.max(blindTurnBackGateUntilFrame, untilFrame);
+    }
+
+    /**
      * Commits a ground squad that turned back out of a retreat to FIGHT for {@link #TURN_BACK_COMMIT_FRAMES}, see
      * {@link #isTurnBackCommitted}.
      *
@@ -529,6 +569,13 @@ public class Squad implements Comparable<Squad> {
      */
     public boolean isTurnBackCommitted(int currentFrame) {
         return currentFrame < turnBackCommitUntilFrame;
+    }
+
+    /**
+     * Ends the turn-back commit, as a squad sent back into a retreat no longer holds the turn it committed to.
+     */
+    public void clearTurnBackCommit() {
+        turnBackCommitUntilFrame = 0;
     }
 
     /**

@@ -292,5 +292,17 @@ public enum DecisionPath {
      * A retreating ground squad inside its blind turn-back gate stayed in RETREAT on a sim ADVANCE that measured no
      * enemy, waiting for a measured ENGAGE before turning back into FIGHT.
      */
-    BLIND_TURN_BACK_HOLD
+    BLIND_TURN_BACK_HOLD,
+
+    /**
+     * A ground squad holding RETREAT turned to FIGHT because the group of neighbouring ground squads within the
+     * support radius it belongs to took FIGHT, see unit.squad.SharedVerdict.
+     */
+    SHARED_VERDICT_FIGHT,
+
+    /**
+     * A ground squad holding FIGHT turned to RETREAT because the group of neighbouring ground squads within the
+     * support radius it belongs to took RETREAT, see unit.squad.SharedVerdict.
+     */
+    SHARED_VERDICT_RETREAT
 }

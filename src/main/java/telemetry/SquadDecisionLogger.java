@@ -20,6 +20,7 @@ import util.Arc;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -123,6 +124,16 @@ import java.util.stream.Collectors;
  * when a member attacked or was hit recently and 0 otherwise; both are -1 on such a row too and on an air squad's
  * row, and band_contact is also -1 on a ground squad's row from a read outside its fight tick (contain, runby, swarm).
  *
+ * <p>OPPOSED_PAIR rows are written every {@link #OPPOSED_PAIR_INTERVAL_FRAMES} frames, after the decision step, for
+ * each pair of ground squads within the support radius that hold FIGHT and RETREAT, with IA_SQUAD_SHARED_VERDICT on or
+ * off: the row is one squad's, with old_status its status and new_status its partner's, and partner_squad_id,
+ * partner_distance and opposed_reason name the partner, the distance between them and why the shared verdict left
+ * the pair. SHARED_VERDICT rows are written for each squad the shared verdict turned, with old_status the status it
+ * decided and new_status the one it took, partner_squad_id and partner_distance the squad that stood for the winning
+ * side, and shared_verdict_basis what decided it. suppressed_by NEIGHBOUR_FIGHT on a LOCK_SUPPRESSED row marks a
+ * FIGHT squad held only by a neighbour's fight lock, keyed on the end of that lock, see {@link #neighbourLockUntilFrame}.
+ * See {@link #neighbourCells}.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class SquadDecisionLogger implements SquadDecisionSink {
@@ -151,7 +162,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
             + "air_commitment_release,"
             + "bunker_hold_release,siege_band,siege_band_frames,siege_band_held_frames,"
-            + "sim_retreat_threshold,sim_hold_threshold,band_contact";
+            + "sim_retreat_threshold,sim_hold_threshold,band_contact,"
+            + "partner_squad_id,partner_distance,opposed_reason,shared_verdict_basis";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -160,6 +172,10 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     static final String EVENT_SWARM_REMOVED = "SWARM_REMOVED";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
+    /** Frames between two samples of the opposed pairs of neighbouring ground squads. */
+    public static final int OPPOSED_PAIR_INTERVAL_FRAMES = 24;
+    static final String EVENT_OPPOSED_PAIR = "OPPOSED_PAIR";
+    static final String EVENT_SHARED_VERDICT = "SHARED_VERDICT";
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
     private static final String EVENT_LOCK_SUPPRESSED = "LOCK_SUPPRESSED";
     private static final String EVENT_SPLIT_SUPPRESSED = "SPLIT_SUPPRESSED";
@@ -264,8 +280,10 @@ public class SquadDecisionLogger implements SquadDecisionSink {
                 return;
             }
 
-            String episode = lock.name() + "@" + lockUntilFrame(squad, lock) + ":" + decision.getResult()
-                    + ":" + decision.getDecisionPath();
+            int untilFrame = lock == SquadLock.NEIGHBOUR_FIGHT
+                    ? neighbourLockUntilFrame(squad, squadManager.fightSquads, game.getFrameCount())
+                    : lockUntilFrame(squad, lock);
+            String episode = suppressionEpisode(lock, untilFrame, decision.getResult(), decision.getDecisionPath());
             if (episode.equals(lastSuppression.get(squad.getId()))) {
                 return;
             }
@@ -699,6 +717,53 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         }
     }
 
+    @Override
+    public void onOpposedPair(Squad squad, Squad partner, int distance, String reason) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(neighbourRow(squad, EVENT_OPPOSED_PAIR, squad.getStatus(), partner.getStatus(),
+                    partner, distance, reason, NONE));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onSharedVerdict(Squad squad, SquadStatus from, SquadStatus to, String basis, Squad decider,
+                                int distance) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(neighbourRow(squad, EVENT_SHARED_VERDICT, from, to, decider, distance, NONE, basis));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    /**
+     * Builds an OPPOSED_PAIR or SHARED_VERDICT row: the squad's decision this frame, with the neighbour cells set for
+     * this row only.
+     */
+    private String neighbourRow(Squad squad, String event, SquadStatus from, SquadStatus to, Squad partner,
+                                int distance, String reason, String basis) {
+        SquadDecision pending = decisions.get(squad.getId());
+        SquadDecision context = pending != null ? pending : new SquadDecision();
+        context.setPartnerSquadId(partner.getId());
+        context.setPartnerDistance(distance);
+        context.setOpposedReason(reason);
+        context.setSharedVerdictBasis(basis);
+        try {
+            return row(squad, game.getFrameCount(), event, from, to, context, NONE);
+        } finally {
+            context.clearNeighbour();
+        }
+    }
+
     /**
      * Disables the logger and clears its state after an error, so a telemetry failure cannot crash the game.
      */
@@ -944,6 +1009,43 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         return Collections.singletonList(context.getBunkerHoldRelease().name());
     }
 
+    /**
+     * Builds the key a LOCK_SUPPRESSED row is deduplicated on: the lock, the frame it ends (or the frame its run of
+     * band holds began), the overridden verdict and the branch that asked for it. A row is written only when a squad's
+     * key differs from the last one written for it.
+     *
+     * @param lock the lock that held the squad
+     * @param untilFrame the frame the episode is keyed on
+     * @param result the verdict the lock overrode
+     * @param path the branch that asked for the overridden status
+     * @return the episode key
+     */
+    static String suppressionEpisode(SquadLock lock, int untilFrame, CombatSimulator.CombatResult result,
+                                     DecisionPath path) {
+        return lock.name() + "@" + untilFrame + ":" + result + ":" + path;
+    }
+
+    /**
+     * Returns the frame the neighbouring fight lock that holds a squad ends: the latest end among the other ground
+     * squads in FIGHT within the support radius whose fight lock is active, or -1 when none is. A NEIGHBOUR_FIGHT
+     * episode is keyed on it, so a hold under a different or renewed neighbour lock writes a new row.
+     *
+     * @param squad the held squad
+     * @param squads every fight squad
+     * @param frame current frame
+     * @return the end frame of the holding neighbour lock, or -1
+     */
+    static int neighbourLockUntilFrame(Squad squad, Collection<Squad> squads, int frame) {
+        int until = SquadDecision.NOT_EVALUATED;
+        for (Squad other : squads) {
+            if (other != squad && other.isGroundSquad() && other.getStatus() == SquadStatus.FIGHT
+                    && other.isFightLocked(frame) && SquadManager.withinSupportRadius(squad, other)) {
+                until = Math.max(until, other.getFightLockedUntilFrame());
+            }
+        }
+        return until;
+    }
+
     private static int lockUntilFrame(Squad squad, SquadLock lock) {
         switch (lock) {
             case RETREAT:
@@ -1006,6 +1108,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(siegeBandCells(context));
         fields.addAll(retreatThresholdCells(context));
         fields.addAll(holdCells(context));
+        fields.addAll(neighbourCells(context));
         return String.join(",", fields);
     }
 
@@ -1081,6 +1184,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(siegeBandCells(context));
         fields.addAll(retreatThresholdCells(context));
         fields.addAll(holdCells(context));
+        fields.addAll(neighbourCells(context));
         return String.join(",", fields);
     }
 
@@ -1342,6 +1446,22 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      */
     static List<String> holdCells(SquadDecision context) {
         return Arrays.asList(Csv.format(context.getHoldThreshold()), String.valueOf(context.getInContact()));
+    }
+
+    /**
+     * Builds the partner_squad_id, partner_distance, opposed_reason and shared_verdict_basis cells. An OPPOSED_PAIR
+     * row names the other squad of the pair, the distance between their centers in pixels and why the shared verdict
+     * left the pair opposed (see unit.squad.SharedVerdict.Exclusion); a SHARED_VERDICT row names the squad that stood
+     * for the winning side, the distance to it and what decided the group's status: FROZEN when a frozen squad pulled
+     * the group, LOCK when a lock turned the supply comparison the other way, SUPPLY otherwise. Every other row carries
+     * NONE and -1.
+     *
+     * @param context the decision the row is built from
+     * @return the four neighbour cells
+     */
+    static List<String> neighbourCells(SquadDecision context) {
+        return Arrays.asList(context.getPartnerSquadId(), String.valueOf(context.getPartnerDistance()),
+                context.getOpposedReason(), context.getSharedVerdictBasis());
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {

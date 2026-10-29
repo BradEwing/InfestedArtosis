@@ -37,6 +37,7 @@ import telemetry.RallyRelease;
 import telemetry.RetreatRoute;
 import telemetry.RunbyTelemetry;
 import telemetry.RunbyTick;
+import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
 import telemetry.SwarmEvent;
@@ -64,7 +65,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
@@ -89,6 +92,9 @@ public class SquadManager {
     private Squad overlords = new Squad();
 
     public HashSet<Squad> fightSquads = new HashSet<>();
+    private final Set<Squad> simulatedThisFrame = new HashSet<>();
+    private final Set<Squad> leavingThisFrame = new HashSet<>();
+    private final Set<Squad> retreatingAtFrameStart = new HashSet<>();
 
     @Getter
     private HashMap<Base, Squad> defenseSquads = new HashMap<>();
@@ -254,8 +260,14 @@ public class SquadManager {
         airHarass.onFrame(now, fightSquads);
         updateStalemateCommit(now);
         Set<Squad> removed = new HashSet<>();
+        simulatedThisFrame.clear();
+        leavingThisFrame.clear();
+        retreatingAtFrameStart.clear();
         for (Squad fightSquad: fightSquads) {
             fightSquad.onFrame();
+            if (fightSquad.getStatus() == SquadStatus.RETREAT) {
+                retreatingAtFrameStart.add(fightSquad);
+            }
             if (fightSquad.shouldDisband()) {
                 disbanded.addAll(disbandSquad(fightSquad));
                 removed.add(fightSquad);
@@ -279,6 +291,7 @@ public class SquadManager {
         }
 
         fightSquads.removeAll(removed);
+        shareVerdicts(now);
         evadeOutrangedHits(now);
         updateLurkerFixedFire();
         updateLurkerFire(now);
@@ -1715,8 +1728,148 @@ public class SquadManager {
             return;
         }
 
+        simulatedThisFrame.add(squad);
         simulateFightSquad(squad);
         holdCollapseWrap(squad);
+    }
+
+    /**
+     * Whether two squads are within the radius inside which the sim counts one as the other's support.
+     *
+     * @param first one squad
+     * @param second the other squad
+     * @return true when their centers are within {@link #REINFORCEMENT_RADIUS}
+     */
+    public static boolean withinSupportRadius(Squad first, Squad second) {
+        return first.distance(second) <= REINFORCEMENT_RADIUS;
+    }
+
+    /**
+     * Whether a neighbouring squad's fight lock holds a FIGHT squad, see {@link SharedVerdict#neighbourFightLock},
+     * always false with {@link Config#squadSharedVerdict} off.
+     *
+     * @param squad the squad about to decide
+     * @param squads every fight squad
+     * @param near whether two squads are within the support radius
+     * @param now current frame
+     * @return true when a neighbour's fight lock holds the squad
+     */
+    static boolean neighbourLockApplies(Squad squad, Collection<Squad> squads, BiPredicate<Squad, Squad> near,
+                                        int now) {
+        return Config.squadSharedVerdict && SharedVerdict.neighbourFightLock(squad, squads, near, now);
+    }
+
+    /**
+     * Whether the shared verdict keeps a squad on its status and lets it pull its group: it did not run the sim this
+     * frame (a stalemate commit, a swarm fight, a runby), a collapse holds it, see {@link #collapseHoldsMembers}, or
+     * it holds a cornered fight, see {@link Squad#isCorneredFightHeld}.
+     *
+     * @param squad fight squad
+     * @param simulated squads that ran the sim this frame
+     * @param now current frame
+     * @return true when the squad is frozen for the shared verdict
+     */
+    static boolean frozenForVerdict(Squad squad, Set<Squad> simulated, int now) {
+        return !simulated.contains(squad) || collapseHoldsMembers(squad, now) || squad.isCorneredFightHeld(now);
+    }
+
+    /**
+     * Runs the shared verdict over the fight squads after every squad has decided, see {@link SharedVerdict}, and
+     * lists the ground pairs still opposed afterwards. Frozen squads are classified by {@link #frozenForVerdict}.
+     * Nothing is turned when the reconcile is skipped, with {@link Config#squadSharedVerdict} off or while a Psionic
+     * Storm is active, and every opposed pair then carries the reason it was skipped.
+     *
+     * @param skipped SWITCH_OFF or STORM when the reconcile does not run, NONE when it does
+     * @param squads every fight squad
+     * @param simulated squads that ran the sim this frame
+     * @param leaving squads whose own read this frame was below their release threshold, see {@link #leavesFight}
+     * @param near whether two squads are within the support radius
+     * @param now current frame
+     * @param onFight called for a squad turned to FIGHT
+     * @param onRetreat called for a squad turned to RETREAT
+     * @return the turns made, and the pairs still opposed with the reason each was left
+     */
+    static SharedOutcome shareVerdicts(SharedVerdict.Exclusion skipped, List<Squad> squads, Set<Squad> simulated,
+                                       Set<Squad> leaving, BiPredicate<Squad, Squad> near, int now,
+                                       Consumer<Squad> onFight, Consumer<Squad> onRetreat) {
+        if (skipped != SharedVerdict.Exclusion.NONE) {
+            return new SharedOutcome(Collections.emptyList(),
+                    SharedVerdict.opposedPairs(squads, near, Collections.emptyMap(), skipped));
+        }
+        Set<Squad> frozen = new HashSet<>();
+        for (Squad squad : squads) {
+            if (frozenForVerdict(squad, simulated, now)) {
+                frozen.add(squad);
+            }
+        }
+        SharedVerdict.Outcome outcome = SharedVerdict.reconcile(squads, frozen, leaving, near, now, onFight,
+                onRetreat);
+        return new SharedOutcome(outcome.turns,
+                SharedVerdict.opposedPairs(squads, near, outcome.declined, SharedVerdict.Exclusion.NONE));
+    }
+
+    /**
+     * Why the shared verdict's reconcile does not run this frame: SWITCH_OFF with {@link Config#squadSharedVerdict}
+     * off, STORM while a Psionic Storm is active, so {@link #stormRetreat} stays the last word, and NONE otherwise.
+     *
+     * @param enabled whether the shared verdict switch is on
+     * @param stormActive whether any Psionic Storm is active
+     * @return the reason the reconcile is skipped, or NONE when it runs
+     */
+    static SharedVerdict.Exclusion verdictSkipped(boolean enabled, boolean stormActive) {
+        if (!enabled) {
+            return SharedVerdict.Exclusion.SWITCH_OFF;
+        }
+        return stormActive ? SharedVerdict.Exclusion.STORM : SharedVerdict.Exclusion.NONE;
+    }
+
+    /**
+     * The turns one shared verdict made and the ground pairs still opposed after it.
+     */
+    static final class SharedOutcome {
+        final List<SharedVerdict.Turn> turns;
+        final List<SharedVerdict.Pair> opposed;
+
+        SharedOutcome(List<SharedVerdict.Turn> turns, List<SharedVerdict.Pair> opposed) {
+            this.turns = turns;
+            this.opposed = opposed;
+        }
+    }
+
+    /**
+     * Keeps neighbouring ground squads on one decision after every squad has decided, see
+     * {@link #shareVerdicts(SharedVerdict.Exclusion, List, Set, Set, BiPredicate, int, Consumer, Consumer)}, writes a
+     * SHARED_VERDICT row per turn, and samples the pairs still opposed every
+     * {@link SquadDecisionLogger#OPPOSED_PAIR_INTERVAL_FRAMES} frames, with the switch on or off.
+     *
+     * @param now current frame
+     */
+    private void shareVerdicts(int now) {
+        SharedVerdict.Exclusion skipped = verdictSkipped(Config.squadSharedVerdict,
+                !gameState.getActiveStormPositions().isEmpty());
+        SharedOutcome outcome = shareVerdicts(skipped, new ArrayList<>(fightSquads), simulatedThisFrame,
+                leavingThisFrame, SquadManager::withinSupportRadius, now, this::turnToFight, this::turnToRetreat);
+        for (SharedVerdict.Turn turn : outcome.turns) {
+            SquadDecisions.sharedVerdict(turn.squad, turn.from, turn.to, turn.basis.name(), turn.decider,
+                    (int) turn.squad.distance(turn.decider));
+        }
+        if (now % SquadDecisionLogger.OPPOSED_PAIR_INTERVAL_FRAMES != 0) {
+            return;
+        }
+        for (SharedVerdict.Pair pair : outcome.opposed) {
+            SquadDecisions.opposedPair(pair.first, pair.second, (int) pair.first.distance(pair.second),
+                    pair.exclusion.name());
+        }
+    }
+
+    private void turnToFight(Squad squad) {
+        assignFightTargets(squad, squad.getMembers(), true);
+        SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_FIGHT);
+    }
+
+    private void turnToRetreat(Squad squad) {
+        assignRetreatTargets(squad, squad.getMembers(), !retreatingAtFrameStart.contains(squad));
+        SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_RETREAT);
     }
 
     /**
@@ -2509,7 +2662,10 @@ public class SquadManager {
 
         int now = game.getFrameCount();
         boolean retreatLocked = squad.isRetreatLocked(now);
-        boolean fightLocked = squad.isFightLocked(now);
+        boolean ownFightLocked = squad.isFightLocked(now);
+        boolean neighbourFightLocked = !ownFightLocked
+                && neighbourLockApplies(squad, fightSquads, SquadManager::withinSupportRadius, now);
+        boolean fightLocked = ownFightLocked || neighbourFightLocked;
 
         if (squad.isGroundSquad()) {
             squad.noteContactScan(now);
@@ -2528,6 +2684,10 @@ public class SquadManager {
         double retreatThreshold = snapshot != null ? snapshot.getRetreatThreshold() : 0;
         double holdThreshold = snapshot != null ? snapshot.getHoldThreshold() : 0;
         boolean band = Config.fightHysteresis && squad.isGroundSquad();
+        if (squad.isGroundSquad()
+                && leavesFight(band, result, enemyMeasured, ratio, engageThreshold, holdThreshold)) {
+            leavingThisFrame.add(squad);
+        }
 
         boolean exitLockBroken = AirHarassEvaluator.breaksExitLock(squad.isHarassExitLocked(now), result,
                 enemyMeasured);
@@ -2537,7 +2697,7 @@ public class SquadManager {
             squad.setHarassExitEngageTarget(squad.getHarassExitTarget());
             retreatLocked = false;
         }
-        SquadDecisions.simEvaluated(squad, result, retreatLocked, fightLocked);
+        SquadDecisions.simEvaluated(squad, result, retreatLocked, ownFightLocked);
         SquadDecisions.pathTaken(squad, exitLockBroken
                 ? DecisionPath.HARASS_EXIT_ENGAGE
                 : requestPath(noVisionMarch, result));
@@ -2582,7 +2742,8 @@ public class SquadManager {
         boolean commitHolds = turnBackCommitHolds(band && squad.isTurnBackCommitted(now), result, enemyMeasured,
                 ratio, retreatThreshold);
         if (fightHeld(squad, now, lockHolds || commitHolds)) {
-            SquadDecisions.lockSuppressed(squad, fightHoldLock(fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
+            SquadDecisions.lockSuppressed(squad, neighbourHoldLock(neighbourFightLocked,
+                    fightHeld(squad, now, commitHolds), fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
             return;
@@ -3017,6 +3178,43 @@ public class SquadManager {
     }
 
     /**
+     * Names what held a FIGHT squad against this frame's verdict when a neighbour's fight lock may be the lock that
+     * held it: NEIGHBOUR_FIGHT when the neighbour's lock held a squad that nothing of its own held (no own fight lock,
+     * see {@link #neighbourLockApplies}, and neither a commit, a collapse nor a cornered hold), otherwise what
+     * {@link #fightHoldLock} names.
+     *
+     * @param neighbourFightLocked whether the fight lock the squad was judged with is only a neighbour's
+     * @param heldWithoutLock whether the squad is held with no fight lock, by a commit, a collapse or a cornered hold
+     * @param heldWithoutBand whether the squad is held with the fight lock judged at the engage threshold
+     * @param lockHolds whether the fight lock holds at the release threshold the band sets
+     * @return the lock to name in suppressed_by
+     */
+    static SquadLock neighbourHoldLock(boolean neighbourFightLocked, boolean heldWithoutLock, boolean heldWithoutBand,
+                                       boolean lockHolds) {
+        if (neighbourFightLocked && !heldWithoutLock) return SquadLock.NEIGHBOUR_FIGHT;
+        return fightHoldLock(heldWithoutBand, lockHolds);
+    }
+
+    /**
+     * Whether a ground squad's read this frame is one on which it leaves a fight, see {@link SharedVerdict#leaves}:
+     * a measured RETREAT below the ratio at which its fight lock is released, see
+     * {@link FightBand#fightLockReleaseThreshold}.
+     *
+     * @param band whether the band is on for the squad
+     * @param result this frame's combat sim verdict
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param engageThreshold the engage threshold the sim judged the ratio against
+     * @param holdThreshold the hold threshold the sim judged the ratio against, see {@link FightBand#holdThreshold}
+     * @return true when the squad would leave a fight on this read
+     */
+    static boolean leavesFight(boolean band, CombatSimulator.CombatResult result, boolean enemyMeasured, double ratio,
+                               double engageThreshold, double holdThreshold) {
+        return SharedVerdict.leaves(result, enemyMeasured, ratio,
+                FightBand.fightLockReleaseThreshold(band, engageThreshold, holdThreshold));
+    }
+
+    /**
      * Names the branch asking for this frame's status, read before either lock is consulted.
      *
      * <p>A squad with no detected enemy anywhere cannot be given a fight target by
@@ -3096,6 +3294,19 @@ public class SquadManager {
     }
 
     private void assignRetreatTargets(Squad squad, HashSet<ManagedUnit> managedFighters) {
+        assignRetreatTargets(squad, managedFighters, true);
+    }
+
+    /**
+     * Puts every member in RETREAT toward its retreat target. A member that was not already retreating is made ready
+     * to take its new order at once, unless resetReady is false: a squad the shared verdict turns back to RETREAT on a
+     * frame it began retreating keeps its members' order cadence, see {@link ManagedUnit#setReady}.
+     *
+     * @param squad squad to retreat
+     * @param managedFighters its members
+     * @param resetReady whether a member leaving another role is made ready
+     */
+    private void assignRetreatTargets(Squad squad, HashSet<ManagedUnit> managedFighters, boolean resetReady) {
         Position rallyPoint = gameState.getSquadRallyPoint();
         int now = game.getFrameCount();
         boolean keepPlan = squad.isGroundSquad()
@@ -3112,7 +3323,7 @@ public class SquadManager {
             SquadDecisions.retreatRouted(squad, squad.getRetreatRoute());
         }
         for (ManagedUnit managedUnit : managedFighters) {
-            if (managedUnit.getRole() != UnitRole.RETREAT) {
+            if (resetReady && managedUnit.getRole() != UnitRole.RETREAT) {
                 managedUnit.setReady(true);
             }
             managedUnit.setRole(UnitRole.RETREAT);

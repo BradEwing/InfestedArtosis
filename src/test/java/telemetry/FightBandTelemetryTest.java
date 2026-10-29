@@ -38,12 +38,12 @@ class FightBandTelemetryTest {
     }
 
     @Test
-    void theHoldThresholdAndContactAreTheLastColumnsAndUnevaluatedWithoutASnapshot() {
+    void theHoldThresholdAndContactPrecedeTheNeighbourColumnsAndAreUnevaluatedWithoutASnapshot() {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("sim_hold_threshold", columns[columns.length - 2]);
-        assertEquals("band_contact", columns[columns.length - 1]);
+        assertEquals("sim_hold_threshold", columns[columns.length - 6]);
+        assertEquals("band_contact", columns[columns.length - 5]);
         assertEquals(Arrays.asList(Csv.format(SquadDecision.NOT_EVALUATED), String.valueOf(SquadDecision.NOT_EVALUATED)),
                 SquadDecisionLogger.holdCells(context));
         context.setHoldThreshold(1.0);
@@ -56,7 +56,7 @@ class FightBandTelemetryTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("sim_retreat_threshold", columns[columns.length - 3]);
+        assertEquals("sim_retreat_threshold", columns[columns.length - 7]);
         assertEquals(Collections.singletonList(Csv.format(SquadDecision.NOT_EVALUATED)),
                 SquadDecisionLogger.retreatThresholdCells(context));
         context.setRetreatThreshold(0.7);
