@@ -410,6 +410,12 @@ class SpeedlingAllInTest {
     }
 
     @Test
+    void cutsGasAfterSpeedWhileOtherBuildsDoNot() {
+        assertTrue(new SpeedlingAllIn().cutsGasAfterSpeed());
+        assertFalse(new strategy.buildorder.opener.FourPool().cutsGasAfterSpeed());
+    }
+
+    @Test
     void neverPlansLairOrHive() {
         SpeedlingAllIn buildOrder = new SpeedlingAllIn();
         assertFalse(buildOrder.needLair());

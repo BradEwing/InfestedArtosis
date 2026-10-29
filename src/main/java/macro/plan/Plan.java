@@ -80,6 +80,12 @@ public abstract class Plan {
     private HatcheryRequestReason hatcheryRequestReason;
 
     /**
+     * Which SpeedlingAllIn reaction against Protoss created this plan, or null on every other plan.
+     */
+    @Nullable
+    private SpeedlingReaction speedlingReaction;
+
+    /**
      * The creep colony plan a Sunken or Spore plan morphs. The pair is formed when both plans are
      * queued and carries through fulfilment, so the morph follows the colony its pair paid for
      * rather than whichever colony happens to be free. Null once the morph adopts another colony.

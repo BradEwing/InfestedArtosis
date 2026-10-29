@@ -8,6 +8,7 @@ import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+import unit.squad.SquadStatus;
 import unit.squad.SwarmLock;
 
 import java.util.List;
@@ -215,5 +216,13 @@ public final class SquadDecisions {
             return;
         }
         current.onSwarmEvaluated(squad, event, swarmId, remainingFrames, release);
+    }
+
+    public static void neighbourStatuses(Squad squad, String event, SquadStatus own, SquadStatus other) {
+        SquadDecisionSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onNeighbourStatuses(squad, event, own, other);
     }
 }

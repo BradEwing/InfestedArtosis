@@ -33,6 +33,36 @@ public final class Config {
      * Whether Drones are added while an enemy Bunker stance stands. On unless IA_BUNKER_ECON is set to false.
      */
     public static boolean bunkerEcon = true;
+    /**
+     * Whether a ground squad's fight/retreat decision uses a band between the retreat and engage thresholds: an
+     * engaged squad stays in FIGHT until its ratio falls below the retreat threshold, its fight lock holds a RETREAT
+     * read above that threshold and renews despite lost supply there, and a squad that turns back out of a retreat
+     * commits to FIGHT for a window. On unless IA_FIGHT_HYSTERESIS is set to false.
+     */
+    public static boolean fightHysteresis = true;
+    /**
+     * Whether a ling-heavy ground squad needs more supply to move out until a ling upgrade finishes, and a ZvZ ling
+     * squad without Metabolic Boost holds near home against an enemy with, or plausibly with, it. On unless
+     * IA_SPEED_PARITY_GATE is set to false.
+     */
+    public static boolean speedParityGate = true;
+    /**
+     * Whether SpeedlingAllIn answers a Protoss opponent with the Protoss sunken and zergling targets, a larva-bound
+     * hatchery, and a drone floor suspended while enemy ground units are in our bases. On unless
+     * IA_SPEEDLING_P_REACTIONS is set to false.
+     */
+    public static boolean speedlingPReactions = true;
+    /**
+     * Whether a build that cuts gas after Metabolic Boost keeps its drones off gas while no queued plan costs gas. On
+     * unless IA_SPEEDLING_GAS_CUT is set to false.
+     */
+    public static boolean speedlingGasCut = true;
+    /**
+     * Whether neighbouring ground squads share one fight/retreat decision: a neighbour's fight lock holds a FIGHT
+     * squad, and a pair that still holds opposite statuses after the decision step turns to one status. On unless
+     * IA_SQUAD_SHARED_VERDICT is set to false.
+     */
+    public static boolean squadSharedVerdict = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -124,6 +154,11 @@ public final class Config {
         lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
         racePrior = Boolean.parseBoolean(setting(dotenv, "IA_RACE_PRIOR"));
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
+        fightHysteresis = enabledUnlessFalse(setting(dotenv, "IA_FIGHT_HYSTERESIS"));
+        speedParityGate = enabledUnlessFalse(setting(dotenv, "IA_SPEED_PARITY_GATE"));
+        speedlingPReactions = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_P_REACTIONS"));
+        speedlingGasCut = enabledUnlessFalse(setting(dotenv, "IA_SPEEDLING_GAS_CUT"));
+        squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
     }
 
     /**
