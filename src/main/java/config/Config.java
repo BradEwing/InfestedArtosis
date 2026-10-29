@@ -33,6 +33,15 @@ public final class Config {
      * Whether Drones are added while an enemy Bunker stance stands. On unless IA_BUNKER_ECON is set to false.
      */
     public static boolean bunkerEcon = true;
+    /**
+     * Whether a ground squad's fight/retreat decision uses a band between the retreat and engage thresholds: an
+     * engaged squad in contact stays in FIGHT until its ratio falls below the retreat threshold and one out of contact
+     * until the fight scores below even, its fight lock holds a RETREAT read above that hold threshold and renews
+     * despite lost supply above the retreat threshold, a squad that turns back out of a retreat commits to FIGHT for a
+     * window, and a squad that retreated on a measured read turns back only on a measured ENGAGE for a window. On
+     * unless IA_FIGHT_HYSTERESIS is set to false.
+     */
+    public static boolean fightHysteresis = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -124,6 +133,7 @@ public final class Config {
         lurkerFireAware = enabledUnlessFalse(setting(dotenv, "IA_LURKER_FIRE_AWARE"));
         racePrior = Boolean.parseBoolean(setting(dotenv, "IA_RACE_PRIOR"));
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
+        fightHysteresis = enabledUnlessFalse(setting(dotenv, "IA_FIGHT_HYSTERESIS"));
     }
 
     /**

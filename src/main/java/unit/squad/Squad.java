@@ -104,6 +104,29 @@ public class Squad implements Comparable<Squad> {
      */
     public static final int GROUND_RETREAT_LOCK_FRAMES = 120;
 
+    /**
+     * Frames a ground squad that turned back out of a retreat stays committed to FIGHT against RETREAT reads at or
+     * above the retreat threshold, see {@link #startTurnBackCommit}: as long as the retreat lock it turned out of.
+     */
+    public static final int TURN_BACK_COMMIT_FRAMES = GROUND_RETREAT_LOCK_FRAMES;
+
+    protected int turnBackCommitUntilFrame = 0;
+
+    /**
+     * Frames after a retreating ground squad's last measured RETREAT read during which it does not turn back into
+     * FIGHT on a read that measured no enemy, see {@link #isBlindTurnBackGated}: twice the ground retreat lock.
+     */
+    public static final int BLIND_TURN_BACK_GATE_FRAMES = 2 * GROUND_RETREAT_LOCK_FRAMES;
+
+    /**
+     * Frames a member's attack, or a hit taken by one, keeps the squad in contact, see {@link #isInContact}.
+     */
+    public static final int CONTACT_MEMORY_FRAMES = 24;
+
+    protected int blindTurnBackGateUntilFrame = 0;
+    protected int lastContactFrame = -1;
+    protected int contactScanFrame = -1;
+
     private static final double SMOOTHING_ALPHA = 0.85;
     private static final int SPLIT_MERGE_COOLDOWN = 100;
 
@@ -273,7 +296,8 @@ public class Squad implements Comparable<Squad> {
      * harass exit of any source is kept so its blind advance hold carries over. So is the latest broken harass exit
      * lock, so the harass re-entry hold that follows it carries over too.
      *
-     * <p>Locks fold to the latest expiry among the sources, except a retreat lock armed by a contain's attrition
+     * <p>Locks, the turn-back commit window, the blind turn-back gate and the last contact frame fold to the latest
+     * among the sources, except a retreat lock armed by a contain's attrition
      * exit, which is not inherited. A collapse under way in a FIGHT source is carried on when the merged squad is in
      * FIGHT: its flanks keep their wrap orders, and every other member fights. So is the hold of a collapse a FIGHT
      * source committed, see {@link #isCollapseCommitHeld}; any other merged status drops it.
@@ -338,6 +362,10 @@ public class Squad implements Comparable<Squad> {
                 earliestCommit = source.commitFrame;
             }
             this.fightLockedUntilFrame = Math.max(this.fightLockedUntilFrame, source.fightLockedUntilFrame);
+            this.turnBackCommitUntilFrame = Math.max(this.turnBackCommitUntilFrame, source.turnBackCommitUntilFrame);
+            this.blindTurnBackGateUntilFrame = Math.max(this.blindTurnBackGateUntilFrame,
+                    source.blindTurnBackGateUntilFrame);
+            this.lastContactFrame = Math.max(this.lastContactFrame, source.lastContactFrame);
             if (!source.attritionRetreatLock) {
                 this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
             }
@@ -351,6 +379,9 @@ public class Squad implements Comparable<Squad> {
         }
 
         this.status = mergedStatus;
+        if (mergedStatus != SquadStatus.RETREAT) {
+            this.blindTurnBackGateUntilFrame = 0;
+        }
         this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
         this.containmentArc = mergedStatus == SquadStatus.CONTAIN ? inheritedArc : null;
         this.runbyState = mergedStatus == SquadStatus.RUNBY ? inheritedRunby : null;
@@ -464,6 +495,111 @@ public class Squad implements Comparable<Squad> {
      */
     public boolean canRenewFightLock(int currentFrame) {
         return !continuesFightLock(currentFrame) || cachedSupply >= fightLockSupply;
+    }
+
+    /**
+     * Whether arming the fight lock on this frame is allowed, given whether the read holds the squad above the
+     * retreat threshold. Such a read renews the lock whatever supply the squad has lost, see
+     * {@link unit.squad.horizon.FightBand#holdsAboveRetreat}; any other read falls back to
+     * {@link #canRenewFightLock(int)}.
+     *
+     * @param currentFrame frame the lock would be armed on
+     * @param aboveRetreat whether this frame's read holds the squad above the retreat threshold with the band on
+     * @return true if the fight lock may be armed or renewed
+     */
+    public boolean canRenewFightLock(int currentFrame, boolean aboveRetreat) {
+        return aboveRetreat || canRenewFightLock(currentFrame);
+    }
+
+    /**
+     * Commits a ground squad that turned back out of a retreat to FIGHT for {@link #TURN_BACK_COMMIT_FRAMES}, see
+     * {@link #isTurnBackCommitted}.
+     *
+     * @param currentFrame frame the squad turned back
+     */
+    public void startTurnBackCommit(int currentFrame) {
+        turnBackCommitUntilFrame = currentFrame + TURN_BACK_COMMIT_FRAMES;
+    }
+
+    /**
+     * Whether the squad is inside the commit window its last turn back out of a retreat opened.
+     *
+     * @param currentFrame frame of the evaluation
+     * @return true until {@link #TURN_BACK_COMMIT_FRAMES} after the squad turned back
+     */
+    public boolean isTurnBackCommitted(int currentFrame) {
+        return currentFrame < turnBackCommitUntilFrame;
+    }
+
+    /**
+     * Records a measured RETREAT read taken while the squad retreats, or on the frame it starts to: for
+     * {@link #BLIND_TURN_BACK_GATE_FRAMES} from this frame the squad does not turn back on a read that measured no
+     * enemy, see {@link #isBlindTurnBackGated}.
+     *
+     * @param currentFrame frame of the read
+     */
+    public void noteMeasuredRetreat(int currentFrame) {
+        blindTurnBackGateUntilFrame = currentFrame + BLIND_TURN_BACK_GATE_FRAMES;
+    }
+
+    /**
+     * Ends the blind turn-back gate, as a measured turn back into FIGHT does.
+     */
+    public void clearBlindTurnBackGate() {
+        blindTurnBackGateUntilFrame = 0;
+    }
+
+    /**
+     * Sets the squad's status. Any status other than RETREAT ends the blind turn-back gate, so a later retreat that
+     * no measured read opened is not held by the gate of an earlier one.
+     *
+     * @param status new status
+     */
+    public void setStatus(SquadStatus status) {
+        this.status = status;
+        if (status != SquadStatus.RETREAT) {
+            clearBlindTurnBackGate();
+        }
+    }
+
+    /**
+     * Whether the squad is within {@link #BLIND_TURN_BACK_GATE_FRAMES} of its last measured RETREAT read, so a
+     * retreat it is in waits for a measured ENGAGE before turning back into FIGHT.
+     *
+     * @param currentFrame frame of the evaluation
+     * @return true while the gate stands
+     */
+    public boolean isBlindTurnBackGated(int currentFrame) {
+        return currentFrame < blindTurnBackGateUntilFrame;
+    }
+
+    /**
+     * Records that a member attacked or was hit on this frame.
+     *
+     * @param currentFrame frame of the contact
+     */
+    public void noteContact(int currentFrame) {
+        lastContactFrame = currentFrame;
+    }
+
+    /**
+     * Records that the squad's members were checked for contact on this frame, whatever the check found, so a sim
+     * read on the same frame can tell a fresh contact reading from a stale one.
+     *
+     * @param currentFrame frame of the check
+     */
+    public void noteContactScan(int currentFrame) {
+        contactScanFrame = currentFrame;
+    }
+
+    /**
+     * Whether a member attacked or was hit within the last {@link #CONTACT_MEMORY_FRAMES}.
+     *
+     * @param currentFrame frame of the evaluation
+     * @return true while the squad is in contact
+     */
+    public boolean isInContact(int currentFrame) {
+        return lastContactFrame >= 0 && currentFrame - lastContactFrame <= CONTACT_MEMORY_FRAMES;
     }
 
     private boolean continuesFightLock(int currentFrame) {
