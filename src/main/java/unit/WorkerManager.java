@@ -7,13 +7,16 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import bwem.Base;
 import bwem.Mineral;
+import config.Config;
 import info.GameState;
 import info.ResourceCount;
+import macro.Reactions;
 import macro.SupplyCapacity;
 import macro.plan.Plan;
 import macro.plan.PlanCancelSource;
 import macro.plan.PlanType;
 import strategy.buildorder.BuildOrder;
+import telemetry.GasCutTelemetry;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import util.Distance;
@@ -58,6 +61,8 @@ public class WorkerManager {
     static final int GAS_PULL_COOLDOWN = 48;
 
     private final HashMap<ManagedUnit, Integer> gasPullFrames = new HashMap<>();
+
+    private boolean speedGasCutHeld;
 
     public WorkerManager(Game game, GameState gameState) {
         this.game = game;
@@ -502,13 +507,107 @@ public class WorkerManager {
         final int availableGas = resourceCount.availableGas();
         final int queuedGas = gameState.getProductionQueue().gasDemand(game.getFrameCount());
 
-        if (shouldCutGasHarvesting(availableMinerals, availableGas, queuedGas)) {
-            cutGasHarvesting();
-        } else if (shouldSaturateOnMineralSurplus(availableMinerals, availableGas)) {
-            saturateGeysers(NO_MINERAL_FLOOR);
-        } else if (shouldSaturateOnGasDemand(availableGas, queuedGas)) {
-            saturateGeysers(MIN_MINERAL_GATHERERS);
+        boolean speedHold = trackSpeedGasCut(availableGas, queuedGas);
+
+        switch (rebalanceAction(Config.speedlingGasCut && speedHold, availableMinerals, availableGas, queuedGas)) {
+            case CUT:
+                cutGasHarvesting();
+                break;
+            case SATURATE_ON_MINERALS:
+                saturateGeysers(NO_MINERAL_FLOOR);
+                break;
+            case SATURATE_ON_GAS:
+                saturateGeysers(MIN_MINERAL_GATHERERS);
+                break;
+            default:
+                break;
         }
+    }
+
+    /**
+     * The worker split change a frame's resources ask for.
+     */
+    enum RebalanceAction {
+        CUT,
+        SATURATE_ON_MINERALS,
+        SATURATE_ON_GAS,
+        NONE
+    }
+
+    /**
+     * Picks the worker split change for one frame.
+     *
+     * <p>A held speed gas cut comes first and takes every drone off gas, whatever the mineral surplus says. Without it
+     * the choice is the surplus cut, then the mineral surplus saturation, then the gas demand saturation.
+     *
+     * @param speedGasCutHeld whether the gas cut after Metabolic Boost applies this frame
+     * @param availableMinerals minerals mined and unreserved, which may be negative
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @param queuedGas summed gas price of plans waiting to be scheduled
+     * @return the change to make
+     */
+    static RebalanceAction rebalanceAction(boolean speedGasCutHeld, int availableMinerals, int availableGas,
+                                           int queuedGas) {
+        if (speedGasCutHeld || shouldCutGasHarvesting(availableMinerals, availableGas, queuedGas)) {
+            return RebalanceAction.CUT;
+        }
+        if (shouldSaturateOnMineralSurplus(availableMinerals, availableGas)) {
+            return RebalanceAction.SATURATE_ON_MINERALS;
+        }
+        if (shouldSaturateOnGasDemand(availableGas, queuedGas)) {
+            return RebalanceAction.SATURATE_ON_GAS;
+        }
+        return RebalanceAction.NONE;
+    }
+
+    /**
+     * True when a build with no gas spend after Metabolic Boost has started the upgrade and nothing is left to spend
+     * gas on: no queued plan costs gas and no reservation has outrun the gas bank.
+     *
+     * @param buildCuts whether the active build cuts gas after Metabolic Boost
+     * @param speedStarted whether Metabolic Boost research has started or finished
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @param queuedGas summed gas price of plans waiting to be scheduled
+     * @return true when every drone should stay off gas
+     */
+    static boolean holdsGasAfterSpeed(boolean buildCuts, boolean speedStarted, int availableGas, int queuedGas) {
+        return buildCuts && speedStarted && queuedGas <= 0 && availableGas >= 0;
+    }
+
+    /**
+     * Evaluates the gas cut after Metabolic Boost and reports each change of it to telemetry, whether or not its
+     * switch is on.
+     *
+     * @param availableGas gas mined and unreserved, which may be negative
+     * @param queuedGas summed gas price of plans waiting to be scheduled
+     * @return true when the cut holds this frame
+     */
+    private boolean trackSpeedGasCut(int availableGas, int queuedGas) {
+        BuildOrder activeBuildOrder = gameState.getActiveBuildOrder();
+        boolean buildCuts = activeBuildOrder != null && activeBuildOrder.cutsGasAfterSpeed();
+        if (!buildCuts) {
+            speedGasCutHeld = false;
+            return false;
+        }
+
+        boolean speedStarted = Reactions.isSpeedStarted(gameState.getTechProgression().isMetabolicBoost(),
+                gameState.getPlansBuilding());
+        boolean held = holdsGasAfterSpeed(true, speedStarted, availableGas, queuedGas);
+        if (held != speedGasCutHeld && (held || speedStarted)) {
+            int frame = game.getFrameCount();
+            if (held) {
+                GasCutTelemetry.gasCut(frame, "CUT", Config.speedlingGasCut, null, 0, availableGas,
+                        gasGatherers.size());
+            } else {
+                Plan demand = gameState.getProductionQueue().gasDemandHead();
+                String planType = demand == null ? "RESERVED" : demand.getType().name();
+                int planGas = demand == null ? -availableGas : demand.gasPrice();
+                GasCutTelemetry.gasCut(frame, "DEMAND", Config.speedlingGasCut, planType, planGas, availableGas,
+                        gasGatherers.size());
+            }
+        }
+        speedGasCutHeld = held;
+        return held;
     }
 
     /**
