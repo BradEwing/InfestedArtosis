@@ -176,4 +176,44 @@ class WorkerManagerTest {
         }
         return transitions;
     }
+
+    @Test
+    void aSpeedBuildWithNoGasDemandHoldsGasOffDespiteAMineralSurplus() {
+        int minerals = WorkerManager.MINERAL_SURPLUS + 150;
+        assertTrue(WorkerManager.shouldSaturateOnMineralSurplus(minerals, 0));
+        assertTrue(WorkerManager.holdsGasAfterSpeed(true, true, 0, NO_QUEUED_GAS));
+        assertEquals(WorkerManager.RebalanceAction.CUT,
+                WorkerManager.rebalanceAction(true, minerals, 0, NO_QUEUED_GAS));
+    }
+
+    @Test
+    void aQueuedGasPlanLiftsTheSpeedGasCut() {
+        assertFalse(WorkerManager.holdsGasAfterSpeed(true, true, 0, MUTALISK_GAS));
+        assertEquals(WorkerManager.RebalanceAction.SATURATE_ON_MINERALS,
+                WorkerManager.rebalanceAction(false, WorkerManager.MINERAL_SURPLUS + 150, 0, MUTALISK_GAS));
+    }
+
+    @Test
+    void aReservationThatOutrunsTheGasBankLiftsTheSpeedGasCut() {
+        assertFalse(WorkerManager.holdsGasAfterSpeed(true, true, -40, NO_QUEUED_GAS));
+    }
+
+    @Test
+    void theSpeedGasCutWaitsForMetabolicBoostAndForABuildThatCutsGas() {
+        assertFalse(WorkerManager.holdsGasAfterSpeed(true, false, 0, NO_QUEUED_GAS));
+        assertFalse(WorkerManager.holdsGasAfterSpeed(false, true, 0, NO_QUEUED_GAS));
+    }
+
+    @Test
+    void withTheSwitchOffTheRebalanceIsTheOldOne() {
+        int minerals = WorkerManager.MINERAL_SURPLUS + 150;
+        assertEquals(WorkerManager.RebalanceAction.SATURATE_ON_MINERALS,
+                WorkerManager.rebalanceAction(false, minerals, 0, NO_QUEUED_GAS));
+        assertEquals(WorkerManager.RebalanceAction.CUT,
+                WorkerManager.rebalanceAction(false, 0, WorkerManager.GAS_SURPLUS + 1, NO_QUEUED_GAS));
+        assertEquals(WorkerManager.RebalanceAction.SATURATE_ON_GAS,
+                WorkerManager.rebalanceAction(false, 0, 0, MUTALISK_GAS));
+        assertEquals(WorkerManager.RebalanceAction.NONE,
+                WorkerManager.rebalanceAction(false, 0, 100, NO_QUEUED_GAS));
+    }
 }

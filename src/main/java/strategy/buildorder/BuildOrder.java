@@ -463,6 +463,18 @@ public abstract class BuildOrder {
     }
 
     /**
+     * True when the build has no gas spend after Metabolic Boost starts, so drones stay off gas until a queued plan
+     * costs gas.
+     *
+     * <p>Defaults to false.
+     *
+     * @return true when gas is cut once Metabolic Boost has started and no queued plan costs gas
+     */
+    public boolean cutsGasAfterSpeed() {
+        return false;
+    }
+
+    /**
      * Whether no opener offers this build order any more. A retired build order stays registered so
      * learning rows that name it still resolve, but it is not seeded as a playable arm.
      */
@@ -483,6 +495,14 @@ public abstract class BuildOrder {
      * pull it ahead of normal production. False by default, so reactions pull it forward as usual.
      */
     public boolean holdsSpeedUpgrade(GameState gameState) {
+        return false;
+    }
+
+    /**
+     * Whether this build commits its army early regardless of upgrades: an all-in or a rush. The speed parity gate
+     * leaves such a build on its own move out timing. False by default.
+     */
+    public boolean isAllInOrRush() {
         return false;
     }
 

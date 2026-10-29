@@ -28,6 +28,10 @@ final class SquadDecision {
     private double enemyStrength = NOT_EVALUATED;
     private double ratio = NOT_EVALUATED;
     private double engageThreshold = NOT_EVALUATED;
+    private double retreatThreshold = NOT_EVALUATED;
+    private double ownSpeedFactor = NOT_EVALUATED;
+    private double enemySpeedFactor = NOT_EVALUATED;
+    private int escapeBlocked = NOT_EVALUATED;
     private int enemySupplyBelieved = NOT_EVALUATED;
     private String enemyComposition = "NONE";
     private int enemyUnscoredSupply = NOT_EVALUATED;

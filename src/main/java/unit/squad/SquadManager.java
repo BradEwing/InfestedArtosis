@@ -6,6 +6,7 @@ import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import bwapi.WeaponType;
 import bwapi.WalkPosition;
 import bwem.Base;
@@ -13,9 +14,11 @@ import bwem.CPPath;
 import config.Config;
 import info.GameState;
 import info.ScoutData;
+import info.TechProgression;
 import info.map.BaseArea;
 import info.tracking.DarkSwarm;
 import info.tracking.EnemyReachMemory;
+import info.tracking.EnemySpeedTracker;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
@@ -26,6 +29,7 @@ import lombok.Getter;
 import org.bk.ass.sim.Agent;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import strategy.buildorder.BuildOrder;
 import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.FixedFireTelemetry;
@@ -39,10 +43,13 @@ import telemetry.RunbyTelemetry;
 import telemetry.RunbyTick;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
+import telemetry.SpeedParityGate;
+import telemetry.SpeedParityTelemetry;
 import telemetry.SwarmEvent;
 import telemetry.TargetChoices;
 import unit.managed.Lurker;
 import unit.managed.ManagedUnit;
+import unit.squad.horizon.FightBand;
 import unit.squad.horizon.HorizonCombatSimulator;
 import unit.managed.UnitRole;
 import util.Arc;
@@ -1670,6 +1677,18 @@ public class SquadManager {
 
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
+        if (squad.isGroundSquad()) {
+            SpeedParity.Reading parity = readSpeedParity(squad);
+            boolean holdsNow = holdsForSpeedParity(parity);
+            boolean enforced = holdsNow
+                    && (!closeThreats || squad.getStatus() == SquadStatus.CONTAIN);
+            logSpeedParity(squad, parity, enforced);
+            if (enforced) {
+                holdForSpeedParity(squad);
+                return;
+            }
+        }
+
         SquadStatus squadStatus = squad.getStatus();
         if (squadStatus == SquadStatus.CONTAIN) {
             clearCombatSimSnapshot(squad);
@@ -2406,7 +2425,87 @@ public class SquadManager {
         return Math.min(moveOutThreshold, MAX_MOVE_OUT_THRESHOLD);
     }
 
+    private SpeedParity.Reading readSpeedParity(Squad squad) {
+        TechProgression techProgression = gameState.getTechProgression();
+        EnemySpeedTracker.Evidence enemyMetabolicBoost = gameState.getEnemySpeedTracker()
+                .evidence(UpgradeType.Metabolic_Boost, game.getFrameCount());
+        return SpeedParity.read(gameState.getOpponentRace(), squad.getComposition(),
+                isAllInOrRush(), gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
+                techProgression.isMetabolicBoost(), techProgression.isAdrenalGlands(), enemyMetabolicBoost);
+    }
+
+    private boolean isAllInOrRush() {
+        BuildOrder selected = gameState.getSelectedStrategy();
+        return gameState.getActiveBuildOrder().isAllInOrRush() || selected != null && selected.isAllInOrRush();
+    }
+
+    private boolean holdsForSpeedParity(SpeedParity.Reading parity) {
+        return SpeedParity.holdsHome(Config.speedParityGate, parity.isHolds(), false) && !baseThreatened();
+    }
+
+    private boolean speedParityBlocksContain(Squad squad) {
+        return squad.isGroundSquad() && holdsForSpeedParity(readSpeedParity(squad));
+    }
+
+    private void logSpeedParity(Squad squad, SpeedParity.Reading parity, boolean enforced) {
+        int frame = game.getFrameCount();
+        String enemySpeed = parity.getEnemyEvidence().name();
+        SpeedParity.Term term = parity.getTerm();
+        int strength = 0;
+        int base = 0;
+        int threshold = 0;
+        if (term != SpeedParity.Term.NONE) {
+            strength = squadStrength(squad);
+            base = groundMoveOutThreshold(squad, false);
+            threshold = Math.min(SpeedParity.applyTerm(base, parity.getUpgradeTerm()), MAX_MOVE_OUT_THRESHOLD);
+            if (term == SpeedParity.Term.LING_UPGRADE && (strength >= threshold || strength < base)) {
+                term = SpeedParity.Term.NONE;
+            }
+        }
+        if (term == SpeedParity.Term.NONE) {
+            SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), term.name(), false,
+                    parity.getOurSpeed(), enemySpeed, 0, 0, 0, 0));
+            return;
+        }
+        boolean applied = term == SpeedParity.Term.SPEED_PARITY
+                ? enforced : Config.speedParityGate && !baseThreatened();
+        SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), term.name(), applied,
+                parity.getOurSpeed(), enemySpeed, strength, threshold, base, parity.getZerglings()));
+    }
+
+    /**
+     * Describes the move out threshold a squad is held to and the speed parity term contributing to it, for debug
+     * rendering: strength against threshold, the threshold without the speed parity terms, the upgrade term, and the
+     * gate term in force.
+     *
+     * @param squad fight squad
+     * @return the label
+     */
+    public String describeMoveOut(Squad squad) {
+        int strength = squadStrength(squad);
+        int threshold = calculateMoveOutThreshold(squad);
+        if (!squad.isGroundSquad()) {
+            return String.format("move=%d/%d", strength, threshold);
+        }
+        SpeedParity.Reading parity = readSpeedParity(squad);
+        return String.format("move=%d/%d base=%d up=%+d %s", strength, threshold, groundMoveOutThreshold(squad, false),
+                parity.getUpgradeTerm(), parity.getTerm());
+    }
+
+    private void holdForSpeedParity(Squad squad) {
+        if (squad.getStatus() == SquadStatus.CONTAIN) {
+            containEndedOtherwise();
+            endContainment(squad);
+        }
+        clearCombatSimSnapshot(squad);
+        rallySquad(squad, RallyReason.SPEED_PARITY);
+    }
+
     private int calculateGroundSquadMoveOutThreshold(Squad squad) {
+        return groundMoveOutThreshold(squad, Config.speedParityGate);
+    }
+
+    private int groundMoveOutThreshold(Squad squad, boolean withSpeedParity) {
         if (gameState.isLingFloodHold()) {
             return MAX_MOVE_OUT_THRESHOLD;
         }
@@ -2442,6 +2541,11 @@ public class SquadManager {
         }
         threshold += rushThresholdIncrease;
 
+        int term = readSpeedParity(squad).getUpgradeTerm();
+        if (term > 0 && withSpeedParity && baseThreatened()) {
+            term = 0;
+        }
+        threshold = SpeedParity.gatedThreshold(withSpeedParity, threshold, term);
         return Math.min(threshold, MAX_MOVE_OUT_THRESHOLD);
     }
 
@@ -2469,6 +2573,12 @@ public class SquadManager {
      * {@link #commitmentMayHold}). An air squad's retreat lock yields to an ENGAGE of twice the threshold once it
      * has held over a fight hysteresis window (see {@link #retreatLockYieldsToEngage}), and the FIGHT episode that
      * yield opens arms no commitment.
+     *
+     * <p>With {@link Config#fightHysteresis} on, a ground squad is judged against the band between the retreat and
+     * engage thresholds (see {@link FightBand}): its fight lock holds a RETREAT read at or above the retreat threshold
+     * and renews on any ENGAGE read above it, and a squad that turns back out of a retreat is held in FIGHT against
+     * such reads for {@link Squad#TURN_BACK_COMMIT_FRAMES} (see {@link #turnBackCommitHolds}). A RETREAT read below
+     * the retreat threshold always gets the squad out.
      *
      * @param squad fight squad to tick
      */
@@ -2509,6 +2619,8 @@ public class SquadManager {
         boolean threatBeyondRadius = snapshot != null && snapshot.isThreatBeyondRadius();
         double ratio = snapshot != null ? snapshot.getOverallRatio() : 0;
         double engageThreshold = snapshot != null ? snapshot.getEngageThreshold() : 0;
+        double retreatThreshold = snapshot != null ? snapshot.getRetreatThreshold() : 0;
+        boolean band = Config.fightHysteresis && squad.isGroundSquad();
 
         boolean exitLockBroken = AirHarassEvaluator.breaksExitLock(squad.isHarassExitLocked(now), result,
                 enemyMeasured);
@@ -2522,6 +2634,9 @@ public class SquadManager {
         SquadDecisions.pathTaken(squad, exitLockBroken
                 ? DecisionPath.HARASS_EXIT_ENGAGE
                 : requestPath(noVisionMarch, result));
+        if (snapshot != null && snapshot.getFightBandSinceFrame() >= 0) {
+            SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT_BAND);
+        }
 
         DecisionPath turnPath = retreatTurnPath(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
                 ratio, engageThreshold);
@@ -2553,8 +2668,13 @@ public class SquadManager {
                 return;
             }
         }
-        if (fightHeld(squad, now, fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold))) {
-            SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT);
+        boolean lockHoldsAtEngage = fightLockHolds(fightLocked, result, enemyMeasured, ratio, engageThreshold);
+        boolean lockHolds = fightLockHolds(fightLocked, result, enemyMeasured, ratio,
+                FightBand.fightLockReleaseThreshold(band, engageThreshold, retreatThreshold));
+        boolean commitHolds = turnBackCommitHolds(band && squad.isTurnBackCommitted(now), result, enemyMeasured,
+                ratio, retreatThreshold);
+        if (fightHeld(squad, now, lockHolds || commitHolds)) {
+            SquadDecisions.lockSuppressed(squad, fightHoldLock(fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
             assignFightTargets(squad, collapseFighters(managedFighters, squad.getCollapse()), false);
             return;
@@ -2614,9 +2734,13 @@ public class SquadManager {
                 break;
 
             case ENGAGE:
+                if (band && squad.getStatus() == SquadStatus.RETREAT) {
+                    squad.startTurnBackCommit(now);
+                }
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
-                updateFightLock(squad, result, retreatLocked, now);
+                updateFightLock(squad, result, retreatLocked,
+                        FightBand.holdsAboveRetreat(band, enemyMeasured, ratio, retreatThreshold), now);
                 if (squad.isAirSquad() && snapshot != null && enemyMeasured) {
                     ((AirSquad) squad).armEngageCommitment(now, flockHitPoints(managedFighters));
                 }
@@ -2697,8 +2821,25 @@ public class SquadManager {
      */
     static void updateFightLock(Squad squad, CombatSimulator.CombatResult result,
                                 boolean retreatLocked, int currentFrame) {
+        updateFightLock(squad, result, retreatLocked, false, currentFrame);
+    }
+
+    /**
+     * Arms or renews the fight lock on an ENGAGE verdict, as {@link #updateFightLock(Squad,
+     * CombatSimulator.CombatResult, boolean, int)} does, except that a read holding the squad above the retreat
+     * threshold renews the lock whatever supply the squad has lost (see {@link Squad#canRenewFightLock(int, boolean)}).
+     *
+     * @param squad squad whose verdict this is
+     * @param result this frame's combat sim verdict
+     * @param retreatLocked whether the squad's retreat lock is currently active
+     * @param aboveRetreat whether this frame's read holds the squad above the retreat threshold, see
+     *     {@link FightBand#holdsAboveRetreat}
+     * @param currentFrame current frame
+     */
+    static void updateFightLock(Squad squad, CombatSimulator.CombatResult result,
+                                boolean retreatLocked, boolean aboveRetreat, int currentFrame) {
         if (result == CombatSimulator.CombatResult.ENGAGE && !retreatLocked
-                && squad.canRenewFightLock(currentFrame)) {
+                && squad.canRenewFightLock(currentFrame, aboveRetreat)) {
             squad.startFightLock(currentFrame);
         }
     }
@@ -2844,23 +2985,58 @@ public class SquadManager {
      * Whether an active fight lock still holds against this frame's verdict.
      *
      * <p>The lock holds a squad in FIGHT against ENGAGE and ADVANCE verdicts, and breaks for a
-     * RETREAT that was measured against a real enemy below the engage threshold the sim judged it
-     * by. Every RETREAT from the Horizon sim is measured and below that threshold by construction,
-     * so the lock never discards one. A simulator that leaves no snapshot reports a ratio and a
-     * threshold of 0, which holds.
+     * RETREAT that was measured against a real enemy below the release threshold. A ground squad with the band on
+     * is released at the retreat threshold, so the lock holds a RETREAT read inside the band and a squad being ground
+     * down below the band still gets out at once; with the band off it is released at the engage threshold, which
+     * every Horizon RETREAT is below, so the lock discards none (see {@link FightBand#fightLockReleaseThreshold}). A
+     * simulator that leaves no snapshot reports a ratio and a threshold of 0, which holds.
      *
      * @param fightLocked whether the squad's fight lock is currently active
      * @param result this frame's combat sim verdict
      * @param enemyMeasured whether the sim measured a real enemy this frame
      * @param ratio the sim's overall strength ratio this frame
-     * @param engageThreshold the engage threshold the sim judged this frame's ratio against
+     * @param releaseThreshold the ratio below which a measured RETREAT releases the lock
      * @return true if the lock should still suppress this frame's verdict
      */
     static boolean fightLockHolds(boolean fightLocked, CombatSimulator.CombatResult result,
-                                  boolean enemyMeasured, double ratio, double engageThreshold) {
+                                  boolean enemyMeasured, double ratio, double releaseThreshold) {
         if (!fightLocked) return false;
         if (result != CombatSimulator.CombatResult.RETREAT) return true;
-        return !enemyMeasured || ratio >= engageThreshold;
+        return !enemyMeasured || ratio >= releaseThreshold;
+    }
+
+    /**
+     * Whether a ground squad's turn-back commit holds it in FIGHT against this frame's verdict: the squad is inside
+     * the window its last turn back out of a retreat opened, see {@link Squad#isTurnBackCommitted}, and the verdict is
+     * a RETREAT measured at or above the retreat threshold. A RETREAT below that threshold, or any other verdict,
+     * passes through.
+     *
+     * @param committed whether the band is on for the squad and it is inside its commit window
+     * @param result this frame's combat sim verdict
+     * @param enemyMeasured whether the sim measured a real enemy this frame
+     * @param ratio the sim's overall strength ratio this frame
+     * @param retreatThreshold the retreat threshold the sim judged this frame's ratio against
+     * @return true if the commit suppresses this frame's verdict
+     */
+    static boolean turnBackCommitHolds(boolean committed, CombatSimulator.CombatResult result,
+                                       boolean enemyMeasured, double ratio, double retreatThreshold) {
+        return committed && result == CombatSimulator.CombatResult.RETREAT
+                && (!enemyMeasured || ratio >= retreatThreshold);
+    }
+
+    /**
+     * Names what held a FIGHT squad against this frame's verdict: FIGHT when it would have been held without the band
+     * (the fight lock judged at the engage threshold, a collapse or a cornered hold), FIGHT_LOCK_BAND when the fight
+     * lock held only because the band moved its release down to the retreat threshold, and COMMIT_WINDOW when only
+     * the turn-back commit held it.
+     *
+     * @param heldWithoutBand whether the squad is held with the fight lock judged at the engage threshold
+     * @param lockHolds whether the fight lock holds at the release threshold the band sets
+     * @return the lock to name in suppressed_by
+     */
+    static SquadLock fightHoldLock(boolean heldWithoutBand, boolean lockHolds) {
+        if (heldWithoutBand) return SquadLock.FIGHT;
+        return lockHolds ? SquadLock.FIGHT_LOCK_BAND : SquadLock.COMMIT_WINDOW;
     }
 
     /**
@@ -3070,6 +3246,9 @@ public class SquadManager {
      * @return true if the squad took the arc and is now containing
      */
     private boolean tryEnterContainment(Squad squad) {
+        if (speedParityBlocksContain(squad)) {
+            return false;
+        }
         int now = game.getFrameCount();
         boolean underAttack = baseThreatensContainment();
         boolean shouldContain = containmentEvaluator.shouldContain(squad);
@@ -4985,6 +5164,9 @@ public class SquadManager {
      * @return true when the squad was sent, false when it is not a ground squad or no contain holds an arc
      */
     private boolean joinActiveContain(Squad squad) {
+        if (speedParityBlocksContain(squad)) {
+            return false;
+        }
         Arc arc = containArcToJoin(squad);
         if (arc == null) {
             return false;
