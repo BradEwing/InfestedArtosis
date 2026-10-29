@@ -351,6 +351,49 @@ public class ObservedUnitTracker {
     }
 
     /**
+     * The earliest frame a unit of this type was usable, counting units since destroyed: the frame it was seen
+     * complete, or the frame it was first seen as this type plus the type's build time when it was seen unfinished.
+     *
+     * @param type the structure type
+     * @return the frame, or -1 when no unit of the type was observed
+     */
+    public int earliestReadyFrame(UnitType type) {
+        int earliest = -1;
+        for (ObservedUnit ou : observedUnits.values()) {
+            if (ou.getUnitType() != type) {
+                continue;
+            }
+            int ready = ou.getCompletedFrame() != null
+                    ? ou.getCompletedFrame().getFrames()
+                    : ou.getTypeObservedFrame().getFrames() + type.buildTime();
+            if (earliest < 0 || ready < earliest) {
+                earliest = ready;
+            }
+        }
+        return earliest;
+    }
+
+    /**
+     * The first frame a unit of this type was observed as this type, counting units since destroyed.
+     *
+     * @param type the unit type
+     * @return the frame, or -1 when no unit of the type was observed
+     */
+    public int firstObservedFrame(UnitType type) {
+        int earliest = -1;
+        for (ObservedUnit ou : observedUnits.values()) {
+            if (ou.getUnitType() != type) {
+                continue;
+            }
+            int observed = ou.getTypeObservedFrame().getFrames();
+            if (earliest < 0 || observed < earliest) {
+                earliest = observed;
+            }
+        }
+        return earliest;
+    }
+
+    /**
      * Whether a unit of any of these types was observed as that type at or before t, counting units since destroyed.
      * A Hatchery first seen early that later becomes a Lair counts from the frame it was first seen as the Lair.
      */

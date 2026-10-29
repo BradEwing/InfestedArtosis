@@ -479,6 +479,7 @@ public class Debug {
             game.drawCircleMap(center, splitRadius, Color.Red);
 
             String label = formatCompositionSquadLabel(squad.getStatus(), squad.getSupply(), squad.getComposition());
+            label += " " + squadManager.describeMoveOut(squad);
             if (!squad.isMergeEligible(currentFrame)) {
                 int lockFramesLeft = squad.getSplitFrame() + 100 - currentFrame;
                 label += " lock=" + lockFramesLeft;

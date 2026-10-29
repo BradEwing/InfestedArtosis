@@ -129,6 +129,11 @@ public class NinePoolSpeed extends BuildOrder {
     }
 
     @Override
+    public boolean isAllInOrRush() {
+        return true;
+    }
+
+    @Override
     protected int poolPriority(int enqueueFrame) {
         return SPAWNING_POOL_PRIORITY;
     }
