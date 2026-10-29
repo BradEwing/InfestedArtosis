@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PlanEventLoggerTest {
 
-    private static final int PLAN_COLUMNS = 87;
+    private static final int PLAN_COLUMNS = 88;
 
     private static final boolean STARVED = true;
 
@@ -231,7 +231,8 @@ class PlanEventLoggerTest {
         int reason = indexOf("hatchery_request_reason");
         assertEquals(indexOf("contain_period_start_frame") + 1, reason);
         assertEquals("floating_minerals_bar", column(reason + 1));
-        assertEquals("floating_minerals_bar", columns[columns.length - 1]);
+        assertEquals("speedling_p_reaction", columns[columns.length - 1]);
+        assertEquals("speedling_p_reaction", column(reason + 2));
     }
 
     /**
