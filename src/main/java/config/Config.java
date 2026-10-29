@@ -42,6 +42,12 @@ public final class Config {
      * unless IA_FIGHT_HYSTERESIS is set to false.
      */
     public static boolean fightHysteresis = true;
+    /**
+     * Whether neighbouring ground squads share one fight/retreat decision: a neighbour's fight lock holds a FIGHT
+     * squad, and a group of squads within the support radius that still holds both FIGHT and RETREAT after the
+     * decision step turns to one status. On unless IA_SQUAD_SHARED_VERDICT is set to false.
+     */
+    public static boolean squadSharedVerdict = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -134,6 +140,7 @@ public final class Config {
         racePrior = Boolean.parseBoolean(setting(dotenv, "IA_RACE_PRIOR"));
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
         fightHysteresis = enabledUnlessFalse(setting(dotenv, "IA_FIGHT_HYSTERESIS"));
+        squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
     }
 
     /**

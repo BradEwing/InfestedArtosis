@@ -78,6 +78,20 @@ final class SquadDecision {
     private SwarmLock.Release swarmRelease = SwarmLock.Release.NONE;
     private CommitmentRelease commitmentRelease = CommitmentRelease.NONE;
     private BunkerHoldRelease bunkerHoldRelease = BunkerHoldRelease.NONE;
+    private String partnerSquadId = "NONE";
+    private int partnerDistance = NOT_EVALUATED;
+    private String opposedReason = "NONE";
+    private String sharedVerdictBasis = "NONE";
+
+    /**
+     * Resets the neighbour cells to the values every row but an OPPOSED_PAIR or SHARED_VERDICT row carries.
+     */
+    void clearNeighbour() {
+        partnerSquadId = "NONE";
+        partnerDistance = NOT_EVALUATED;
+        opposedReason = "NONE";
+        sharedVerdictBasis = "NONE";
+    }
 
     static int tristate(boolean value) {
         return value ? 1 : 0;

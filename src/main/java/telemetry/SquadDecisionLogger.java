@@ -123,6 +123,15 @@ import java.util.stream.Collectors;
  * when a member attacked or was hit recently and 0 otherwise; both are -1 on such a row too and on an air squad's
  * row, and band_contact is also -1 on a ground squad's row from a read outside its fight tick (contain, runby, swarm).
  *
+ * <p>OPPOSED_PAIR rows are written every {@link #OPPOSED_PAIR_INTERVAL_FRAMES} frames, after the decision step, for
+ * each pair of ground squads within the support radius that hold FIGHT and RETREAT, with IA_SQUAD_SHARED_VERDICT on or
+ * off: the row is one squad's, with old_status its status and new_status its partner's, and partner_squad_id,
+ * partner_distance and opposed_reason name the partner, the distance between them and why the shared verdict left
+ * the pair. SHARED_VERDICT rows are written for each squad the shared verdict turned, with old_status the status it
+ * decided and new_status the one it took, partner_squad_id and partner_distance the squad that stood for the winning
+ * side, and shared_verdict_basis what decided it. suppressed_by NEIGHBOUR_FIGHT on a LOCK_SUPPRESSED row marks a
+ * FIGHT squad held only by a neighbour's fight lock. See {@link #neighbourCells}.
+ *
  * <p>Constructed only when combat telemetry is enabled.
  */
 public class SquadDecisionLogger implements SquadDecisionSink {
@@ -151,7 +160,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "swarm_id,swarm_remaining_frames,swarm_locked,sim_swarm_cover,swarm_release_reason,"
             + "air_commitment_release,"
             + "bunker_hold_release,siege_band,siege_band_frames,siege_band_held_frames,"
-            + "sim_retreat_threshold,sim_hold_threshold,band_contact";
+            + "sim_retreat_threshold,sim_hold_threshold,band_contact,"
+            + "partner_squad_id,partner_distance,opposed_reason,shared_verdict_basis";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -160,6 +170,10 @@ public class SquadDecisionLogger implements SquadDecisionSink {
     static final String EVENT_SWARM_REMOVED = "SWARM_REMOVED";
 
     private static final int FLUSH_INTERVAL_FRAMES = 480;
+    /** Frames between two samples of the opposed pairs of neighbouring ground squads. */
+    public static final int OPPOSED_PAIR_INTERVAL_FRAMES = 24;
+    static final String EVENT_OPPOSED_PAIR = "OPPOSED_PAIR";
+    static final String EVENT_SHARED_VERDICT = "SHARED_VERDICT";
     private static final String EVENT_STATUS_CHANGE = "STATUS_CHANGE";
     private static final String EVENT_LOCK_SUPPRESSED = "LOCK_SUPPRESSED";
     private static final String EVENT_SPLIT_SUPPRESSED = "SPLIT_SUPPRESSED";
@@ -699,6 +713,53 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         }
     }
 
+    @Override
+    public void onOpposedPair(Squad squad, Squad partner, int distance, String reason) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(neighbourRow(squad, EVENT_OPPOSED_PAIR, squad.getStatus(), partner.getStatus(),
+                    partner, distance, reason, NONE));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    @Override
+    public void onSharedVerdict(Squad squad, SquadStatus from, SquadStatus to, String basis, Squad decider,
+                                int distance) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            writer.append(neighbourRow(squad, EVENT_SHARED_VERDICT, from, to, decider, distance, NONE, basis));
+        } catch (RuntimeException e) {
+            disable();
+        }
+    }
+
+    /**
+     * Builds an OPPOSED_PAIR or SHARED_VERDICT row: the squad's decision this frame, with the neighbour cells set for
+     * this row only.
+     */
+    private String neighbourRow(Squad squad, String event, SquadStatus from, SquadStatus to, Squad partner,
+                                int distance, String reason, String basis) {
+        SquadDecision pending = decisions.get(squad.getId());
+        SquadDecision context = pending != null ? pending : new SquadDecision();
+        context.setPartnerSquadId(partner.getId());
+        context.setPartnerDistance(distance);
+        context.setOpposedReason(reason);
+        context.setSharedVerdictBasis(basis);
+        try {
+            return row(squad, game.getFrameCount(), event, from, to, context, NONE);
+        } finally {
+            context.clearNeighbour();
+        }
+    }
+
     /**
      * Disables the logger and clears its state after an error, so a telemetry failure cannot crash the game.
      */
@@ -1006,6 +1067,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(siegeBandCells(context));
         fields.addAll(retreatThresholdCells(context));
         fields.addAll(holdCells(context));
+        fields.addAll(neighbourCells(context));
         return String.join(",", fields);
     }
 
@@ -1081,6 +1143,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(siegeBandCells(context));
         fields.addAll(retreatThresholdCells(context));
         fields.addAll(holdCells(context));
+        fields.addAll(neighbourCells(context));
         return String.join(",", fields);
     }
 
@@ -1342,6 +1405,22 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      */
     static List<String> holdCells(SquadDecision context) {
         return Arrays.asList(Csv.format(context.getHoldThreshold()), String.valueOf(context.getInContact()));
+    }
+
+    /**
+     * Builds the partner_squad_id, partner_distance, opposed_reason and shared_verdict_basis cells. An OPPOSED_PAIR
+     * row names the other squad of the pair, the distance between their centers in pixels and why the shared verdict
+     * left the pair opposed (see unit.squad.SharedVerdict.Exclusion); a SHARED_VERDICT row names the squad that stood
+     * for the winning side, the distance to it and what decided the group's status: FROZEN when a frozen squad pulled
+     * the group, LOCK when a lock turned the supply comparison the other way, SUPPLY otherwise. Every other row carries
+     * NONE and -1.
+     *
+     * @param context the decision the row is built from
+     * @return the four neighbour cells
+     */
+    static List<String> neighbourCells(SquadDecision context) {
+        return Arrays.asList(context.getPartnerSquadId(), String.valueOf(context.getPartnerDistance()),
+                context.getOpposedReason(), context.getSharedVerdictBasis());
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {

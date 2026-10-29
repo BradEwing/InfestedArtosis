@@ -8,6 +8,7 @@ import unit.squad.ContainmentCollapse;
 import unit.squad.DefenseSim;
 import unit.squad.RunbyState;
 import unit.squad.Squad;
+import unit.squad.SquadStatus;
 import unit.squad.SwarmLock;
 
 import java.util.List;
@@ -182,4 +183,26 @@ public interface SquadDecisionSink {
      * @param release why a SWARM_EXPIRED row's squad dropped its lock, NONE on every other event
      */
     void onSwarmEvaluated(Squad squad, SwarmEvent event, int swarmId, int remainingFrames, SwarmLock.Release release);
+
+    /**
+     * Two neighbouring ground squads within the support radius held FIGHT and RETREAT after the decision step, on a
+     * sampled frame.
+     *
+     * @param squad one squad of the pair
+     * @param partner the other squad
+     * @param distance distance between their centers, in pixels
+     * @param reason why the shared verdict left the pair opposed
+     */
+    void onOpposedPair(Squad squad, Squad partner, int distance, String reason);
+
+    /**
+     * The shared verdict turned a ground squad to the status its group of neighbours took.
+     *
+     * @param from status the squad decided this frame
+     * @param to status it was turned to
+     * @param basis what decided the group's status: FROZEN, LOCK or SUPPLY
+     * @param decider the squad that stood for the winning side
+     * @param distance distance between the squad's and the decider's centers, in pixels
+     */
+    void onSharedVerdict(Squad squad, SquadStatus from, SquadStatus to, String basis, Squad decider, int distance);
 }

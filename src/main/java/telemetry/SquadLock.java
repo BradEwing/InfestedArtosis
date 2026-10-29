@@ -28,5 +28,9 @@ public enum SquadLock {
      * A retreating ground squad's blind turn-back gate kept it in RETREAT on an ADVANCE that measured no enemy, within
      * the gate its last measured RETREAT read opened.
      */
-    BLIND_TURN_BACK
+    BLIND_TURN_BACK,
+    /**
+     * A neighbouring ground squad's fight lock held a RETREAT read of a FIGHT squad that nothing of its own held.
+     */
+    NEIGHBOUR_FIGHT
 }
