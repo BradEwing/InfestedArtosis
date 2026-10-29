@@ -221,6 +221,14 @@ public final class PlanEvents {
         current.onRacePrior(priorLabel);
     }
 
+    public static void speedlingDroneFloor(String floorLabel) {
+        PlanEventSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onSpeedlingDroneFloor(floorLabel);
+    }
+
     public static void scoutSkipped(String skipLabel) {
         PlanEventSink current = sink;
         if (current == null) {

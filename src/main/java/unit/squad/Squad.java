@@ -74,6 +74,8 @@ public class Squad implements Comparable<Squad> {
     private int simRetreatReleaseFrame = -1;
     @Getter
     private final BunkerRetreatMemory bunkerRetreatMemory = new BunkerRetreatMemory();
+    @Getter
+    private final Standoff.Episode standoff = new Standoff.Episode();
     private AirHarassState harassState;
     private int harassExitFrame = 0;
     private Set<Integer> regroupingIds = new HashSet<>();
@@ -93,6 +95,9 @@ public class Squad implements Comparable<Squad> {
     private final ContainmentReentryCooldown containmentReentryCooldown = new ContainmentReentryCooldown();
     private RetreatRoute retreatRoute = RetreatRoute.NONE;
     private int retreatPlanFrame = 0;
+    private boolean stagingInReach = false;
+    private int contestedRetreatEvaluations = 0;
+    private int contestedDefendTurns = 0;
     private int corneredEngageSinceFrame = -1;
     private int corneredFightHeldUntilFrame = 0;
     protected Time fightHysteresis = new Time(0, 3);
@@ -103,6 +108,14 @@ public class Squad implements Comparable<Squad> {
      * Frames a ground squad's retreat lock holds for.
      */
     public static final int GROUND_RETREAT_LOCK_FRAMES = 120;
+
+    /**
+     * Frames a ground squad that turned back out of a retreat stays committed to FIGHT against RETREAT reads at or
+     * above the retreat threshold, see {@link #startTurnBackCommit}: as long as the retreat lock it turned out of.
+     */
+    public static final int TURN_BACK_COMMIT_FRAMES = GROUND_RETREAT_LOCK_FRAMES;
+
+    protected int turnBackCommitUntilFrame = 0;
 
     private static final double SMOOTHING_ALPHA = 0.85;
     private static final int SPLIT_MERGE_COOLDOWN = 100;
@@ -273,7 +286,7 @@ public class Squad implements Comparable<Squad> {
      * harass exit of any source is kept so its blind advance hold carries over. So is the latest broken harass exit
      * lock, so the harass re-entry hold that follows it carries over too.
      *
-     * <p>Locks fold to the latest expiry among the sources, except a retreat lock armed by a contain's attrition
+     * <p>Locks, and the turn-back commit window, fold to the latest expiry among the sources, except a retreat lock armed by a contain's attrition
      * exit, which is not inherited. A collapse under way in a FIGHT source is carried on when the merged squad is in
      * FIGHT: its flanks keep their wrap orders, and every other member fights. So is the hold of a collapse a FIGHT
      * source committed, see {@link #isCollapseCommitHeld}; any other merged status drops it.
@@ -338,6 +351,7 @@ public class Squad implements Comparable<Squad> {
                 earliestCommit = source.commitFrame;
             }
             this.fightLockedUntilFrame = Math.max(this.fightLockedUntilFrame, source.fightLockedUntilFrame);
+            this.turnBackCommitUntilFrame = Math.max(this.turnBackCommitUntilFrame, source.turnBackCommitUntilFrame);
             if (!source.attritionRetreatLock) {
                 this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
             }
@@ -466,8 +480,67 @@ public class Squad implements Comparable<Squad> {
         return !continuesFightLock(currentFrame) || cachedSupply >= fightLockSupply;
     }
 
+    /**
+     * Whether arming the fight lock on this frame is allowed, given whether the read holds the squad above the
+     * retreat threshold. Such a read renews the lock whatever supply the squad has lost, see
+     * {@link unit.squad.horizon.FightBand#holdsAboveRetreat}; any other read falls back to
+     * {@link #canRenewFightLock(int)}.
+     *
+     * @param currentFrame frame the lock would be armed on
+     * @param aboveRetreat whether this frame's read holds the squad above the retreat threshold with the band on
+     * @return true if the fight lock may be armed or renewed
+     */
+    public boolean canRenewFightLock(int currentFrame, boolean aboveRetreat) {
+        return aboveRetreat || canRenewFightLock(currentFrame);
+    }
+
+    /**
+     * Commits a ground squad that turned back out of a retreat to FIGHT for {@link #TURN_BACK_COMMIT_FRAMES}, see
+     * {@link #isTurnBackCommitted}.
+     *
+     * @param currentFrame frame the squad turned back
+     */
+    public void startTurnBackCommit(int currentFrame) {
+        turnBackCommitUntilFrame = currentFrame + TURN_BACK_COMMIT_FRAMES;
+    }
+
+    /**
+     * Whether the squad is inside the commit window its last turn back out of a retreat opened.
+     *
+     * @param currentFrame frame of the evaluation
+     * @return true until {@link #TURN_BACK_COMMIT_FRAMES} after the squad turned back
+     */
+    public boolean isTurnBackCommitted(int currentFrame) {
+        return currentFrame < turnBackCommitUntilFrame;
+    }
+
     private boolean continuesFightLock(int currentFrame) {
         return fightLockedUntilFrame > 0 && currentFrame < fightLockedUntilFrame + fightHysteresis.getFrames();
+    }
+
+    /**
+     * Holds the fight lock until the given frame at the latest, without starting a new window.
+     *
+     * @param untilFrame frame the adopted lock ends
+     */
+    public void adoptFightLock(int untilFrame) {
+        fightLockedUntilFrame = Math.max(fightLockedUntilFrame, untilFrame);
+    }
+
+    /**
+     * Holds the retreat lock until the given frame at the latest, without starting a new window.
+     *
+     * @param untilFrame frame the adopted lock ends
+     */
+    public void adoptRetreatLock(int untilFrame) {
+        retreatLockedUntilFrame = Math.max(retreatLockedUntilFrame, untilFrame);
+    }
+
+    /**
+     * Drops the fight lock.
+     */
+    public void clearFightLock() {
+        fightLockedUntilFrame = 0;
     }
 
     public void startRetreatLock(int currentFrame) {
@@ -505,6 +578,20 @@ public class Squad implements Comparable<Squad> {
     public void startAttritionRetreatLock(int currentFrame) {
         startRetreatLock(currentFrame);
         attritionRetreatLock = true;
+    }
+
+    /**
+     * Counts one evaluation of the squad retreating from a HOME_CONTESTED plan, for telemetry.
+     */
+    public void countContestedRetreatEvaluation() {
+        contestedRetreatEvaluations++;
+    }
+
+    /**
+     * Counts one turn to fight of the squad from a HOME_CONTESTED plan, for telemetry.
+     */
+    public void countContestedDefendTurn() {
+        contestedDefendTurns++;
     }
 
     public void clearRetreatLock() {

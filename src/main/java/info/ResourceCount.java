@@ -20,7 +20,8 @@ public class ResourceCount {
     // Income prediction constants
     // Adapted from PurpleWave: https://github.com/dgant/PurpleWave/blob/master/src/Information/Counting/Accounting.scala#L12
     final double mineralsPerFramePerWorker = 0.044;
-    final double gasPerFramePerWorker = 0.069;
+    public static final double GAS_PER_FRAME_PER_WORKER = 0.069;
+    final double gasPerFramePerWorker = GAS_PER_FRAME_PER_WORKER;
 
     static final int MINERAL_GAS_IMBALANCE = 100;
 

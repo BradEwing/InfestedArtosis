@@ -33,11 +33,17 @@ import telemetry.BurrowLogger;
 import telemetry.BurrowTelemetry;
 import telemetry.BunkerLogger;
 import telemetry.BunkerTelemetry;
+import telemetry.GasCutLogger;
+import telemetry.GasCutTelemetry;
 import telemetry.ReachLogger;
 import telemetry.ReachTelemetry;
 import telemetry.RunbyTelemetry;
+import telemetry.SpeedParityLogger;
+import telemetry.SpeedParityTelemetry;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
+import telemetry.StagingLogger;
+import telemetry.StagingTelemetry;
 import telemetry.TargetChoiceLogger;
 import telemetry.TargetChoices;
 import unit.UnitManager;
@@ -81,6 +87,9 @@ public class Bot extends DefaultBWListener {
     private BunkerLogger bunkerLogger;
     private BurrowLogger burrowLogger;
     private FixedFireLogger fixedFireLogger;
+    private SpeedParityLogger speedParityLogger;
+    private GasCutLogger gasCutLogger;
+    private StagingLogger stagingLogger;
 
     @Override
     public void onStart() {
@@ -121,6 +130,9 @@ public class Bot extends DefaultBWListener {
         startBunkerLogging();
         startBurrowLogging();
         startFixedFireLogging();
+        startSpeedParityLogging();
+        startGasCutLogging();
+        startStagingLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -216,6 +228,15 @@ public class Bot extends DefaultBWListener {
         BunkerTelemetry.register(bunkerLogger);
     }
 
+    private void startGasCutLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        gasCutLogger = new GasCutLogger(game, combatTelemetry.getGameId());
+        GasCutTelemetry.register(gasCutLogger);
+    }
+
     private void startBurrowLogging() {
         if (!gameState.getConfig().telemetryCombat) {
             return;
@@ -232,6 +253,24 @@ public class Bot extends DefaultBWListener {
 
         fixedFireLogger = new FixedFireLogger(game, combatTelemetry.getGameId());
         FixedFireTelemetry.register(fixedFireLogger);
+    }
+
+    private void startStagingLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        stagingLogger = new StagingLogger(game, combatTelemetry.getGameId());
+        StagingTelemetry.register(stagingLogger);
+    }
+
+    private void startSpeedParityLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        speedParityLogger = new SpeedParityLogger(game, combatTelemetry.getGameId());
+        SpeedParityTelemetry.register(speedParityLogger);
     }
 
     private void startPlanEventLogging(BuildOrder opener) {
@@ -293,6 +332,15 @@ public class Bot extends DefaultBWListener {
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onFrame();
+        }
+        if (speedParityLogger != null) {
+            speedParityLogger.onFrame();
+        }
+        if (stagingLogger != null) {
+            stagingLogger.onFrame();
+        }
+        if (gasCutLogger != null) {
+            gasCutLogger.onFrame();
         }
         combatTelemetry.onFrame();
         debugMap.onFrame();
@@ -396,6 +444,15 @@ public class Bot extends DefaultBWListener {
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onEnd();
+        }
+        if (speedParityLogger != null) {
+            speedParityLogger.onEnd();
+        }
+        if (stagingLogger != null) {
+            stagingLogger.onEnd();
+        }
+        if (gasCutLogger != null) {
+            gasCutLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }

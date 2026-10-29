@@ -9,7 +9,6 @@ import info.tracking.protoss.ProxyGate;
 import macro.plan.Plan;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SporeTargets;
-import util.Time;
 
 import java.util.Collections;
 import java.util.List;
@@ -24,22 +23,12 @@ import java.util.List;
  */
 public abstract class ProtossBase extends BuildOrder {
 
-    private static final int EXCESS_MINERALS = 350;
-
-    static final int MAX_ZEALOT_DEMAND = 25;
-
-    static final int ZERGLINGS_PER_GATEWAY = 6;
-
     protected ProtossBase(String name) {
         super(name);
     }
 
     static int zealotDrivenZerglings(int zealots, int gateways) {
-        int cap = MAX_ZEALOT_DEMAND;
-        if (gateways > 0) {
-            cap = Math.min(ZERGLINGS_PER_GATEWAY * gateways, MAX_ZEALOT_DEMAND);
-        }
-        return Math.min(zealots * 2, cap);
+        return ProtossReactions.zealotDrivenZerglings(zealots, gateways);
     }
 
     @Override
@@ -58,36 +47,32 @@ public abstract class ProtossBase extends BuildOrder {
             return 0;
         }
 
-        int zerglings = 6;
         int currentZerglings = gameState.getUnitTypeCount().get(UnitType.Zerg_Zergling);
-        int zealots = gameState.enemyUnitCount(UnitType.Protoss_Zealot);
-        int availableMinerals = gameState.getResourceCount().availableMinerals();
-
-        StrategyTracker strategyTracker = gameState.getStrategyTracker();
-
-        if (strategyTracker.isDetectedStrategy("CannonRush")) {
-            int cannons = gameState.getObservedUnitTracker()
-                    .getCountOfLivingUnits(UnitType.Protoss_Photon_Cannon);
-            zerglings = 8 + (cannons * 3);
-            if (availableMinerals > EXCESS_MINERALS) {
-                zerglings += availableMinerals % UnitType.Zerg_Zergling.mineralPrice();
-            }
-        } else if (strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME)) {
-            zerglings = 12;
-        } else if (strategyTracker.isDetectedStrategy("1GateCore")) {
-            zerglings = 4;
-        } else if (strategyTracker.isDetectedStrategy("FFE")) {
-            zerglings = 2;
-        }
-
-        int gateways = gameState.getObservedUnitTracker()
-                .getCountOfLivingUnits(UnitType.Protoss_Gateway);
-        zerglings += zealotDrivenZerglings(zealots, gateways);
+        int zerglings = protossZerglingTarget(gameState);
 
         if (currentZerglings >= zerglings) {
             return 0;
         }
         return zerglings;
+    }
+
+    /**
+     * The zergling total the Protoss matchup holds against what the strategy tracker and the
+     * observed units say, read by builds that do not extend this class.
+     */
+    public static int protossZerglingTarget(GameState gameState) {
+        StrategyTracker strategyTracker = gameState.getStrategyTracker();
+        int cannons = gameState.getObservedUnitTracker().getCountOfLivingUnits(UnitType.Protoss_Photon_Cannon);
+        int gateways = gameState.getObservedUnitTracker().getCountOfLivingUnits(UnitType.Protoss_Gateway);
+        return ProtossReactions.zerglingTarget(
+                strategyTracker.isDetectedStrategy("CannonRush"),
+                cannons,
+                gameState.getResourceCount().availableMinerals(),
+                strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME),
+                strategyTracker.isDetectedStrategy("1GateCore"),
+                strategyTracker.isDetectedStrategy("FFE"),
+                gameState.enemyUnitCount(UnitType.Protoss_Zealot),
+                gateways);
     }
 
     @Override
@@ -96,42 +81,23 @@ public abstract class ProtossBase extends BuildOrder {
     }
 
     /**
-     * Sunkens per base the Protoss matchup asks for.
-     *
-     * <p>One if CannonRush is detected, and nothing else. Otherwise the sum of:
-     * <ul>
-     *     <li>one if 2Gate or ProxyGate is detected and a Zealot has been seen or the game is past 3:20;</li>
-     *     <li>one if more than 3 Zealots are seen, and another if more than 6;</li>
-     *     <li>one past 10:00 with more than 20 drones.</li>
-     * </ul>
+     * Sunkens per base the Protoss matchup asks for, see {@link ProtossReactions#matchupSunkens}.
      */
     @Override
     protected int matchupSunkens(GameState gameState) {
-        int sunkens = 0;
+        return protossMatchupSunkens(gameState);
+    }
+
+    /**
+     * The Protoss matchup's sunken target, read by builds that do not extend this class.
+     */
+    public static int protossMatchupSunkens(GameState gameState) {
         StrategyTracker strategyTracker = gameState.getStrategyTracker();
-        Time gameTime = gameState.getGameTime();
-
-        if (strategyTracker.isDetectedStrategy("CannonRush")) {
-            return 1;
-        }
-
-        boolean zealotsObserved = gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 0;
-        if (strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME) && (zealotsObserved || gameTime.greaterThan(new Time(3, 20)))) {
-            sunkens += 1;
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 3) {
-            sunkens += 1;
-        }
-
-        if (gameState.enemyUnitCount(UnitType.Protoss_Zealot) > 6) {
-            sunkens += 1;
-        }
-
-        if (gameTime.greaterThan(new Time(10, 0)) && gameState.ourUnitCount(UnitType.Zerg_Drone) > 20) {
-            sunkens += 1;
-        }
-
-        return sunkens;
+        return ProtossReactions.matchupSunkens(
+                strategyTracker.isDetectedStrategy("CannonRush"),
+                strategyTracker.isAnyDetectedStrategy("2Gate", ProxyGate.NAME),
+                gameState.enemyUnitCount(UnitType.Protoss_Zealot),
+                gameState.getGameTime(),
+                gameState.ourUnitCount(UnitType.Zerg_Drone));
     }
 }

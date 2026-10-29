@@ -17,6 +17,7 @@ import macro.plan.BuilderDispatchDecision;
 import macro.plan.BuilderLossReason;
 import macro.plan.BuilderReading;
 import macro.plan.HatcheryRequestReason;
+import macro.plan.SpeedlingReaction;
 import macro.plan.Plan;
 import macro.plan.PlanBlocker;
 import macro.plan.PlanCancelSource;
@@ -74,6 +75,7 @@ public class PlanEventLogger implements PlanEventSink {
     private static final String EVENT_BUILD_ORDER_TRANSITION = "BUILD_ORDER_TRANSITION";
     private static final String EVENT_SCOUT_SKIPPED = "SCOUT_SKIPPED";
     private static final String EVENT_RACE_PRIOR = "RACE_PRIOR";
+    private static final String EVENT_SPEEDLING_DRONE_FLOOR = "SPEEDLING_DRONE_FLOOR";
     private static final String EVENT_BASE_CLAIMED = "BASE_CLAIMED";
     private static final String EVENT_MINERAL_PATCH_SEEN_GONE = "MINERAL_PATCH_SEEN_GONE";
     private static final String EVENT_DRONE_ROUND_OPEN = "DRONE_ROUND_OPEN";
@@ -261,6 +263,12 @@ public class PlanEventLogger implements PlanEventSink {
      * requested for. It is blank on other plans and on a Hatchery
      * plan created outside the build order's expansion and macro hatchery paths.
      * <p>
+     * <p>
+     * speedling_p_reaction is SPEEDLING_P_SUNKEN on the creep colony and sunken plans, and LARVA_BOUND_HATCH or TWO_GATE_HATCH on the
+     * hatchery plan, that SpeedlingAllIn's Protoss reactions created ({@link SpeedlingReaction}), written on every row
+     * of the plan. It is blank on other plans. SPEEDLING_DRONE_FLOOR rows carry SUSPENDED or RESUMED in item, once per
+     * transition of the drone floor, prefixed OBSERVED_ when the switch is off and the floor is not held.
+     * <p>
      * BANK_SAMPLE rows are written every {@link #BANK_SAMPLE_INTERVAL_FRAMES} frames and leave
      * every plan column empty. minerals and available_minerals are the bank at the sample, and
      * floating_minerals_bar, set only on these rows, is the unreserved-mineral bar
@@ -284,7 +292,7 @@ public class PlanEventLogger implements PlanEventSink {
             + "first_extractor_completed_frame,base_mineral_patches,map_mineral_patches,remaining_mineral_patches,"
             + "drone_round_reason,drone_round_drones,drone_round_size,contain_held_frames,drone_round_workers,"
             + "drone_round_soft_cap,drone_round_hard_cap,contain_period_start_frame,"
-            + "hatchery_request_reason,floating_minerals_bar";
+            + "hatchery_request_reason,floating_minerals_bar,speedling_p_reaction";
     private static final String GAME_HEADER = "timestamp,is_winner,num_starting_locations,map_name,opponent_name,"
             + "opponent_race,opener,build_order,detected_strategies,frame_count";
 
@@ -821,6 +829,24 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
+     * The frame is re-read for the reason {@link #onStrategyDetected} gives: the build order plans during the
+     * production manager's frame, which may run ahead of this logger's onFrame.
+     */
+    @Override
+    public void onSpeedlingDroneFloor(String floorLabel) {
+        if (disabled) {
+            return;
+        }
+
+        try {
+            currentFrame = game.getFrameCount();
+            buffer.add(speedlingDroneFloorRow(floorLabel));
+        } catch (Exception e) {
+            disabled = true;
+        }
+    }
+
+    /**
      * The frame is re-read for the reason {@link #onStrategyDetected} gives: scouts are assigned during the
      * unit manager's frame, which may run ahead of this logger's onFrame.
      */
@@ -1123,7 +1149,7 @@ public class PlanEventLogger implements PlanEventSink {
     private void appendPlanTrailing(StringBuilder sb, Plan plan, Position blockerMineral, Plan yieldTo,
                                     BuilderThreat builderThreat, BuilderColumns builder) {
         appendTrailingBeforeHatcheryRequest(sb, blockerMineral, yieldTo, null, null, builderThreat, null, builder);
-        appendHatcheryRequest(sb, plan.getHatcheryRequestReason(), null);
+        appendHatcheryRequest(sb, plan.getHatcheryRequestReason(), null, plan.getSpeedlingReaction());
     }
 
     /**
@@ -1151,7 +1177,7 @@ public class PlanEventLogger implements PlanEventSink {
         sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
         appendEmpty(sb, 2);
         appendTrailingBeforeHatcheryRequest(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
-        appendHatcheryRequest(sb, null, gameState.floatingMineralsBar());
+        appendHatcheryRequest(sb, null, gameState.floatingMineralsBar(), null);
         return sb.toString();
     }
 
@@ -1375,6 +1401,23 @@ public class PlanEventLogger implements PlanEventSink {
         return sb.toString();
     }
 
+    /** A row for the drone floor being suspended or resumed, which no plan owns, so the plan columns are empty. */
+    private String speedlingDroneFloorRow(String floorLabel) {
+        StringBuilder sb = new StringBuilder();
+        appendEvent(sb, EVENT_SPEEDLING_DRONE_FLOOR);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(floorLabel)).append(',');
+        appendEmpty(sb, 4);
+        appendBlocker(sb, PlanBlocker.NONE, 0);
+        appendEmpty(sb, 3);
+        appendGameState(sb);
+        appendEmpty(sb, 3);
+        sb.append(Csv.sanitize(activeBuildOrderName())).append(',');
+        appendEmpty(sb, 2);
+        appendTrailing(sb, null, null, null, null, null, null, BuilderColumns.BLANK);
+        return sb.toString();
+    }
+
     /** A row for the learning prior, which no plan owns, so the plan columns are empty. */
     private String racePriorRow(String priorLabel) {
         StringBuilder sb = new StringBuilder();
@@ -1586,7 +1629,7 @@ public class PlanEventLogger implements PlanEventSink {
                                 BuilderThreat builderThreat, BaseEventInputs baseEvent, BuilderColumns builder) {
         appendTrailingBeforeHatcheryRequest(sb, blockerMineral, yieldTo, macroHatchery, hiveTech, builderThreat,
                 baseEvent, builder);
-        appendHatcheryRequest(sb, null, null);
+        appendHatcheryRequest(sb, null, null, null);
     }
 
     /**
@@ -1666,15 +1709,17 @@ public class PlanEventLogger implements PlanEventSink {
     }
 
     /**
-     * The last two trailing columns, which only plan rows and BANK_SAMPLE rows set.
+     * The last three trailing columns, which only plan rows and BANK_SAMPLE rows set.
      *
      * @param hatcheryRequestReason the rule that asked for the row's Hatchery plan, or null
      * @param floatingMineralsBar the floating-minerals bar, or null on every row but BANK_SAMPLE
+     * @param speedlingReaction the SpeedlingAllIn reaction that created the row's plan, or null
      */
     private static void appendHatcheryRequest(StringBuilder sb, HatcheryRequestReason hatcheryRequestReason,
-                                              Integer floatingMineralsBar) {
+                                              Integer floatingMineralsBar, SpeedlingReaction speedlingReaction) {
         sb.append(',').append(orEmpty(hatcheryRequestReason));
         sb.append(',').append(orEmpty(floatingMineralsBar));
+        sb.append(',').append(orEmpty(speedlingReaction));
     }
 
     private static String orEmpty(Object value) {

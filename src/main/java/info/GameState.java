@@ -23,6 +23,7 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.tracking.DarkSwarm;
 import info.tracking.DarkSwarmTracker;
+import info.tracking.EnemySpeedTracker;
 import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedBulletTracker;
 import info.tracking.ObservedUnitTracker;
@@ -45,6 +46,7 @@ import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SunkenTargets;
 import telemetry.PlanEvents;
+import telemetry.SpeedParityTelemetry;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.ContainHeldTimer;
@@ -168,6 +170,8 @@ public class GameState {
     private Map<Unit, Integer> recentBunkerShotVictims = new HashMap<>();
     private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
     private DarkSwarmTracker darkSwarmTracker = new DarkSwarmTracker();
+    private EnemySpeedTracker enemySpeedTracker = new EnemySpeedTracker();
+    private boolean ownSpeedReported = false;
     private StrategyTracker strategyTracker;
 
     // Initialized in InformationManager
@@ -203,6 +207,7 @@ public class GameState {
         updateBunkerGarrisonCounts();
         learnReachFromHits(frame);
         updateDarkSwarms();
+        updateEnemySpeed(frame);
         strategyTracker.onFrame();
         clearVisibleStaleLocations();
         baseData.updateSquadRallyBase();
@@ -387,6 +392,31 @@ public class GameState {
             if (bunker.getDistance(unit) <= range) return true;
         }
         return false;
+    }
+
+    /**
+     * Feeds the enemy speed tracker the speed of each visible enemy unit whose type it follows, refreshes its timing
+     * estimate, and logs each rise in the evidence for an upgrade.
+     */
+    private void updateEnemySpeed(int frame) {
+        for (Unit enemy : observedUnitTracker.getVisibleEnemyUnits()) {
+            UnitType type = enemy.getType();
+            if (EnemySpeedTracker.upgradeFor(type) == null || !enemy.isCompleted() || !enemy.isMoving()) {
+                continue;
+            }
+            enemySpeedTracker.observe(frame, type, Math.hypot(enemy.getVelocityX(), enemy.getVelocityY()));
+        }
+        enemySpeedTracker.refreshTiming(frame, observedUnitTracker);
+        if (!ownSpeedReported && techProgression.isMetabolicBoost()) {
+            ownSpeedReported = true;
+            SpeedParityTelemetry.ownSpeedFinished(frame);
+        }
+        for (UpgradeType upgrade : new UpgradeType[] {UpgradeType.Metabolic_Boost, UpgradeType.Muscular_Augments}) {
+            EnemySpeedTracker.Evidence rose = enemySpeedTracker.announce(frame, upgrade);
+            if (rose != null) {
+                SpeedParityTelemetry.enemySpeed(frame, upgrade, rose);
+            }
+        }
     }
 
     private void updateObservedUnitGroundHeights() {
