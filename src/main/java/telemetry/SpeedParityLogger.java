@@ -12,9 +12,9 @@ import java.util.Map;
  * Writes telemetry_speed_parity.csv: the speed parity gate's holds and the frames the enemy's speed upgrades were
  * first inferred.
  *
- * <p>A GATE row is written when the gate's term for a squad changes. suppressed_by is SPEED_PARITY when the squad
- * is held home because the enemy has, or plausibly has, Metabolic Boost and we do not, and LING_UPGRADE when the
- * move out threshold was raised for a ling-heavy squad with no ling upgrade. applied is false when the gate switch
+ * <p>A GATE row is written when the gate's term for a squad, or whether it was applied, changes. suppressed_by is
+ * SPEED_PARITY when the squad is held home because the enemy has, or plausibly has, Metabolic Boost and we do not,
+ * and LING_UPGRADE when the move out threshold was raised for a ling-heavy squad with no ling upgrade. applied is false when the gate switch
  * is off and the term did not change the decision, so the off arm stays measurable. our_speed and enemy_speed name
  * the two sides' state, squad_supply and move_out_threshold the squad's strength against the bar it was held to, and
  * base_threshold the bar without the gate.
@@ -99,12 +99,14 @@ public class SpeedParityLogger implements SpeedParitySink {
             if (NONE.equals(gate.getTerm())) {
                 String ended = terms.remove(gate.getSquadId());
                 if (ended != null) {
-                    writer.append(gateEndRow(gameId, frame, gate.getSquadId(), ended, gate));
+                    writer.append(gateEndRow(gameId, frame, gate.getSquadId(), ended.substring(0, ended.indexOf(':')),
+                            gate));
                 }
                 return;
             }
-            String previous = terms.put(gate.getSquadId(), gate.getTerm());
-            if (gate.getTerm().equals(previous)) {
+            String key = gate.getTerm() + ":" + gate.isApplied();
+            String previous = terms.put(gate.getSquadId(), key);
+            if (key.equals(previous)) {
                 return;
             }
             writer.append(gateRow(gameId, frame, gate));

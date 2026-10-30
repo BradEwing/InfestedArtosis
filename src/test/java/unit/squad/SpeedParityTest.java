@@ -2,7 +2,10 @@ package unit.squad;
 
 import bwapi.Race;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import config.Config;
+import info.tracking.EnemySpeedTracker;
+import info.tracking.EnemySpeedTracker.Anchor;
 import info.tracking.EnemySpeedTracker.Evidence;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.BuildOrder;
@@ -70,7 +73,13 @@ class SpeedParityTest {
 
     private static Reading read(Race race, Map<UnitType, Integer> composition, boolean exempt, int alive,
                                 boolean metabolic, boolean adrenal, Evidence enemy) {
-        return SpeedParity.read(race, composition, exempt, alive, metabolic, adrenal, enemy);
+        return SpeedParity.read(race, composition, exempt, alive, metabolic, adrenal, enemy, Anchor.EXTRACTOR);
+    }
+
+    private static Reading readTracker(EnemySpeedTracker tracker, int frame) {
+        return SpeedParity.read(Race.Zerg, lings(20), false, 20, false, false,
+                tracker.evidence(UpgradeType.Metabolic_Boost, frame),
+                tracker.earliestFinishAnchor(UpgradeType.Metabolic_Boost));
     }
 
     @Test
@@ -234,12 +243,55 @@ class SpeedParityTest {
     }
 
     @Test
-    void theHoldReleasesAContainEvenWithEnemiesNearButLeavesAnyOtherSquadWithThemToTheSim() {
-        assertTrue(SpeedParity.enforced(true, SquadStatus.CONTAIN, true, false));
-        assertFalse(SpeedParity.enforced(true, SquadStatus.RALLY, true, false));
-        assertTrue(SpeedParity.enforced(true, SquadStatus.RALLY, false, false));
-        assertFalse(SpeedParity.enforced(true, SquadStatus.FIGHT, false, true));
-        assertFalse(SpeedParity.enforced(false, SquadStatus.CONTAIN, true, false));
+    void theHoldLeavesEverySquadWithEnemiesNearIncludingAContainToItsOwnEvaluator() {
+        assertFalse(SpeedParity.enforced(true, true, false));
+        assertTrue(SpeedParity.enforced(true, false, false));
+        assertFalse(SpeedParity.enforced(true, false, true));
+        assertFalse(SpeedParity.enforced(false, false, false));
+    }
+
+    @Test
+    void anUnscoutedZergIsNotHeldForOnTheStartOfGameFloor() {
+        EnemySpeedTracker tracker = new EnemySpeedTracker();
+
+        assertEquals(Evidence.PLAUSIBLE, tracker.evidence(UpgradeType.Metabolic_Boost, 4000));
+        assertEquals(Anchor.FLOOR, tracker.earliestFinishAnchor(UpgradeType.Metabolic_Boost));
+        assertFalse(readTracker(tracker, 4000).isHolds());
+        assertFalse(readTracker(tracker, 20000).isHolds());
+    }
+
+    @Test
+    void anObservedExtractorHoldsOnceItsEarliestFinishPasses() {
+        EnemySpeedTracker tracker = new EnemySpeedTracker();
+        tracker.observeStructure(1500, 900, UnitType.Zerg_Extractor, false, 300);
+        int finish = tracker.earliestFinishFrame(UpgradeType.Metabolic_Boost);
+
+        assertFalse(readTracker(tracker, finish - 1).isHolds());
+        assertTrue(readTracker(tracker, finish).isHolds());
+    }
+
+    @Test
+    void aSeenUpgradeHoldsEvenInAnUnscoutedGame() {
+        EnemySpeedTracker tracker = new EnemySpeedTracker();
+        int start = tracker.soundEarliestFinishFrame(UpgradeType.Metabolic_Boost);
+        double speed = UnitType.Zerg_Zergling.topSpeed() * EnemySpeedTracker.SEEN_SPEED_MARGIN + 0.5;
+        for (int i = 0; i < EnemySpeedTracker.SEEN_RUN_FRAMES; i++) {
+            tracker.observe(start + i, 7, UnitType.Zerg_Zergling, 100 + (int) Math.round(i * speed), 100, speed, true);
+        }
+        int frame = start + EnemySpeedTracker.SEEN_RUN_FRAMES;
+
+        assertEquals(Evidence.SEEN, tracker.evidence(UpgradeType.Metabolic_Boost, frame));
+        assertEquals(Anchor.FLOOR, tracker.earliestFinishAnchor(UpgradeType.Metabolic_Boost));
+        assertTrue(readTracker(tracker, frame).isHolds());
+    }
+
+    @Test
+    void onlySeenOrAnObservedPlausibleCountsAsTheEnemysSpeed() {
+        assertTrue(SpeedParity.enemySpeedObserved(Evidence.SEEN, Anchor.FLOOR));
+        assertTrue(SpeedParity.enemySpeedObserved(Evidence.PLAUSIBLE, Anchor.GAS_READING));
+        assertTrue(SpeedParity.enemySpeedObserved(Evidence.PLAUSIBLE, Anchor.RESEARCHER));
+        assertFalse(SpeedParity.enemySpeedObserved(Evidence.PLAUSIBLE, Anchor.FLOOR));
+        assertFalse(SpeedParity.enemySpeedObserved(Evidence.NONE, Anchor.EXTRACTOR));
     }
 
     @Test
@@ -302,7 +354,7 @@ class SpeedParityTest {
         assertFalse(retreater.isFightLocked(NOW + 1));
         boolean exempt = engaged(retreater, squads, turned, NOW + 1);
         assertTrue(exempt);
-        assertFalse(SpeedParity.enforced(true, retreater.getStatus(), false, exempt));
+        assertFalse(SpeedParity.enforced(true, false, exempt));
         assertEquals(1, first.turns.size());
 
         SquadManager.SharedOutcome second = share(squads, turned, NOW + 1);
@@ -322,7 +374,7 @@ class SpeedParityTest {
 
         for (int frame = NOW; frame < NOW + 2; frame++) {
             boolean exempt = engaged(held, squads, turned, frame);
-            assertTrue(SpeedParity.enforced(true, held.getStatus(), false, exempt));
+            assertTrue(SpeedParity.enforced(true, false, exempt));
             SquadManager.SharedOutcome outcome = share(squads, turned, frame);
             assertTrue(outcome.turns.isEmpty());
             assertTrue(outcome.opposed.isEmpty());

@@ -191,13 +191,45 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
-    void anExtractorFirstSeenFinishedIsReadyTheFrameItWasSeen() {
+    void anExtractorFirstSeenFinishedDelaysThePlausibleBoundButNotTheSoundBoundARunIsHeldTo() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
 
-        tracker.observeStructure(2500, EXTRACTOR_ID, UnitType.Zerg_Extractor, true, 0);
-        tracker.observeStructure(2600, EXTRACTOR_ID, UnitType.Zerg_Extractor, true, 0);
+        tracker.observeStructure(3000, EXTRACTOR_ID, UnitType.Zerg_Extractor, true, 0);
+        tracker.observeStructure(3050, EXTRACTOR_ID, UnitType.Zerg_Extractor, true, 0);
 
-        assertEquals(2500 + gasFrames(BOOST.gasPrice()) + BOOST.upgradeTime(), tracker.earliestFinishFrame(BOOST));
+        assertEquals(3000 + gasFrames(BOOST.gasPrice()) + BOOST.upgradeTime(), tracker.earliestFinishFrame(BOOST));
+        assertEquals(boostFloor(), tracker.soundEarliestFinishFrame(BOOST));
+
+        run(tracker, 7, UnitType.Zerg_Zergling, 2600 - EnemySpeedTracker.SEEN_RUN_FRAMES,
+                EnemySpeedTracker.SEEN_RUN_FRAMES, fast(UnitType.Zerg_Zergling));
+        assertEquals(-1, tracker.seenFrame(BOOST));
+        run(tracker, 8, UnitType.Zerg_Zergling, 3100, EnemySpeedTracker.SEEN_RUN_FRAMES,
+                fast(UnitType.Zerg_Zergling));
+        int last = 3100 + EnemySpeedTracker.SEEN_RUN_FRAMES - 1;
+
+        assertEquals(last, tracker.seenFrame(BOOST));
+        List<Report> reports = tracker.announce(last);
+        assertEquals(boostFloor(), only(reports, Event.SEEN).getBoundFrame());
+        assertEquals(boostFloor(), only(reports, Event.EARLY_RUN).getBoundFrame());
+    }
+
+    @Test
+    void aRunThatBeganBeforeTheBoundStartsAgainAtItAndIsSeenOnlyAFullRunLater() {
+        EnemySpeedTracker tracker = new EnemySpeedTracker();
+        int bound = tracker.soundEarliestFinishFrame(BOOST);
+        int start = bound - 200;
+
+        run(tracker, 7, UnitType.Zerg_Zergling, start, bound + EnemySpeedTracker.SEEN_RUN_FRAMES - 1 - start,
+                fast(UnitType.Zerg_Zergling));
+        assertEquals(-1, tracker.seenFrame(BOOST));
+
+        int last = bound + EnemySpeedTracker.SEEN_RUN_FRAMES - 1;
+        double speed = fast(UnitType.Zerg_Zergling);
+        tracker.observe(last, 7, UnitType.Zerg_Zergling, 100 + (int) Math.round((last - start) * speed), 100, speed,
+                true);
+
+        assertEquals(last, tracker.seenFrame(BOOST));
+        assertTrue(only(tracker.announce(last), Event.EARLY_RUN) != null);
     }
 
     @Test
@@ -214,13 +246,35 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
-    void aGasReadingAboveTheCostLeavesTheFloorAndDropsTheSeenFrameAnchor() {
+    void aTrustedGasReadingAboveTheCostLeavesTheFloorAndDropsTheSeenFrameAnchor() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         tracker.observeStructure(2500, EXTRACTOR_ID, UnitType.Zerg_Extractor, true, 0);
 
-        tracker.observeGasReading(2500, EXTRACTOR_ID, 300);
+        tracker.observeGasReading(2500, EXTRACTOR_ID, 296);
+        tracker.observeGasReading(2530, EXTRACTOR_ID, 304);
 
         assertEquals(boostFloor(), tracker.earliestFinishFrame(BOOST));
+    }
+
+    @Test
+    void aGasReadingIsTrustedOnlyOnceTheMinedGasHasChanged() {
+        EnemySpeedTracker tracker = new EnemySpeedTracker();
+        tracker.observeStructure(2500, EXTRACTOR_ID, UnitType.Zerg_Extractor, true, 0);
+        int seenFrameBound = 2500 + gasFrames(BOOST.gasPrice()) + BOOST.upgradeTime();
+
+        for (int frame = 2500; frame < 2600; frame++) {
+            tracker.observeGasReading(frame, EXTRACTOR_ID, 0);
+        }
+
+        assertEquals(Anchor.EXTRACTOR, tracker.earliestFinishAnchor(BOOST));
+        assertEquals(seenFrameBound, tracker.earliestFinishFrame(BOOST));
+
+        tracker.observeGasReading(2600, EXTRACTOR_ID, 8);
+
+        assertEquals(Anchor.GAS_READING, tracker.earliestFinishAnchor(BOOST));
+        int expected = Math.max(2599 + gasFrames(BOOST.gasPrice()), 2600 + gasFrames(BOOST.gasPrice() - 8))
+                + BOOST.upgradeTime();
+        assertEquals(expected, tracker.earliestFinishFrame(BOOST));
     }
 
     @Test
@@ -268,14 +322,16 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
-    void muscularAugmentsWaitsForTheLairTheDenAndAllTheirGas() {
+    void muscularAugmentsWaitsForTheDenAndItsGas() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         tracker.observeStructure(1500, EXTRACTOR_ID, UnitType.Zerg_Extractor, false, 300);
-        int gas = UnitType.Zerg_Lair.gasPrice() + UnitType.Zerg_Hydralisk_Den.gasPrice() + AUGMENTS.gasPrice();
-        int lairReady = Math.max(UnitType.Zerg_Spawning_Pool.buildTime(),
-                1800 + gasFrames(UnitType.Zerg_Lair.gasPrice())) + UnitType.Zerg_Lair.buildTime();
+        int gas = UnitType.Zerg_Hydralisk_Den.gasPrice() + AUGMENTS.gasPrice();
+        int denReady = Math.max(UnitType.Zerg_Spawning_Pool.buildTime(),
+                1800 + gasFrames(UnitType.Zerg_Hydralisk_Den.gasPrice())) + UnitType.Zerg_Hydralisk_Den.buildTime();
 
-        int expected = Math.max(1800 + gasFrames(gas), lairReady) + AUGMENTS.upgradeTime();
+        int expected = Math.max(1800 + gasFrames(gas), denReady) + AUGMENTS.upgradeTime();
+        assertEquals(expected, tracker.earliestFinishFrame(AUGMENTS));
+        tracker.observeStructure(4000, 50, UnitType.Zerg_Lair, true, 0);
         assertEquals(expected, tracker.earliestFinishFrame(AUGMENTS));
 
         tracker.observeStructure(5000, 60, UnitType.Zerg_Hydralisk_Den, false, 400);

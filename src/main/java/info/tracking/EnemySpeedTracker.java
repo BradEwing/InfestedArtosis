@@ -2,13 +2,13 @@ package info.tracking;
 
 import bwapi.UnitType;
 import bwapi.UpgradeType;
-import info.ResourceCount;
 import lombok.Value;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
@@ -19,28 +19,30 @@ import java.util.TreeMap;
  * Tracks whether the enemy has the movement upgrade of a unit type: Metabolic Boost for Zerglings and Muscular
  * Augments for Hydralisks.
  *
- * <p>Each upgrade has an earliest finish frame, a lower bound on when the enemy can have finished it given what we
- * observed, see {@link #earliestFinishFrame}. From that frame the upgrade is {@link Evidence#PLAUSIBLE}. It is
+ * <p>Each upgrade has an earliest finish frame, when the enemy can have finished it given what we observed, see
+ * {@link #earliestFinishFrame}. From that frame the upgrade is {@link Evidence#PLAUSIBLE}. It is
  * {@link Evidence#SEEN} once one unit was observed moving under its own power faster than its type's unupgraded top
  * speed by {@link #SEEN_SPEED_MARGIN} on {@link #SEEN_RUN_FRAMES} consecutive frames, both by its velocity on each
- * frame and by the distance it covered over the run, on a frame at or after the earliest finish. A run before the
- * earliest finish is kept as an early run and never makes the upgrade SEEN. SEEN is permanent; PLAUSIBLE follows
- * the earliest finish, which moves later as observations rule earlier finishes out.
+ * frame and by the distance it covered over the run, with the whole run at or after the sound earliest finish, see
+ * {@link #soundEarliestFinishFrame}. A run that ends before the sound earliest finish is kept as an early run and
+ * never makes the upgrade SEEN; one that began before it starts again from the first frame at or after it. SEEN is
+ * permanent; PLAUSIBLE follows the earliest finish, which moves later as observations rule earlier finishes out.
  *
- * <p>The earliest finish is the research start plus {@link UpgradeType#upgradeTime()}. The research starts no earlier
- * than the frame the researching structure and every required structure is ready, and than the frame the gas spent
- * up to the research can have been mined at {@link #GAS_PER_FRAME} per Extractor from each Extractor's ready frame.
- * An Extractor seen under construction is ready when its remaining build time runs out, one first seen finished is
- * ready the frame it was first seen, or from the start of the game plus its build time when a gas reading of it
- * exists. An Extractor that is destroyed before it is ready never counts. With no Extractor observed, one Extractor
- * finished at its build time from the start of the game is assumed. A gas reading, the gas mined from the only
- * Extractor observed, rules out every frame before the remaining gas can be mined. A structure seen under
- * construction or morphing is ready when its remaining build time runs out; otherwise it is ready no earlier than
- * its prerequisites, its gas and its build time allow from the start of the game.
+ * <p>An earliest finish is the research start plus {@link UpgradeType#upgradeTime()}. The research starts no earlier
+ * than the frame the researching structure is ready, and than the frame the gas spent up to the research can have
+ * been mined at {@link #GAS_PER_FRAME} per Extractor from each Extractor's ready frame. An Extractor seen under
+ * construction is ready when its remaining build time runs out, and one destroyed before it is ready never counts.
+ * An Extractor first seen finished is ready, for the earliest finish, on the frame it was first seen, and for the
+ * sound earliest finish, and whenever a trusted gas reading of it exists, at its build time from the start of the
+ * game. With no Extractor observed, one Extractor finished at its build time from the start of the game is assumed.
+ * A gas reading, the gas mined from the only Extractor observed, is trusted once the Extractor's mined gas has been
+ * read changing; a trusted reading rules out every frame before the remaining gas can be mined. A structure seen
+ * under construction or morphing is ready when its remaining build time runs out; otherwise it is ready no earlier
+ * than its prerequisites, its gas and its build time allow from the start of the game.
  *
  * <p>Metabolic Boost is researched at the Spawning Pool for its own gas, or for its own and a Lair's when a Lair began
  * before the two could have been mined, since the Lair's gas was then spent first. Muscular Augments is researched at
- * the Hydralisk Den once a Lair stands, so the Lair's and the Den's gas are spent before it.
+ * the Hydralisk Den, whose gas is spent before it.
  */
 public class EnemySpeedTracker {
     /** How far above the unupgraded top speed a unit must move to count as upgraded. */
@@ -49,11 +51,8 @@ public class EnemySpeedTracker {
     /** Consecutive observed frames one unit must move faster than the cut before the upgrade counts as seen. */
     public static final int SEEN_RUN_FRAMES = 24;
 
-    /** Gas workers an Extractor holds. */
-    public static final int GAS_WORKERS = 3;
-
-    /** The most gas one Extractor is taken to yield per frame: {@link #GAS_WORKERS} at the codebase's gas rate. */
-    public static final double GAS_PER_FRAME = ResourceCount.GAS_PER_FRAME_PER_WORKER * GAS_WORKERS;
+    /** The most gas one Extractor is taken to yield per frame. */
+    public static final double GAS_PER_FRAME = 0.25;
 
     private static final double FRAME_EPSILON = 1e-9;
 
@@ -102,7 +101,7 @@ public class EnemySpeedTracker {
         double topSpeed;
         /** Frames in the run, or -1 when no run applies. */
         int runFrames;
-        /** The earliest finish on the reported frame. */
+        /** The earliest finish on the reported frame; for a run, the sound earliest finish it was held to. */
         int boundFrame;
         /** What the earliest finish rested on. */
         Anchor anchor;
@@ -160,7 +159,10 @@ public class EnemySpeedTracker {
     private final Map<UpgradeType, Sighting> earlyRuns = new HashMap<>();
     private final Map<Integer, Structure> structures = new HashMap<>();
     private final Map<Integer, NavigableMap<Integer, Integer>> gasReadings = new HashMap<>();
+    private final Map<Integer, Integer> firstMined = new HashMap<>();
+    private final Set<Integer> trustedReadings = new HashSet<>();
     private final Map<UpgradeType, Bound> bounds = new HashMap<>();
+    private final Map<UpgradeType, Bound> soundBounds = new HashMap<>();
     private final Map<UpgradeType, Set<Event>> reported = new HashMap<>();
     private boolean boundsStale = true;
 
@@ -323,10 +325,14 @@ public class EnemySpeedTracker {
         if (!exceedsBaseSpeed(type, measured)) {
             return;
         }
-        int bound = earliestFinishFrame(upgrade);
+        int bound = soundEarliestFinishFrame(upgrade);
         Sighting sighting = new Sighting(frame, measured, type.topSpeed(), runFrames, bound);
         if (frame < bound) {
             earlyRuns.putIfAbsent(upgrade, sighting);
+            return;
+        }
+        if (run.startFrame < bound) {
+            runs.put(unitId, new Run(frame, x, y));
             return;
         }
         seen.put(upgrade, sighting);
@@ -364,15 +370,20 @@ public class EnemySpeedTracker {
     }
 
     /**
-     * Records the gas mined so far from a finished enemy Extractor.
+     * Records the gas mined so far from a finished enemy Extractor. The Extractor's readings are trusted from the
+     * first one that differs from its first reading.
      *
      * @param frame current frame
      * @param extractorId the Extractor's ID
      * @param mined the geyser's starting gas less what it holds now
      */
     public void observeGasReading(int frame, int extractorId, int mined) {
-        Integer before = gasReadings.computeIfAbsent(extractorId, id -> new TreeMap<>()).put(mined, frame);
-        if (before == null || before != frame) {
+        Integer first = firstMined.putIfAbsent(extractorId, mined);
+        if (first != null && first != mined) {
+            trustedReadings.add(extractorId);
+        }
+        gasReadings.computeIfAbsent(extractorId, id -> new TreeMap<>()).put(mined, frame);
+        if (trustedReadings.contains(extractorId)) {
             boundsStale = true;
         }
     }
@@ -390,6 +401,8 @@ public class EnemySpeedTracker {
         if (structure != null && !structure.completed && frame < structure.readyFrame) {
             structures.remove(unitId);
             gasReadings.remove(unitId);
+            firstMined.remove(unitId);
+            trustedReadings.remove(unitId);
             boundsStale = true;
         }
     }
@@ -495,33 +508,52 @@ public class EnemySpeedTracker {
         return bound(upgrade).anchor;
     }
 
-    private Bound bound(UpgradeType upgrade) {
-        if (boundsStale) {
-            bounds.clear();
-            boundsStale = false;
-        }
-        return bounds.computeIfAbsent(upgrade, this::computeBound);
+    /**
+     * The earliest frame the enemy can have finished an upgrade with every Extractor first seen finished taken as
+     * ready at its build time from the start of the game: a lower bound a run must not precede to make the upgrade
+     * SEEN.
+     *
+     * @param upgrade Metabolic Boost or Muscular Augments
+     * @return the frame
+     */
+    public int soundEarliestFinishFrame(UpgradeType upgrade) {
+        return soundBound(upgrade).frame;
     }
 
-    private Bound computeBound(UpgradeType upgrade) {
+    private Bound bound(UpgradeType upgrade) {
+        refreshBounds();
+        return bounds.computeIfAbsent(upgrade, u -> computeBound(u, false));
+    }
+
+    private Bound soundBound(UpgradeType upgrade) {
+        refreshBounds();
+        return soundBounds.computeIfAbsent(upgrade, u -> computeBound(u, true));
+    }
+
+    private void refreshBounds() {
+        if (boundsStale) {
+            bounds.clear();
+            soundBounds.clear();
+            boundsStale = false;
+        }
+    }
+
+    private Bound computeBound(UpgradeType upgrade, boolean sound) {
         int poolReady = readyFrame(UnitType.Zerg_Spawning_Pool, UnitType.Zerg_Spawning_Pool.buildTime());
         if (upgrade == UpgradeType.Metabolic_Boost) {
             int both = UnitType.Zerg_Lair.gasPrice() + upgrade.gasPrice();
-            int gas = lairGasFirst(lairStartUpper(), gasFrame(both)) ? both : upgrade.gasPrice();
-            return start(upgrade, gas, poolReady, hasExact(UnitType.Zerg_Spawning_Pool));
+            int gas = lairGasFirst(lairStartUpper(), gasFrame(both, sound)) ? both : upgrade.gasPrice();
+            return start(upgrade, gas, poolReady, hasExact(UnitType.Zerg_Spawning_Pool), sound);
         }
-        int lairGas = UnitType.Zerg_Lair.gasPrice();
         int denGas = UnitType.Zerg_Hydralisk_Den.gasPrice();
-        int lairReady = readyFrame(UnitType.Zerg_Lair,
-                Math.max(poolReady, gasFrame(lairGas)) + UnitType.Zerg_Lair.buildTime());
         int denReady = readyFrame(UnitType.Zerg_Hydralisk_Den,
-                Math.max(poolReady, gasFrame(denGas)) + UnitType.Zerg_Hydralisk_Den.buildTime());
-        return start(upgrade, lairGas + denGas + upgrade.gasPrice(), Math.max(lairReady, denReady),
-                hasExact(UnitType.Zerg_Lair) || hasExact(UnitType.Zerg_Hydralisk_Den));
+                Math.max(poolReady, gasFrame(denGas, sound)) + UnitType.Zerg_Hydralisk_Den.buildTime());
+        return start(upgrade, denGas + upgrade.gasPrice(), denReady, hasExact(UnitType.Zerg_Hydralisk_Den), sound);
     }
 
-    private Bound start(UpgradeType upgrade, int gas, int researcherReady, boolean researcherObserved) {
-        int fromExtractors = earliestGasFrame(extractorReadyFrames(), gas);
+    private Bound start(UpgradeType upgrade, int gas, int researcherReady, boolean researcherObserved,
+                        boolean sound) {
+        int fromExtractors = earliestGasFrame(extractorReadyFrames(sound), gas);
         int fromReading = readingBound(singleExtractorReadings(), gas);
         int gasReady = Math.max(fromExtractors, fromReading);
         Anchor anchor;
@@ -535,11 +567,12 @@ public class EnemySpeedTracker {
         return new Bound(Math.max(gasReady, researcherReady) + upgrade.upgradeTime(), anchor);
     }
 
-    private int gasFrame(int gas) {
-        return Math.max(earliestGasFrame(extractorReadyFrames(), gas), readingBound(singleExtractorReadings(), gas));
+    private int gasFrame(int gas, boolean sound) {
+        return Math.max(earliestGasFrame(extractorReadyFrames(sound), gas),
+                readingBound(singleExtractorReadings(), gas));
     }
 
-    private List<Integer> extractorReadyFrames() {
+    private List<Integer> extractorReadyFrames(boolean sound) {
         List<Integer> frames = new ArrayList<>();
         int floor = UnitType.Zerg_Extractor.buildTime();
         for (Map.Entry<Integer, Structure> entry : structures.entrySet()) {
@@ -547,7 +580,7 @@ public class EnemySpeedTracker {
             if (structure.type != UnitType.Zerg_Extractor) {
                 continue;
             }
-            boolean read = structure.exact || !gasReadings.containsKey(entry.getKey());
+            boolean read = structure.exact || !sound && !trustedReadings.contains(entry.getKey());
             frames.add(read ? structure.readyFrame : floor);
         }
         if (frames.isEmpty()) {
@@ -567,7 +600,8 @@ public class EnemySpeedTracker {
             }
             only = entry.getKey();
         }
-        NavigableMap<Integer, Integer> readings = only == null ? null : gasReadings.get(only);
+        NavigableMap<Integer, Integer> readings = only == null || !trustedReadings.contains(only)
+                ? null : gasReadings.get(only);
         return readings == null ? Collections.emptyNavigableMap() : readings;
     }
 

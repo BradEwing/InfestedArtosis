@@ -1695,8 +1695,7 @@ public class SquadManager {
             SpeedParity.Reading parity = readSpeedParity(squad);
             boolean engaged = engagedForSpeedParity(squad, fightSquads, SquadManager::withinSupportRadius,
                     sharedFightTurns, game.getFrameCount());
-            boolean enforced = SpeedParity.enforced(holdsForSpeedParity(parity), squad.getStatus(), closeThreats,
-                    engaged);
+            boolean enforced = SpeedParity.enforced(holdsForSpeedParity(parity), closeThreats, engaged);
             logSpeedParity(squad, parity, enforced);
             if (enforced) {
                 holdForSpeedParity(squad);
@@ -2609,7 +2608,8 @@ public class SquadManager {
                 .evidence(UpgradeType.Metabolic_Boost, game.getFrameCount());
         return SpeedParity.read(gameState.getOpponentRace(), squad.getComposition(),
                 isAllInOrRush(), gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
-                techProgression.isMetabolicBoost(), techProgression.isAdrenalGlands(), enemyMetabolicBoost);
+                techProgression.isMetabolicBoost(), techProgression.isAdrenalGlands(), enemyMetabolicBoost,
+                gameState.getEnemySpeedTracker().earliestFinishAnchor(UpgradeType.Metabolic_Boost));
     }
 
     private boolean isAllInOrRush() {
