@@ -450,6 +450,7 @@ public class InformationManager {
             }
             ObservedUnitTracker tracker = gameState.getObservedUnitTracker();
             tracker.onUnitDestroy(unit, game.getFrameCount());
+            gameState.getEnemySpeedTracker().onUnitDestroy(unit.getID(), game.getFrameCount());
         }
     }
 

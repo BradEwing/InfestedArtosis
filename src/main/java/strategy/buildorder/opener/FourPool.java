@@ -68,6 +68,11 @@ public class FourPool extends BuildOrder {
         return true;
     }
 
+    @Override
+    public boolean isAllInOrRush() {
+        return true;
+    }
+
     /**
      * A held contain opens no drone round: the build never transitions out of its all-in.
      */

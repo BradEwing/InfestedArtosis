@@ -1,0 +1,617 @@
+package info.tracking;
+
+import bwapi.UnitType;
+import bwapi.UpgradeType;
+import info.ResourceCount;
+import lombok.Value;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.NavigableMap;
+import java.util.Set;
+import java.util.TreeMap;
+
+/**
+ * Tracks whether the enemy has the movement upgrade of a unit type: Metabolic Boost for Zerglings and Muscular
+ * Augments for Hydralisks.
+ *
+ * <p>Each upgrade has an earliest finish frame, a lower bound on when the enemy can have finished it given what we
+ * observed, see {@link #earliestFinishFrame}. From that frame the upgrade is {@link Evidence#PLAUSIBLE}. It is
+ * {@link Evidence#SEEN} once one unit was observed moving under its own power faster than its type's unupgraded top
+ * speed by {@link #SEEN_SPEED_MARGIN} on {@link #SEEN_RUN_FRAMES} consecutive frames, both by its velocity on each
+ * frame and by the distance it covered over the run, on a frame at or after the earliest finish. A run before the
+ * earliest finish is kept as an early run and never makes the upgrade SEEN. SEEN is permanent; PLAUSIBLE follows
+ * the earliest finish, which moves later as observations rule earlier finishes out.
+ *
+ * <p>The earliest finish is the research start plus {@link UpgradeType#upgradeTime()}. The research starts no earlier
+ * than the frame the researching structure and every required structure is ready, and than the frame the gas spent
+ * up to the research can have been mined at {@link #GAS_PER_FRAME} per Extractor from each Extractor's ready frame.
+ * An Extractor seen under construction is ready when its remaining build time runs out, one first seen finished is
+ * ready the frame it was first seen, or from the start of the game plus its build time when a gas reading of it
+ * exists. An Extractor that is destroyed before it is ready never counts. With no Extractor observed, one Extractor
+ * finished at its build time from the start of the game is assumed. A gas reading, the gas mined from the only
+ * Extractor observed, rules out every frame before the remaining gas can be mined. A structure seen under
+ * construction or morphing is ready when its remaining build time runs out; otherwise it is ready no earlier than
+ * its prerequisites, its gas and its build time allow from the start of the game.
+ *
+ * <p>Metabolic Boost is researched at the Spawning Pool for its own gas, or for its own and a Lair's when a Lair began
+ * before the two could have been mined, since the Lair's gas was then spent first. Muscular Augments is researched at
+ * the Hydralisk Den once a Lair stands, so the Lair's and the Den's gas are spent before it.
+ */
+public class EnemySpeedTracker {
+    /** How far above the unupgraded top speed a unit must move to count as upgraded. */
+    public static final double SEEN_SPEED_MARGIN = 1.15;
+
+    /** Consecutive observed frames one unit must move faster than the cut before the upgrade counts as seen. */
+    public static final int SEEN_RUN_FRAMES = 24;
+
+    /** Gas workers an Extractor holds. */
+    public static final int GAS_WORKERS = 3;
+
+    /** The most gas one Extractor is taken to yield per frame: {@link #GAS_WORKERS} at the codebase's gas rate. */
+    public static final double GAS_PER_FRAME = ResourceCount.GAS_PER_FRAME_PER_WORKER * GAS_WORKERS;
+
+    private static final double FRAME_EPSILON = 1e-9;
+
+    private static final UpgradeType[] FOLLOWED = {UpgradeType.Metabolic_Boost, UpgradeType.Muscular_Augments};
+
+    /** What is known about an enemy upgrade. */
+    public enum Evidence {
+        /** Before the earliest finish and not seen. */
+        NONE,
+        /** At or after the earliest finish, not seen. */
+        PLAUSIBLE,
+        /** A unit was seen moving faster than the unupgraded top speed for a whole run. */
+        SEEN
+    }
+
+    /** What the earliest finish rests on. */
+    public enum Anchor {
+        /** No observation the bound rests on: the start of the game. */
+        FLOOR,
+        /** The ready frames of the enemy Extractors observed. */
+        EXTRACTOR,
+        /** A gas reading of the enemy's only observed Extractor. */
+        GAS_READING,
+        /** The ready frame of the researching or a required structure, seen under construction. */
+        RESEARCHER
+    }
+
+    /** A first in a game for one upgrade, written once. */
+    public enum Event {
+        /** The frame reached the earliest finish. */
+        PLAUSIBLE,
+        /** A run made the upgrade SEEN. */
+        SEEN,
+        /** A run came before the earliest finish and was refused. */
+        EARLY_RUN
+    }
+
+    /** A first reported for an upgrade. */
+    @Value
+    public static class Report {
+        Event event;
+        UpgradeType upgrade;
+        /** Distance covered over the run per frame, or -1 when no run applies. */
+        double measuredSpeed;
+        /** The type's unupgraded top speed, or -1 when no run applies. */
+        double topSpeed;
+        /** Frames in the run, or -1 when no run applies. */
+        int runFrames;
+        /** The earliest finish on the reported frame. */
+        int boundFrame;
+        /** What the earliest finish rested on. */
+        Anchor anchor;
+    }
+
+    @Value
+    private static class Sighting {
+        int frame;
+        double measuredSpeed;
+        double topSpeed;
+        int runFrames;
+        int boundFrame;
+    }
+
+    private static final class Run {
+        final int startFrame;
+        final int startX;
+        final int startY;
+        int lastFrame;
+
+        Run(int startFrame, int startX, int startY) {
+            this.startFrame = startFrame;
+            this.startX = startX;
+            this.startY = startY;
+            this.lastFrame = startFrame;
+        }
+    }
+
+    private static final class Structure {
+        final UnitType type;
+        final int readyFrame;
+        final boolean exact;
+        boolean completed;
+
+        Structure(UnitType type, int readyFrame, boolean exact, boolean completed) {
+            this.type = type;
+            this.readyFrame = readyFrame;
+            this.exact = exact;
+            this.completed = completed;
+        }
+    }
+
+    private static final class Bound {
+        final int frame;
+        final Anchor anchor;
+
+        Bound(int frame, Anchor anchor) {
+            this.frame = frame;
+            this.anchor = anchor;
+        }
+    }
+
+    private final Map<Integer, Run> runs = new HashMap<>();
+    private final Map<UpgradeType, Sighting> seen = new HashMap<>();
+    private final Map<UpgradeType, Sighting> earlyRuns = new HashMap<>();
+    private final Map<Integer, Structure> structures = new HashMap<>();
+    private final Map<Integer, NavigableMap<Integer, Integer>> gasReadings = new HashMap<>();
+    private final Map<UpgradeType, Bound> bounds = new HashMap<>();
+    private final Map<UpgradeType, Set<Event>> reported = new HashMap<>();
+    private boolean boundsStale = true;
+
+    /**
+     * The upgrade that speeds up a unit type, among those this tracker follows.
+     *
+     * @param type the unit type
+     * @return Metabolic Boost for Zerglings, Muscular Augments for Hydralisks, else null
+     */
+    public static UpgradeType upgradeFor(UnitType type) {
+        if (type == UnitType.Zerg_Zergling) {
+            return UpgradeType.Metabolic_Boost;
+        }
+        if (type == UnitType.Zerg_Hydralisk) {
+            return UpgradeType.Muscular_Augments;
+        }
+        return null;
+    }
+
+    /**
+     * The unit type an upgrade speeds up, among those this tracker follows.
+     *
+     * @param upgrade the upgrade
+     * @return the unit type, or null for an upgrade not followed
+     */
+    public static UnitType unitFor(UpgradeType upgrade) {
+        if (upgrade == UpgradeType.Metabolic_Boost) {
+            return UnitType.Zerg_Zergling;
+        }
+        if (upgrade == UpgradeType.Muscular_Augments) {
+            return UnitType.Zerg_Hydralisk;
+        }
+        return null;
+    }
+
+    /**
+     * Whether the tracker reads the timing of a structure type: the Extractor, the Spawning Pool, the Hydralisk Den
+     * and the Lair.
+     *
+     * @param type the unit type
+     * @return true for a structure the earliest finish depends on
+     */
+    public static boolean followsStructure(UnitType type) {
+        return type == UnitType.Zerg_Extractor || type == UnitType.Zerg_Spawning_Pool
+                || type == UnitType.Zerg_Hydralisk_Den || type == UnitType.Zerg_Lair;
+    }
+
+    /**
+     * Whether a speed is above the unupgraded top speed of a type by the margin.
+     *
+     * @param type the unit type
+     * @param speed pixels per frame
+     * @return true when the unit moves faster than an unupgraded one can
+     */
+    public static boolean exceedsBaseSpeed(UnitType type, double speed) {
+        return upgradeFor(type) != null && speed > type.topSpeed() * SEEN_SPEED_MARGIN;
+    }
+
+    /**
+     * The earliest frame Extractors yield an amount of gas between them, each mining {@link #GAS_PER_FRAME} from
+     * its ready frame.
+     *
+     * @param readyFrames each Extractor's ready frame
+     * @param gas the gas mined
+     * @return the frame, or -1 with no Extractor
+     */
+    public static int earliestGasFrame(List<Integer> readyFrames, int gas) {
+        List<Integer> sorted = new ArrayList<>(readyFrames);
+        Collections.sort(sorted);
+        double sum = 0;
+        for (int k = 0; k < sorted.size(); k++) {
+            sum += sorted.get(k);
+            double frame = (Math.max(gas, 0) / GAS_PER_FRAME + sum) / (k + 1);
+            if (k + 1 == sorted.size() || frame <= sorted.get(k + 1)) {
+                return (int) Math.ceil(frame - FRAME_EPSILON);
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * The earliest frame an amount of gas can have been mined from one Extractor given readings of the gas mined
+     * from it: each reading below the amount rules out every frame before the rest can be mined.
+     *
+     * @param readings gas mined, mapped to the last frame it was read
+     * @param gas the gas mined
+     * @return the frame, or -1 when no reading is below the amount
+     */
+    public static int readingBound(NavigableMap<Integer, Integer> readings, int gas) {
+        int bound = -1;
+        for (Map.Entry<Integer, Integer> reading : readings.headMap(gas, false).entrySet()) {
+            int frame = reading.getValue() + (int) Math.ceil((gas - reading.getKey()) / GAS_PER_FRAME - FRAME_EPSILON);
+            bound = Math.max(bound, frame);
+        }
+        return bound;
+    }
+
+    /**
+     * Whether a Lair's gas was spent before Metabolic Boost's: true when the Lair began before the gas of both could
+     * have been mined, since the research beginning first would have needed both by the Lair's start.
+     *
+     * @param lairStartUpper latest frame the first Lair can have begun, or -1 with no Lair observed
+     * @param bothGasFrame earliest frame the gas of both can have been mined
+     * @return true when the Lair's gas counts toward the research
+     */
+    public static boolean lairGasFirst(int lairStartUpper, int bothGasFrame) {
+        return lairStartUpper >= 0 && lairStartUpper < bothGasFrame;
+    }
+
+    /**
+     * What the frames recorded say about an upgrade at a frame.
+     *
+     * @param seenFrame frame the upgrade was first seen, or -1
+     * @param earliestFinish earliest finish frame
+     * @param frame the frame asked about
+     * @return SEEN once seen, PLAUSIBLE from the earliest finish, else NONE
+     */
+    public static Evidence classify(int seenFrame, int earliestFinish, int frame) {
+        if (seenFrame >= 0 && frame >= seenFrame) {
+            return Evidence.SEEN;
+        }
+        if (earliestFinish >= 0 && frame >= earliestFinish) {
+            return Evidence.PLAUSIBLE;
+        }
+        return Evidence.NONE;
+    }
+
+    /**
+     * Records one visible enemy unit. A frame on which the unit is not moving under its own power, or not faster
+     * than the cut, ends its run; a frame missed ends it too.
+     *
+     * @param frame current frame
+     * @param unitId the unit's ID
+     * @param type the unit's type
+     * @param x the unit's position in pixels
+     * @param y the unit's position in pixels
+     * @param speed the magnitude of the unit's velocity, pixels per frame
+     * @param selfPropelled false when the unit is unfinished, burrowed, unburrowing or not moving
+     */
+    public void observe(int frame, int unitId, UnitType type, int x, int y, double speed, boolean selfPropelled) {
+        UpgradeType upgrade = upgradeFor(type);
+        if (upgrade == null) {
+            return;
+        }
+        if (!selfPropelled || !exceedsBaseSpeed(type, speed)) {
+            runs.remove(unitId);
+            return;
+        }
+        Run run = runs.get(unitId);
+        if (run == null || run.lastFrame != frame - 1) {
+            run = new Run(frame, x, y);
+            runs.put(unitId, run);
+        }
+        run.lastFrame = frame;
+        int runFrames = frame - run.startFrame + 1;
+        if (runFrames < SEEN_RUN_FRAMES || seen.containsKey(upgrade)) {
+            return;
+        }
+        double measured = Math.hypot(x - run.startX, y - run.startY) / (frame - run.startFrame);
+        if (!exceedsBaseSpeed(type, measured)) {
+            return;
+        }
+        int bound = earliestFinishFrame(upgrade);
+        Sighting sighting = new Sighting(frame, measured, type.topSpeed(), runFrames, bound);
+        if (frame < bound) {
+            earlyRuns.putIfAbsent(upgrade, sighting);
+            return;
+        }
+        seen.put(upgrade, sighting);
+    }
+
+    /**
+     * Records one visible enemy structure the earliest finish depends on, see {@link #followsStructure}.
+     *
+     * @param frame current frame
+     * @param unitId the structure's ID
+     * @param type the structure's type
+     * @param completed whether it is finished and not morphing
+     * @param remainingBuildTime frames left on its construction or morph
+     */
+    public void observeStructure(int frame, int unitId, UnitType type, boolean completed, int remainingBuildTime) {
+        if (!followsStructure(type)) {
+            return;
+        }
+        Structure known = structures.get(unitId);
+        if (known != null && known.type == type) {
+            if (completed && !known.completed) {
+                known.completed = true;
+                boundsStale = true;
+            }
+            return;
+        }
+        if (completed) {
+            structures.put(unitId, new Structure(type, frame, false, true));
+        } else if (remainingBuildTime > 0) {
+            structures.put(unitId, new Structure(type, frame + remainingBuildTime, true, false));
+        } else {
+            return;
+        }
+        boundsStale = true;
+    }
+
+    /**
+     * Records the gas mined so far from a finished enemy Extractor.
+     *
+     * @param frame current frame
+     * @param extractorId the Extractor's ID
+     * @param mined the geyser's starting gas less what it holds now
+     */
+    public void observeGasReading(int frame, int extractorId, int mined) {
+        Integer before = gasReadings.computeIfAbsent(extractorId, id -> new TreeMap<>()).put(mined, frame);
+        if (before == null || before != frame) {
+            boundsStale = true;
+        }
+    }
+
+    /**
+     * Forgets a destroyed enemy unit's run, and a structure destroyed before it was ready together with its gas
+     * readings, as a cancelled Extractor never mined.
+     *
+     * @param unitId the unit's ID
+     * @param frame current frame
+     */
+    public void onUnitDestroy(int unitId, int frame) {
+        runs.remove(unitId);
+        Structure structure = structures.get(unitId);
+        if (structure != null && !structure.completed && frame < structure.readyFrame) {
+            structures.remove(unitId);
+            gasReadings.remove(unitId);
+            boundsStale = true;
+        }
+    }
+
+    /**
+     * Drops the runs that missed this frame.
+     *
+     * @param frame current frame
+     */
+    public void onFrame(int frame) {
+        runs.values().removeIf(run -> run.lastFrame < frame);
+    }
+
+    /**
+     * Reports each first of the game not reported yet: the frame reaching an upgrade's earliest finish, the run that
+     * made it SEEN, and the first run refused before the earliest finish.
+     *
+     * @param frame current frame
+     * @return the reports, in the order of {@link #FOLLOWED} and then of {@link Event}
+     */
+    public List<Report> announce(int frame) {
+        List<Report> reports = new ArrayList<>();
+        for (UpgradeType upgrade : FOLLOWED) {
+            Set<Event> done = reported.computeIfAbsent(upgrade, u -> EnumSet.noneOf(Event.class));
+            Bound bound = bound(upgrade);
+            if (frame >= bound.frame && done.add(Event.PLAUSIBLE)) {
+                reports.add(new Report(Event.PLAUSIBLE, upgrade, -1, -1, -1, bound.frame, bound.anchor));
+            }
+            Sighting sighting = seen.get(upgrade);
+            if (sighting != null && done.add(Event.SEEN)) {
+                reports.add(report(Event.SEEN, upgrade, sighting, bound.anchor));
+            }
+            Sighting early = earlyRuns.get(upgrade);
+            if (early != null && done.add(Event.EARLY_RUN)) {
+                reports.add(report(Event.EARLY_RUN, upgrade, early, bound.anchor));
+            }
+        }
+        return reports;
+    }
+
+    private static Report report(Event event, UpgradeType upgrade, Sighting sighting, Anchor anchor) {
+        return new Report(event, upgrade, sighting.getMeasuredSpeed(), sighting.getTopSpeed(),
+                sighting.getRunFrames(), sighting.getBoundFrame(), anchor);
+    }
+
+    /**
+     * What is known about an enemy upgrade at a frame.
+     *
+     * @param upgrade Metabolic Boost or Muscular Augments; any other upgrade reads NONE
+     * @param frame the frame asked about
+     * @return the evidence
+     */
+    public Evidence evidence(UpgradeType upgrade, int frame) {
+        if (unitFor(upgrade) == null) {
+            return Evidence.NONE;
+        }
+        return classify(seenFrame(upgrade), earliestFinishFrame(upgrade), frame);
+    }
+
+    /**
+     * Whether the enemy has an upgrade, or plausibly has it.
+     *
+     * @param upgrade Metabolic Boost or Muscular Augments
+     * @param frame the frame asked about
+     * @return true when the evidence is SEEN or PLAUSIBLE
+     */
+    public boolean hasOrPlausiblyHas(UpgradeType upgrade, int frame) {
+        return evidence(upgrade, frame) != Evidence.NONE;
+    }
+
+    /**
+     * @param upgrade the upgrade
+     * @return the frame a run first made the upgrade SEEN, or -1
+     */
+    public int seenFrame(UpgradeType upgrade) {
+        Sighting sighting = seen.get(upgrade);
+        return sighting == null ? -1 : sighting.getFrame();
+    }
+
+    /**
+     * @param upgrade the upgrade
+     * @return the frame the upgrade becomes PLAUSIBLE, {@link #earliestFinishFrame}, or -1 for an upgrade not followed
+     */
+    public int plausibleFrame(UpgradeType upgrade) {
+        return unitFor(upgrade) == null ? -1 : earliestFinishFrame(upgrade);
+    }
+
+    /**
+     * The earliest frame the enemy can have finished an upgrade given what was observed.
+     *
+     * @param upgrade Metabolic Boost or Muscular Augments
+     * @return the frame
+     */
+    public int earliestFinishFrame(UpgradeType upgrade) {
+        return bound(upgrade).frame;
+    }
+
+    /**
+     * @param upgrade Metabolic Boost or Muscular Augments
+     * @return what the earliest finish rests on
+     */
+    public Anchor earliestFinishAnchor(UpgradeType upgrade) {
+        return bound(upgrade).anchor;
+    }
+
+    private Bound bound(UpgradeType upgrade) {
+        if (boundsStale) {
+            bounds.clear();
+            boundsStale = false;
+        }
+        return bounds.computeIfAbsent(upgrade, this::computeBound);
+    }
+
+    private Bound computeBound(UpgradeType upgrade) {
+        int poolReady = readyFrame(UnitType.Zerg_Spawning_Pool, UnitType.Zerg_Spawning_Pool.buildTime());
+        if (upgrade == UpgradeType.Metabolic_Boost) {
+            int both = UnitType.Zerg_Lair.gasPrice() + upgrade.gasPrice();
+            int gas = lairGasFirst(lairStartUpper(), gasFrame(both)) ? both : upgrade.gasPrice();
+            return start(upgrade, gas, poolReady, hasExact(UnitType.Zerg_Spawning_Pool));
+        }
+        int lairGas = UnitType.Zerg_Lair.gasPrice();
+        int denGas = UnitType.Zerg_Hydralisk_Den.gasPrice();
+        int lairReady = readyFrame(UnitType.Zerg_Lair,
+                Math.max(poolReady, gasFrame(lairGas)) + UnitType.Zerg_Lair.buildTime());
+        int denReady = readyFrame(UnitType.Zerg_Hydralisk_Den,
+                Math.max(poolReady, gasFrame(denGas)) + UnitType.Zerg_Hydralisk_Den.buildTime());
+        return start(upgrade, lairGas + denGas + upgrade.gasPrice(), Math.max(lairReady, denReady),
+                hasExact(UnitType.Zerg_Lair) || hasExact(UnitType.Zerg_Hydralisk_Den));
+    }
+
+    private Bound start(UpgradeType upgrade, int gas, int researcherReady, boolean researcherObserved) {
+        int fromExtractors = earliestGasFrame(extractorReadyFrames(), gas);
+        int fromReading = readingBound(singleExtractorReadings(), gas);
+        int gasReady = Math.max(fromExtractors, fromReading);
+        Anchor anchor;
+        if (researcherReady > gasReady && researcherObserved) {
+            anchor = Anchor.RESEARCHER;
+        } else if (researcherReady <= gasReady && fromReading >= fromExtractors) {
+            anchor = Anchor.GAS_READING;
+        } else {
+            anchor = hasStructure(UnitType.Zerg_Extractor) ? Anchor.EXTRACTOR : Anchor.FLOOR;
+        }
+        return new Bound(Math.max(gasReady, researcherReady) + upgrade.upgradeTime(), anchor);
+    }
+
+    private int gasFrame(int gas) {
+        return Math.max(earliestGasFrame(extractorReadyFrames(), gas), readingBound(singleExtractorReadings(), gas));
+    }
+
+    private List<Integer> extractorReadyFrames() {
+        List<Integer> frames = new ArrayList<>();
+        int floor = UnitType.Zerg_Extractor.buildTime();
+        for (Map.Entry<Integer, Structure> entry : structures.entrySet()) {
+            Structure structure = entry.getValue();
+            if (structure.type != UnitType.Zerg_Extractor) {
+                continue;
+            }
+            boolean read = structure.exact || !gasReadings.containsKey(entry.getKey());
+            frames.add(read ? structure.readyFrame : floor);
+        }
+        if (frames.isEmpty()) {
+            frames.add(floor);
+        }
+        return frames;
+    }
+
+    private NavigableMap<Integer, Integer> singleExtractorReadings() {
+        Integer only = null;
+        for (Map.Entry<Integer, Structure> entry : structures.entrySet()) {
+            if (entry.getValue().type != UnitType.Zerg_Extractor) {
+                continue;
+            }
+            if (only != null) {
+                return Collections.emptyNavigableMap();
+            }
+            only = entry.getKey();
+        }
+        NavigableMap<Integer, Integer> readings = only == null ? null : gasReadings.get(only);
+        return readings == null ? Collections.emptyNavigableMap() : readings;
+    }
+
+    private int readyFrame(UnitType type, int floor) {
+        int exact = -1;
+        for (Structure structure : structures.values()) {
+            if (structure.type != type) {
+                continue;
+            }
+            if (!structure.exact) {
+                return floor;
+            }
+            exact = exact < 0 ? structure.readyFrame : Math.min(exact, structure.readyFrame);
+        }
+        return exact < 0 ? floor : exact;
+    }
+
+    private int lairStartUpper() {
+        int upper = -1;
+        for (Structure structure : structures.values()) {
+            if (structure.type != UnitType.Zerg_Lair) {
+                continue;
+            }
+            int start = structure.readyFrame - UnitType.Zerg_Lair.buildTime();
+            upper = upper < 0 ? start : Math.min(upper, start);
+        }
+        return upper;
+    }
+
+    private boolean hasExact(UnitType type) {
+        for (Structure structure : structures.values()) {
+            if (structure.type == type && structure.exact) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasStructure(UnitType type) {
+        for (Structure structure : structures.values()) {
+            if (structure.type == type) {
+                return true;
+            }
+        }
+        return false;
+    }
+}

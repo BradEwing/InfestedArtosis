@@ -3,6 +3,7 @@ package info;
 import bwapi.Bullet;
 import bwapi.BulletType;
 import bwapi.Game;
+import bwapi.Order;
 import bwapi.Player;
 import bwapi.Position;
 import bwapi.Race;
@@ -23,6 +24,7 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.tracking.DarkSwarm;
 import info.tracking.DarkSwarmTracker;
+import info.tracking.EnemySpeedTracker;
 import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedBulletTracker;
 import info.tracking.ObservedUnitTracker;
@@ -45,6 +47,7 @@ import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SunkenTargets;
 import telemetry.PlanEvents;
+import telemetry.SpeedParityTelemetry;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.ContainHeldTimer;
@@ -168,6 +171,9 @@ public class GameState {
     private Map<Unit, Integer> recentBunkerShotVictims = new HashMap<>();
     private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
     private DarkSwarmTracker darkSwarmTracker = new DarkSwarmTracker();
+    private EnemySpeedTracker enemySpeedTracker = new EnemySpeedTracker();
+    private boolean ownSpeedReported = false;
+    private final Map<TilePosition, Integer> enemyGeyserStarts = new HashMap<>();
     private StrategyTracker strategyTracker;
 
     // Initialized in InformationManager
@@ -203,6 +209,7 @@ public class GameState {
         updateBunkerGarrisonCounts();
         learnReachFromHits(frame);
         updateDarkSwarms();
+        updateEnemySpeed(frame);
         strategyTracker.onFrame();
         clearVisibleStaleLocations();
         baseData.updateSquadRallyBase();
@@ -387,6 +394,63 @@ public class GameState {
             if (bunker.getDistance(unit) <= range) return true;
         }
         return false;
+    }
+
+    /**
+     * Feeds the enemy speed tracker each visible enemy Zergling and Hydralisk with its position and speed, each
+     * visible enemy structure its timing depends on, and the gas mined from each finished enemy Extractor, then logs
+     * the tracker's firsts and our own Metabolic Boost finishing.
+     */
+    private void updateEnemySpeed(int frame) {
+        for (Unit enemy : observedUnitTracker.getVisibleEnemyUnits()) {
+            UnitType type = enemy.getType();
+            if (EnemySpeedTracker.upgradeFor(type) != null) {
+                enemySpeedTracker.observe(frame, enemy.getID(), type, enemy.getX(), enemy.getY(),
+                        Math.hypot(enemy.getVelocityX(), enemy.getVelocityY()), movesUnderOwnPower(enemy));
+            } else if (EnemySpeedTracker.followsStructure(type)) {
+                boolean completed = enemy.isCompleted() && !enemy.isMorphing();
+                enemySpeedTracker.observeStructure(frame, enemy.getID(), type, completed,
+                        enemy.getRemainingBuildTime());
+                if (type == UnitType.Zerg_Extractor && completed) {
+                    observeEnemyGas(frame, enemy);
+                }
+            }
+        }
+        enemySpeedTracker.onFrame(frame);
+        if (!ownSpeedReported && techProgression.isMetabolicBoost()) {
+            ownSpeedReported = true;
+            SpeedParityTelemetry.ownSpeedFinished(frame);
+        }
+        for (EnemySpeedTracker.Report report : enemySpeedTracker.announce(frame)) {
+            SpeedParityTelemetry.enemySpeed(frame, report);
+        }
+    }
+
+    private static boolean movesUnderOwnPower(Unit unit) {
+        return unit.isCompleted() && unit.isMoving() && !unit.isBurrowed() && unit.getOrder() != Order.Unburrowing;
+    }
+
+    /**
+     * Hands the enemy speed tracker the gas mined from a finished enemy Extractor: its geyser's starting gas, read
+     * from the static geyser on its tile, less what it holds now. A reading of no gas left or more than the start is
+     * not a reading.
+     */
+    private void observeEnemyGas(int frame, Unit extractor) {
+        int initial = enemyGeyserStarts.computeIfAbsent(extractor.getTilePosition(), this::staticGeyserResources);
+        int resources = extractor.getResources();
+        if (initial <= 0 || resources <= 0 || resources > initial) {
+            return;
+        }
+        enemySpeedTracker.observeGasReading(frame, extractor.getID(), initial - resources);
+    }
+
+    private int staticGeyserResources(TilePosition tile) {
+        for (Unit geyser : game.getStaticGeysers()) {
+            if (geyser.getInitialTilePosition().equals(tile)) {
+                return geyser.getInitialResources();
+            }
+        }
+        return 0;
     }
 
     private void updateObservedUnitGroundHeights() {

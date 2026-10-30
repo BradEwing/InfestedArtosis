@@ -6,6 +6,7 @@ import bwapi.Race;
 import bwapi.TilePosition;
 import bwapi.Unit;
 import bwapi.UnitType;
+import bwapi.UpgradeType;
 import bwapi.WeaponType;
 import bwapi.WalkPosition;
 import bwem.Base;
@@ -13,9 +14,11 @@ import bwem.CPPath;
 import config.Config;
 import info.GameState;
 import info.ScoutData;
+import info.TechProgression;
 import info.map.BaseArea;
 import info.tracking.DarkSwarm;
 import info.tracking.EnemyReachMemory;
+import info.tracking.EnemySpeedTracker;
 import info.tracking.ObservedUnit;
 import info.tracking.ObservedUnitTracker;
 import info.tracking.PsiStormTracker;
@@ -26,6 +29,7 @@ import lombok.Getter;
 import org.bk.ass.sim.Agent;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import strategy.buildorder.BuildOrder;
 import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.FixedFireTelemetry;
@@ -40,6 +44,8 @@ import telemetry.RunbyTick;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
+import telemetry.SpeedParityGate;
+import telemetry.SpeedParityTelemetry;
 import telemetry.SwarmEvent;
 import telemetry.TargetChoices;
 import unit.managed.Lurker;
@@ -94,6 +100,7 @@ public class SquadManager {
     public HashSet<Squad> fightSquads = new HashSet<>();
     private final Set<Squad> simulatedThisFrame = new HashSet<>();
     private final Set<Squad> leavingThisFrame = new HashSet<>();
+    private final Set<Squad> sharedFightTurns = new HashSet<>();
     private final Set<Squad> retreatingAtFrameStart = new HashSet<>();
 
     @Getter
@@ -1684,6 +1691,19 @@ public class SquadManager {
 
         final boolean closeThreats = !enemyUnitsNearSquad(squad).isEmpty();
 
+        if (squad.isGroundSquad()) {
+            SpeedParity.Reading parity = readSpeedParity(squad);
+            boolean engaged = engagedForSpeedParity(squad, fightSquads, SquadManager::withinSupportRadius,
+                    sharedFightTurns, game.getFrameCount());
+            boolean enforced = SpeedParity.enforced(holdsForSpeedParity(parity), squad.getStatus(), closeThreats,
+                    engaged);
+            logSpeedParity(squad, parity, enforced);
+            if (enforced) {
+                holdForSpeedParity(squad);
+                return;
+            }
+        }
+
         SquadStatus squadStatus = squad.getStatus();
         if (squadStatus == SquadStatus.CONTAIN) {
             clearCombatSimSnapshot(squad);
@@ -1757,6 +1777,27 @@ public class SquadManager {
     static boolean neighbourLockApplies(Squad squad, Collection<Squad> squads, BiPredicate<Squad, Squad> near,
                                         int now) {
         return Config.squadSharedVerdict && SharedVerdict.neighbourFightLock(squad, squads, near, now);
+    }
+
+    /**
+     * Whether a squad is exempt from the speed parity hold because it is engaged, see
+     * {@link SpeedParity#exemptWhileEngaged}: a FIGHT squad held by its own fight lock or turn-back commit, by a
+     * neighbour's fight lock, see {@link #neighbourLockApplies}, or turned to FIGHT by the shared verdict on the
+     * previous frame while {@link Config#squadSharedVerdict} is on.
+     *
+     * @param squad the squad about to decide
+     * @param squads every fight squad
+     * @param near whether two squads are within the support radius
+     * @param sharedFightTurns squads the shared verdict turned to FIGHT on the previous frame
+     * @param now current frame
+     * @return true when the hold must not release the squad
+     */
+    static boolean engagedForSpeedParity(Squad squad, Collection<Squad> squads, BiPredicate<Squad, Squad> near,
+                                         Set<Squad> sharedFightTurns, int now) {
+        boolean held = squad.isFightLocked(now) || squad.isTurnBackCommitted(now)
+                || neighbourLockApplies(squad, squads, near, now)
+                || Config.squadSharedVerdict && sharedFightTurns.contains(squad);
+        return SpeedParity.exemptWhileEngaged(squad.getStatus(), held);
     }
 
     /**
@@ -1845,6 +1886,7 @@ public class SquadManager {
      * @param now current frame
      */
     private void shareVerdicts(int now) {
+        sharedFightTurns.clear();
         SharedVerdict.Exclusion skipped = verdictSkipped(Config.squadSharedVerdict,
                 !gameState.getActiveStormPositions().isEmpty());
         SharedOutcome outcome = shareVerdicts(skipped, new ArrayList<>(fightSquads), simulatedThisFrame,
@@ -1863,6 +1905,7 @@ public class SquadManager {
     }
 
     private void turnToFight(Squad squad) {
+        sharedFightTurns.add(squad);
         assignFightTargets(squad, squad.getMembers(), true);
         SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_FIGHT);
     }
@@ -2560,7 +2603,90 @@ public class SquadManager {
         return Math.min(moveOutThreshold, MAX_MOVE_OUT_THRESHOLD);
     }
 
+    private SpeedParity.Reading readSpeedParity(Squad squad) {
+        TechProgression techProgression = gameState.getTechProgression();
+        EnemySpeedTracker.Evidence enemyMetabolicBoost = gameState.getEnemySpeedTracker()
+                .evidence(UpgradeType.Metabolic_Boost, game.getFrameCount());
+        return SpeedParity.read(gameState.getOpponentRace(), squad.getComposition(),
+                isAllInOrRush(), gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
+                techProgression.isMetabolicBoost(), techProgression.isAdrenalGlands(), enemyMetabolicBoost);
+    }
+
+    private boolean isAllInOrRush() {
+        BuildOrder selected = gameState.getSelectedStrategy();
+        return gameState.getActiveBuildOrder().isAllInOrRush() || selected != null && selected.isAllInOrRush();
+    }
+
+    private boolean holdsForSpeedParity(SpeedParity.Reading parity) {
+        return SpeedParity.holdsHome(Config.speedParityGate, parity.isHolds(), false) && !baseThreatened();
+    }
+
+    private boolean speedParityBlocksContain(Squad squad) {
+        return squad.isGroundSquad() && holdsForSpeedParity(readSpeedParity(squad));
+    }
+
+    private void logSpeedParity(Squad squad, SpeedParity.Reading parity, boolean enforced) {
+        if (!SpeedParityTelemetry.isRegistered()) {
+            return;
+        }
+        int frame = game.getFrameCount();
+        String enemySpeed = parity.getEnemyEvidence().name();
+        SpeedParity.Term term = parity.getTerm();
+        int strength = 0;
+        int base = 0;
+        int threshold = 0;
+        if (term != SpeedParity.Term.NONE) {
+            strength = squadStrength(squad);
+            base = groundMoveOutThreshold(squad, false);
+            threshold = Math.min(SpeedParity.applyTerm(base, parity.getUpgradeTerm()), MAX_MOVE_OUT_THRESHOLD);
+            if (term == SpeedParity.Term.LING_UPGRADE && (strength >= threshold || strength < base)) {
+                term = SpeedParity.Term.NONE;
+            }
+        }
+        if (term == SpeedParity.Term.NONE) {
+            SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), term.name(), false,
+                    parity.getOurSpeed(), enemySpeed, 0, 0, 0, 0));
+            return;
+        }
+        boolean applied = term == SpeedParity.Term.SPEED_PARITY
+                ? enforced : Config.lingUpgradeBar && !baseThreatened();
+        SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), term.name(), applied,
+                parity.getOurSpeed(), enemySpeed, strength, threshold, base, parity.getZerglings()));
+    }
+
+    /**
+     * Describes the move out threshold a squad is held to and the speed parity term contributing to it, for debug
+     * rendering: strength against threshold, the threshold without the speed parity terms, the upgrade term, and the
+     * gate term in force.
+     *
+     * @param squad fight squad
+     * @return the label
+     */
+    public String describeMoveOut(Squad squad) {
+        int strength = squadStrength(squad);
+        int threshold = calculateMoveOutThreshold(squad);
+        if (!squad.isGroundSquad()) {
+            return String.format("move=%d/%d", strength, threshold);
+        }
+        SpeedParity.Reading parity = readSpeedParity(squad);
+        return String.format("move=%d/%d base=%d up=%+d %s", strength, threshold, groundMoveOutThreshold(squad, false),
+                parity.getUpgradeTerm(), parity.getTerm());
+    }
+
+    private void holdForSpeedParity(Squad squad) {
+        if (squad.getStatus() == SquadStatus.CONTAIN) {
+            containEndedOtherwise();
+            endContainment(squad);
+        }
+        clearCombatSimSnapshot(squad);
+        rallySquad(squad, RallyReason.SPEED_PARITY);
+    }
+
     private int calculateGroundSquadMoveOutThreshold(Squad squad) {
+        return groundMoveOutThreshold(squad, Config.lingUpgradeBar);
+    }
+
+    private int groundMoveOutThreshold(Squad squad, boolean withSpeedParity) {
         if (gameState.isLingFloodHold()) {
             return MAX_MOVE_OUT_THRESHOLD;
         }
@@ -2596,6 +2722,11 @@ public class SquadManager {
         }
         threshold += rushThresholdIncrease;
 
+        int term = withSpeedParity ? readSpeedParity(squad).getUpgradeTerm() : 0;
+        if (term > 0 && baseThreatened()) {
+            term = 0;
+        }
+        threshold = SpeedParity.gatedThreshold(withSpeedParity, threshold, term);
         return Math.min(threshold, MAX_MOVE_OUT_THRESHOLD);
     }
 
@@ -3434,6 +3565,9 @@ public class SquadManager {
      * @return true if the squad took the arc and is now containing
      */
     private boolean tryEnterContainment(Squad squad) {
+        if (speedParityBlocksContain(squad)) {
+            return false;
+        }
         int now = game.getFrameCount();
         boolean underAttack = baseThreatensContainment();
         boolean shouldContain = containmentEvaluator.shouldContain(squad);
@@ -5349,6 +5483,9 @@ public class SquadManager {
      * @return true when the squad was sent, false when it is not a ground squad or no contain holds an arc
      */
     private boolean joinActiveContain(Squad squad) {
+        if (speedParityBlocksContain(squad)) {
+            return false;
+        }
         Arc arc = containArcToJoin(squad);
         if (arc == null) {
             return false;

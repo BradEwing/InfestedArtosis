@@ -51,6 +51,12 @@ public enum RallyReason {
     JOIN_CONTAIN,
 
     /**
+     * A ling-heavy ground squad was held near home by the speed parity gate: the enemy has, or plausibly has, Metabolic
+     * Boost and we do not.
+     */
+    SPEED_PARITY,
+
+    /**
      * No rally entry has been recorded for this squad. A squad created in RALLY carries this until
      * the first frame something rallies it.
      */

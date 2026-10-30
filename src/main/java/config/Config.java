@@ -48,6 +48,17 @@ public final class Config {
      * decision step turns to one status. On unless IA_SQUAD_SHARED_VERDICT is set to false.
      */
     public static boolean squadSharedVerdict = true;
+    /**
+     * Whether a ZvZ ling-heavy ground squad without Metabolic Boost holds near home, neither moving out nor staying
+     * in a containment, against an enemy with, or plausibly with, Metabolic Boost. On unless IA_SPEED_PARITY_GATE is
+     * set to false.
+     */
+    public static boolean speedParityGate = true;
+    /**
+     * Whether a ling-heavy ground squad needs more supply to move out until a ling upgrade finishes, and less once
+     * Adrenal Glands has, in every matchup. On unless IA_LING_UPGRADE_BAR is set to false.
+     */
+    public static boolean lingUpgradeBar = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -141,6 +152,8 @@ public final class Config {
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
         fightHysteresis = enabledUnlessFalse(setting(dotenv, "IA_FIGHT_HYSTERESIS"));
         squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
+        speedParityGate = enabledUnlessFalse(setting(dotenv, "IA_SPEED_PARITY_GATE"));
+        lingUpgradeBar = enabledUnlessFalse(setting(dotenv, "IA_LING_UPGRADE_BAR"));
     }
 
     /**
