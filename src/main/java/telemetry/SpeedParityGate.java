@@ -17,6 +17,10 @@ public class SpeedParityGate {
     String ourSpeed;
     /** The enemy's Metabolic Boost evidence: NONE, PLAUSIBLE or SEEN. */
     String enemySpeed;
+    /** The enemy's earliest Metabolic Boost finish. */
+    int enemyBound;
+    /** What the enemy's earliest Metabolic Boost finish rests on. */
+    String enemyAnchor;
     /** The squad's supply, in the unit the move out threshold is measured in. */
     int supply;
     /** The move out threshold the squad was held to. */

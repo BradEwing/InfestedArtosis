@@ -1,13 +1,22 @@
 package telemetry;
 
 import info.tracking.EnemySpeedTracker;
+import info.tracking.SpeedRunDetector;
 
 /**
- * Receives the speed parity gate's holds and the enemy speed inferences. Implementations are registered with
- * {@link SpeedParityTelemetry} and must never throw: they run inside the per frame squad loop, where an escaped
- * exception kills the JVM.
+ * Receives the speed parity gate's holds, the enemy speed inferences and the speed detector's calibration on our own
+ * units. Implementations are registered with {@link SpeedParityTelemetry} and must never throw: they run inside the
+ * per frame squad loop, where an escaped exception kills the JVM.
  */
 public interface SpeedParitySink {
+
+    /** Whose units a speed detector watched. */
+    enum Side {
+        /** The enemy's units. */
+        ENEMY,
+        /** Our own units. */
+        SELF
+    }
 
     /**
      * What the speed parity gate read for a ground squad this frame. A row is written when the term changes from the
@@ -19,13 +28,30 @@ public interface SpeedParitySink {
     void onGateRead(int frame, SpeedParityGate gate);
 
     /**
-     * A first of the game for an enemy upgrade: the frame reached its earliest finish, a run made it SEEN, or a run
-     * was refused before the earliest finish.
+     * An enemy upgrade's report: the frame reached its earliest finish or the earliest finish changed since, a window
+     * made it SEEN, or a window was refused before the earliest finish.
      *
      * @param frame current frame
      * @param report what the tracker reported
      */
     void onEnemySpeed(int frame, EnemySpeedTracker.Report report);
+
+    /**
+     * The speed detector on our own units passed a window before our upgrade finished, or after it.
+     *
+     * @param frame current frame
+     * @param report the window
+     */
+    void onSelfSpeed(int frame, EnemySpeedTracker.Report report);
+
+    /**
+     * What a speed detector measured on one unit type.
+     *
+     * @param frame current frame
+     * @param side whose units it watched
+     * @param diagnostic the measures
+     */
+    void onSpeedDiagnostic(int frame, Side side, SpeedRunDetector.Diagnostic diagnostic);
 
     /**
      * Our own Metabolic Boost finished.

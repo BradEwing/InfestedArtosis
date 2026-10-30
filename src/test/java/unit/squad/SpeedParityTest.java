@@ -7,6 +7,8 @@ import config.Config;
 import info.tracking.EnemySpeedTracker;
 import info.tracking.EnemySpeedTracker.Anchor;
 import info.tracking.EnemySpeedTracker.Evidence;
+import info.tracking.OwnSpeedCalibration;
+import info.tracking.SpeedRunDetector;
 import org.junit.jupiter.api.Test;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SpeedlingAllIn;
@@ -73,13 +75,20 @@ class SpeedParityTest {
 
     private static Reading read(Race race, Map<UnitType, Integer> composition, boolean exempt, int alive,
                                 boolean metabolic, boolean adrenal, Evidence enemy) {
-        return SpeedParity.read(race, composition, exempt, alive, metabolic, adrenal, enemy, Anchor.EXTRACTOR);
+        return SpeedParity.read(race, composition, exempt, alive, metabolic, adrenal, enemy);
     }
 
     private static Reading readTracker(EnemySpeedTracker tracker, int frame) {
         return SpeedParity.read(Race.Zerg, lings(20), false, 20, false, false,
-                tracker.evidence(UpgradeType.Metabolic_Boost, frame),
-                tracker.earliestFinishAnchor(UpgradeType.Metabolic_Boost));
+                tracker.evidence(UpgradeType.Metabolic_Boost, frame));
+    }
+
+    private static int fastRun(EnemySpeedTracker tracker, int start) {
+        double speed = UnitType.Zerg_Zergling.topSpeed() * SpeedRunDetector.SPEED_MARGIN + 0.5;
+        for (int i = 0; i <= SpeedRunDetector.WINDOW_FRAMES; i++) {
+            tracker.observe(start + i, 7, UnitType.Zerg_Zergling, 100 + (int) Math.round(i * speed), 100, speed, true);
+        }
+        return start + SpeedRunDetector.WINDOW_FRAMES;
     }
 
     @Test
@@ -150,13 +159,14 @@ class SpeedParityTest {
     }
 
     @Test
-    void aZvZLingSquadWithoutSpeedHoldsAgainstAnEnemyWithIt() {
+    void aZvZLingSquadWithoutSpeedHoldsAgainstAnEnemySeenWithItButNotOneThatOnlyPlausiblyHasIt() {
         Reading seen = read(Race.Zerg, lings(20), false, 20, false, false, Evidence.SEEN);
         Reading plausible = read(Race.Zerg, lings(20), false, 20, false, false, Evidence.PLAUSIBLE);
 
         assertTrue(seen.isHolds());
         assertEquals(Term.SPEED_PARITY, seen.getTerm());
-        assertTrue(plausible.isHolds());
+        assertFalse(plausible.isHolds());
+        assertEquals(Term.LING_UPGRADE, plausible.getTerm());
     }
 
     @Test
@@ -261,24 +271,21 @@ class SpeedParityTest {
     }
 
     @Test
-    void anObservedExtractorHoldsOnceItsEarliestFinishPasses() {
+    void anObservedExtractorAndTheTimeSinceNeverHold() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         tracker.observeStructure(1500, 900, UnitType.Zerg_Extractor, false, 300);
+        tracker.observeStructure(2000, 901, UnitType.Zerg_Spawning_Pool, false, 100);
         int finish = tracker.earliestFinishFrame(UpgradeType.Metabolic_Boost);
 
-        assertFalse(readTracker(tracker, finish - 1).isHolds());
-        assertTrue(readTracker(tracker, finish).isHolds());
+        assertEquals(Evidence.PLAUSIBLE, tracker.evidence(UpgradeType.Metabolic_Boost, finish));
+        assertFalse(readTracker(tracker, finish).isHolds());
+        assertFalse(readTracker(tracker, finish + 20000).isHolds());
     }
 
     @Test
     void aSeenUpgradeHoldsEvenInAnUnscoutedGame() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
-        int start = tracker.soundEarliestFinishFrame(UpgradeType.Metabolic_Boost);
-        double speed = UnitType.Zerg_Zergling.topSpeed() * EnemySpeedTracker.SEEN_SPEED_MARGIN + 0.5;
-        for (int i = 0; i < EnemySpeedTracker.SEEN_RUN_FRAMES; i++) {
-            tracker.observe(start + i, 7, UnitType.Zerg_Zergling, 100 + (int) Math.round(i * speed), 100, speed, true);
-        }
-        int frame = start + EnemySpeedTracker.SEEN_RUN_FRAMES;
+        int frame = fastRun(tracker, tracker.soundEarliestFinishFrame(UpgradeType.Metabolic_Boost));
 
         assertEquals(Evidence.SEEN, tracker.evidence(UpgradeType.Metabolic_Boost, frame));
         assertEquals(Anchor.FLOOR, tracker.earliestFinishAnchor(UpgradeType.Metabolic_Boost));
@@ -286,12 +293,28 @@ class SpeedParityTest {
     }
 
     @Test
-    void onlySeenOrAnObservedPlausibleCountsAsTheEnemysSpeed() {
-        assertTrue(SpeedParity.enemySpeedObserved(Evidence.SEEN, Anchor.FLOOR));
-        assertTrue(SpeedParity.enemySpeedObserved(Evidence.PLAUSIBLE, Anchor.GAS_READING));
-        assertTrue(SpeedParity.enemySpeedObserved(Evidence.PLAUSIBLE, Anchor.RESEARCHER));
-        assertFalse(SpeedParity.enemySpeedObserved(Evidence.PLAUSIBLE, Anchor.FLOOR));
-        assertFalse(SpeedParity.enemySpeedObserved(Evidence.NONE, Anchor.EXTRACTOR));
+    void onlySeenCountsAsTheEnemysSpeed() {
+        assertTrue(SpeedParity.holdsForEnemySpeed(Race.Zerg, true, false, false, false, Evidence.SEEN));
+        assertFalse(SpeedParity.holdsForEnemySpeed(Race.Zerg, true, false, false, false, Evidence.PLAUSIBLE));
+        assertFalse(SpeedParity.holdsForEnemySpeed(Race.Zerg, true, false, false, false, Evidence.NONE));
+    }
+
+    @Test
+    void theCalibrationOnOurOwnUnitsNeverMovesTheHold() {
+        EnemySpeedTracker tracker = new EnemySpeedTracker();
+        OwnSpeedCalibration calibration = new OwnSpeedCalibration();
+        double speed = UnitType.Zerg_Zergling.topSpeed() * SpeedRunDetector.SPEED_MARGIN + 0.5;
+        int start = 5000;
+        calibration.upgradeFinished(UpgradeType.Metabolic_Boost, start);
+        for (int i = 0; i <= SpeedRunDetector.WINDOW_FRAMES; i++) {
+            calibration.observe(start + i, 7, UnitType.Zerg_Zergling, 100 + (int) Math.round(i * speed), 100, speed,
+                    true);
+        }
+        int frame = start + SpeedRunDetector.WINDOW_FRAMES;
+
+        assertEquals(1, calibration.announce(frame).size());
+        assertEquals(Evidence.PLAUSIBLE, tracker.evidence(UpgradeType.Metabolic_Boost, frame));
+        assertFalse(readTracker(tracker, frame).isHolds());
     }
 
     @Test

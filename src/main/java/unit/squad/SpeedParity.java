@@ -12,10 +12,10 @@ import java.util.Map;
  *
  * <p>A squad that is mostly Zerglings needs {@link #UNUPGRADED_LING_BONUS} more strength to move out while neither
  * Metabolic Boost nor Adrenal Glands has finished, and {@link #ADRENAL_DISCOUNT} less once Adrenal Glands has. The
- * bonus is lifted by Metabolic Boost, and by {@link #VOLUME_ZERGLINGS} Zerglings alive. Against a Zerg opponent that
- * has Metabolic Boost, or plausibly has it by an observation, see {@link #enemySpeedObserved}, a ling-heavy squad
- * without it is held near home: it does not move out, takes no containment, and leaves one it holds out of contact.
- * Our Metabolic Boost and the volume lift that hold too.
+ * bonus is lifted by Metabolic Boost, and by {@link #VOLUME_ZERGLINGS} Zerglings alive. Against a Zerg opponent seen
+ * with Metabolic Boost, {@link EnemySpeedTracker.Evidence#SEEN}, a ling-heavy squad without it is held near home: it
+ * does not move out, takes no containment, and leaves one it holds out of contact. A Metabolic Boost that is only
+ * PLAUSIBLE by its earliest finish never holds. Our Metabolic Boost and the volume lift that hold too.
  *
  * <p>A build that is an all-in or a rush is exempt from both terms and moves out on its own timing. The upgrade term
  * applies with {@link config.Config#lingUpgradeBar} on, the hold with {@link config.Config#speedParityGate} on.
@@ -44,7 +44,7 @@ final class SpeedParity {
         NONE,
         /** The move out threshold carries the unupgraded ling bonus. */
         LING_UPGRADE,
-        /** The squad is held home against an enemy with ling speed. */
+        /** The squad is held home against an enemy seen with ling speed. */
         SPEED_PARITY
     }
 
@@ -159,7 +159,7 @@ final class SpeedParity {
     }
 
     /**
-     * Whether a ling-heavy squad is held home against an enemy with ling speed.
+     * Whether a ling-heavy squad is held home against an enemy seen with ling speed.
      *
      * @param opponentRace the opponent's race
      * @param lingHeavy true for a ling-heavy squad
@@ -167,32 +167,16 @@ final class SpeedParity {
      * @param volume true when {@link #VOLUME_ZERGLINGS} Zerglings are alive
      * @param metabolicBoost true when we have Metabolic Boost
      * @param enemyMetabolicBoost the evidence for the enemy's Metabolic Boost
-     * @param anchor what the enemy's earliest Metabolic Boost finish rests on
      * @return true when the squad should hold near home
      */
     static boolean holdsForEnemySpeed(Race opponentRace, boolean lingHeavy, boolean exempt, boolean volume,
-                                      boolean metabolicBoost, EnemySpeedTracker.Evidence enemyMetabolicBoost,
-                                      EnemySpeedTracker.Anchor anchor) {
+                                      boolean metabolicBoost, EnemySpeedTracker.Evidence enemyMetabolicBoost) {
         return opponentRace == Race.Zerg
                 && lingHeavy
                 && !exempt
                 && !volume
                 && !metabolicBoost
-                && enemySpeedObserved(enemyMetabolicBoost, anchor);
-    }
-
-    /**
-     * Whether what we observed of the enemy says it has, or plausibly has, the upgrade: SEEN, or PLAUSIBLE by an
-     * earliest finish that rests on an observation. A PLAUSIBLE that rests only on the start of the game, with nothing
-     * of the enemy's gas or tech seen, does not count.
-     *
-     * @param evidence the evidence for the upgrade
-     * @param anchor what the earliest finish rests on
-     * @return true when the enemy's speed is backed by an observation
-     */
-    static boolean enemySpeedObserved(EnemySpeedTracker.Evidence evidence, EnemySpeedTracker.Anchor anchor) {
-        return evidence == EnemySpeedTracker.Evidence.SEEN
-                || evidence == EnemySpeedTracker.Evidence.PLAUSIBLE && anchor != EnemySpeedTracker.Anchor.FLOOR;
+                && enemyMetabolicBoost == EnemySpeedTracker.Evidence.SEEN;
     }
 
     /**
@@ -219,17 +203,16 @@ final class SpeedParity {
      * @param metabolicBoost true when we have Metabolic Boost
      * @param adrenalGlands true when we have Adrenal Glands
      * @param enemyMetabolicBoost the evidence for the enemy's Metabolic Boost
-     * @param anchor what the enemy's earliest Metabolic Boost finish rests on
      * @return the reading
      */
     static Reading read(Race opponentRace, Map<UnitType, Integer> composition, boolean exempt, int zerglings,
                         boolean metabolicBoost, boolean adrenalGlands,
-                        EnemySpeedTracker.Evidence enemyMetabolicBoost, EnemySpeedTracker.Anchor anchor) {
+                        EnemySpeedTracker.Evidence enemyMetabolicBoost) {
         boolean lingHeavy = lingHeavy(composition);
         boolean volume = zerglings >= VOLUME_ZERGLINGS;
         int upgradeTerm = upgradeTerm(lingHeavy, exempt, volume, metabolicBoost, adrenalGlands);
         boolean holds = holdsForEnemySpeed(opponentRace, lingHeavy, exempt, volume, metabolicBoost,
-                enemyMetabolicBoost, anchor);
+                enemyMetabolicBoost);
         return new Reading(holds, upgradeTerm, termFor(holds, upgradeTerm), ourSpeed(metabolicBoost, adrenalGlands),
                 enemyMetabolicBoost, zerglings);
     }

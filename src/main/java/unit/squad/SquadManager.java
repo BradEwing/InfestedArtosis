@@ -2608,8 +2608,7 @@ public class SquadManager {
                 .evidence(UpgradeType.Metabolic_Boost, game.getFrameCount());
         return SpeedParity.read(gameState.getOpponentRace(), squad.getComposition(),
                 isAllInOrRush(), gameState.ourLivingUnitCount(UnitType.Zerg_Zergling),
-                techProgression.isMetabolicBoost(), techProgression.isAdrenalGlands(), enemyMetabolicBoost,
-                gameState.getEnemySpeedTracker().earliestFinishAnchor(UpgradeType.Metabolic_Boost));
+                techProgression.isMetabolicBoost(), techProgression.isAdrenalGlands(), enemyMetabolicBoost);
     }
 
     private boolean isAllInOrRush() {
@@ -2631,6 +2630,9 @@ public class SquadManager {
         }
         int frame = game.getFrameCount();
         String enemySpeed = parity.getEnemyEvidence().name();
+        EnemySpeedTracker tracker = gameState.getEnemySpeedTracker();
+        int bound = tracker.earliestFinishFrame(UpgradeType.Metabolic_Boost);
+        String anchor = tracker.earliestFinishAnchor(UpgradeType.Metabolic_Boost).name();
         SpeedParity.Term term = parity.getTerm();
         int strength = 0;
         int base = 0;
@@ -2645,13 +2647,13 @@ public class SquadManager {
         }
         if (term == SpeedParity.Term.NONE) {
             SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), term.name(), false,
-                    parity.getOurSpeed(), enemySpeed, 0, 0, 0, 0));
+                    parity.getOurSpeed(), enemySpeed, bound, anchor, 0, 0, 0, 0));
             return;
         }
         boolean applied = term == SpeedParity.Term.SPEED_PARITY
                 ? enforced : Config.lingUpgradeBar && !baseThreatened();
         SpeedParityTelemetry.gateRead(frame, new SpeedParityGate(squad.getId(), term.name(), applied,
-                parity.getOurSpeed(), enemySpeed, strength, threshold, base, parity.getZerglings()));
+                parity.getOurSpeed(), enemySpeed, bound, anchor, strength, threshold, base, parity.getZerglings()));
     }
 
     /**

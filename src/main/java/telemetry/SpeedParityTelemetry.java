@@ -1,10 +1,11 @@
 package telemetry;
 
 import info.tracking.EnemySpeedTracker;
+import info.tracking.SpeedRunDetector;
 
 /**
- * Static dispatch point for speed parity gate and enemy speed telemetry. With no sink registered, every method is a
- * no-op.
+ * Static dispatch point for speed parity gate, enemy speed and speed detector telemetry. With no sink registered,
+ * every method is a no-op.
  */
 public final class SpeedParityTelemetry {
 
@@ -42,6 +43,22 @@ public final class SpeedParityTelemetry {
             return;
         }
         current.onEnemySpeed(frame, report);
+    }
+
+    public static void selfSpeed(int frame, EnemySpeedTracker.Report report) {
+        SpeedParitySink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onSelfSpeed(frame, report);
+    }
+
+    public static void speedDiagnostic(int frame, SpeedParitySink.Side side, SpeedRunDetector.Diagnostic diagnostic) {
+        SpeedParitySink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onSpeedDiagnostic(frame, side, diagnostic);
     }
 
     public static void ownSpeedFinished(int frame) {

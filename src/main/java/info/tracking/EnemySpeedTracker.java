@@ -21,11 +21,9 @@ import java.util.TreeMap;
  *
  * <p>Each upgrade has an earliest finish frame, when the enemy can have finished it given what we observed, see
  * {@link #earliestFinishFrame}. From that frame the upgrade is {@link Evidence#PLAUSIBLE}. It is
- * {@link Evidence#SEEN} once one unit was observed moving under its own power faster than its type's unupgraded top
- * speed by {@link #SEEN_SPEED_MARGIN} on {@link #SEEN_RUN_FRAMES} consecutive frames, both by its velocity on each
- * frame and by the distance it covered over the run, with the whole run at or after the sound earliest finish, see
- * {@link #soundEarliestFinishFrame}. A run that ends before the sound earliest finish is kept as an early run and
- * never makes the upgrade SEEN; one that began before it starts again from the first frame at or after it. SEEN is
+ * {@link Evidence#SEEN} once one unit covered more ground than its type can unupgraded over a window that starts at
+ * or after the sound earliest finish, see {@link SpeedRunDetector} and {@link #soundEarliestFinishFrame}. A window
+ * that ends before the sound earliest finish is kept as an early run and never makes the upgrade SEEN. SEEN is
  * permanent; PLAUSIBLE follows the earliest finish, which moves later as observations rule earlier finishes out.
  *
  * <p>An earliest finish is the research start plus {@link UpgradeType#upgradeTime()}. The research starts no earlier
@@ -45,12 +43,6 @@ import java.util.TreeMap;
  * the Hydralisk Den, whose gas is spent before it.
  */
 public class EnemySpeedTracker {
-    /** How far above the unupgraded top speed a unit must move to count as upgraded. */
-    public static final double SEEN_SPEED_MARGIN = 1.15;
-
-    /** Consecutive observed frames one unit must move faster than the cut before the upgrade counts as seen. */
-    public static final int SEEN_RUN_FRAMES = 24;
-
     /** The most gas one Extractor is taken to yield per frame. */
     public static final double GAS_PER_FRAME = 0.25;
 
@@ -64,7 +56,7 @@ public class EnemySpeedTracker {
         NONE,
         /** At or after the earliest finish, not seen. */
         PLAUSIBLE,
-        /** A unit was seen moving faster than the unupgraded top speed for a whole run. */
+        /** A unit was seen covering more ground than the unupgraded top speed allows over a whole window. */
         SEEN
     }
 
@@ -80,54 +72,31 @@ public class EnemySpeedTracker {
         RESEARCHER
     }
 
-    /** A first in a game for one upgrade, written once. */
+    /** What a report is about. */
     public enum Event {
-        /** The frame reached the earliest finish. */
+        /** The frame reached the earliest finish, or the earliest finish or its anchor changed since. */
         PLAUSIBLE,
-        /** A run made the upgrade SEEN. */
+        /** A window made the upgrade SEEN. */
         SEEN,
-        /** A run came before the earliest finish and was refused. */
+        /** A window passed before the earliest finish and was refused. */
         EARLY_RUN
     }
 
-    /** A first reported for an upgrade. */
+    /** An event reported for an upgrade. */
     @Value
     public static class Report {
         Event event;
         UpgradeType upgrade;
-        /** Distance covered over the run per frame, or -1 when no run applies. */
+        /** Distance covered over the window per frame, or -1 when no window applies. */
         double measuredSpeed;
-        /** The type's unupgraded top speed, or -1 when no run applies. */
+        /** The type's unupgraded top speed, or -1 when no window applies. */
         double topSpeed;
-        /** Frames in the run, or -1 when no run applies. */
+        /** Frames the window spans, or -1 when no window applies. */
         int runFrames;
-        /** The earliest finish on the reported frame; for a run, the sound earliest finish it was held to. */
+        /** The earliest finish on the reported frame; for a window, the bound it was held to. */
         int boundFrame;
-        /** What the earliest finish rested on. */
+        /** What the earliest finish rested on, or null for a window on our own units. */
         Anchor anchor;
-    }
-
-    @Value
-    private static class Sighting {
-        int frame;
-        double measuredSpeed;
-        double topSpeed;
-        int runFrames;
-        int boundFrame;
-    }
-
-    private static final class Run {
-        final int startFrame;
-        final int startX;
-        final int startY;
-        int lastFrame;
-
-        Run(int startFrame, int startX, int startY) {
-            this.startFrame = startFrame;
-            this.startX = startX;
-            this.startY = startY;
-            this.lastFrame = startFrame;
-        }
     }
 
     private static final class Structure {
@@ -154,9 +123,7 @@ public class EnemySpeedTracker {
         }
     }
 
-    private final Map<Integer, Run> runs = new HashMap<>();
-    private final Map<UpgradeType, Sighting> seen = new HashMap<>();
-    private final Map<UpgradeType, Sighting> earlyRuns = new HashMap<>();
+    private final SpeedRunDetector detector = new SpeedRunDetector(this::soundEarliestFinishFrame);
     private final Map<Integer, Structure> structures = new HashMap<>();
     private final Map<Integer, NavigableMap<Integer, Integer>> gasReadings = new HashMap<>();
     private final Map<Integer, Integer> firstMined = new HashMap<>();
@@ -164,6 +131,7 @@ public class EnemySpeedTracker {
     private final Map<UpgradeType, Bound> bounds = new HashMap<>();
     private final Map<UpgradeType, Bound> soundBounds = new HashMap<>();
     private final Map<UpgradeType, Set<Event>> reported = new HashMap<>();
+    private final Map<UpgradeType, Bound> plausibleReported = new HashMap<>();
     private boolean boundsStale = true;
 
     /**
@@ -208,17 +176,6 @@ public class EnemySpeedTracker {
     public static boolean followsStructure(UnitType type) {
         return type == UnitType.Zerg_Extractor || type == UnitType.Zerg_Spawning_Pool
                 || type == UnitType.Zerg_Hydralisk_Den || type == UnitType.Zerg_Lair;
-    }
-
-    /**
-     * Whether a speed is above the unupgraded top speed of a type by the margin.
-     *
-     * @param type the unit type
-     * @param speed pixels per frame
-     * @return true when the unit moves faster than an unupgraded one can
-     */
-    public static boolean exceedsBaseSpeed(UnitType type, double speed) {
-        return upgradeFor(type) != null && speed > type.topSpeed() * SEEN_SPEED_MARGIN;
     }
 
     /**
@@ -291,51 +248,18 @@ public class EnemySpeedTracker {
     }
 
     /**
-     * Records one visible enemy unit. A frame on which the unit is not moving under its own power, or not faster
-     * than the cut, ends its run; a frame missed ends it too.
+     * Records one sighting of an enemy unit, see {@link SpeedRunDetector#observe}.
      *
      * @param frame current frame
      * @param unitId the unit's ID
      * @param type the unit's type
      * @param x the unit's position in pixels
      * @param y the unit's position in pixels
-     * @param speed the magnitude of the unit's velocity, pixels per frame
-     * @param selfPropelled false when the unit is unfinished, burrowed, unburrowing or not moving
+     * @param velocity the magnitude of the unit's velocity, pixels per frame, for the diagnostics
+     * @param moving the unit's moving flag, for the diagnostics
      */
-    public void observe(int frame, int unitId, UnitType type, int x, int y, double speed, boolean selfPropelled) {
-        UpgradeType upgrade = upgradeFor(type);
-        if (upgrade == null) {
-            return;
-        }
-        if (!selfPropelled || !exceedsBaseSpeed(type, speed)) {
-            runs.remove(unitId);
-            return;
-        }
-        Run run = runs.get(unitId);
-        if (run == null || run.lastFrame != frame - 1) {
-            run = new Run(frame, x, y);
-            runs.put(unitId, run);
-        }
-        run.lastFrame = frame;
-        int runFrames = frame - run.startFrame + 1;
-        if (runFrames < SEEN_RUN_FRAMES || seen.containsKey(upgrade)) {
-            return;
-        }
-        double measured = Math.hypot(x - run.startX, y - run.startY) / (frame - run.startFrame);
-        if (!exceedsBaseSpeed(type, measured)) {
-            return;
-        }
-        int bound = soundEarliestFinishFrame(upgrade);
-        Sighting sighting = new Sighting(frame, measured, type.topSpeed(), runFrames, bound);
-        if (frame < bound) {
-            earlyRuns.putIfAbsent(upgrade, sighting);
-            return;
-        }
-        if (run.startFrame < bound) {
-            runs.put(unitId, new Run(frame, x, y));
-            return;
-        }
-        seen.put(upgrade, sighting);
+    public void observe(int frame, int unitId, UnitType type, int x, int y, double velocity, boolean moving) {
+        detector.observe(frame, unitId, type, x, y, velocity, moving);
     }
 
     /**
@@ -389,14 +313,14 @@ public class EnemySpeedTracker {
     }
 
     /**
-     * Forgets a destroyed enemy unit's run, and a structure destroyed before it was ready together with its gas
+     * Forgets a destroyed enemy unit's positions, and a structure destroyed before it was ready together with its gas
      * readings, as a cancelled Extractor never mined.
      *
      * @param unitId the unit's ID
      * @param frame current frame
      */
     public void onUnitDestroy(int unitId, int frame) {
-        runs.remove(unitId);
+        detector.forget(unitId);
         Structure structure = structures.get(unitId);
         if (structure != null && !structure.completed && frame < structure.readyFrame) {
             structures.remove(unitId);
@@ -408,17 +332,18 @@ public class EnemySpeedTracker {
     }
 
     /**
-     * Drops the runs that missed this frame.
+     * Drops the units not seen recently, see {@link SpeedRunDetector#onFrame}.
      *
      * @param frame current frame
      */
     public void onFrame(int frame) {
-        runs.values().removeIf(run -> run.lastFrame < frame);
+        detector.onFrame(frame);
     }
 
     /**
-     * Reports each first of the game not reported yet: the frame reaching an upgrade's earliest finish, the run that
-     * made it SEEN, and the first run refused before the earliest finish.
+     * Reports what is new for each upgrade: a PLAUSIBLE report the first frame reaching its earliest finish and on
+     * every later frame the earliest finish or its anchor changed, the window that made it SEEN, and the first window
+     * refused before the earliest finish.
      *
      * @param frame current frame
      * @return the reports, in the order of {@link #FOLLOWED} and then of {@link Event}
@@ -428,24 +353,50 @@ public class EnemySpeedTracker {
         for (UpgradeType upgrade : FOLLOWED) {
             Set<Event> done = reported.computeIfAbsent(upgrade, u -> EnumSet.noneOf(Event.class));
             Bound bound = bound(upgrade);
-            if (frame >= bound.frame && done.add(Event.PLAUSIBLE)) {
+            if (plausibleChanged(upgrade, bound, frame)) {
+                plausibleReported.put(upgrade, bound);
                 reports.add(new Report(Event.PLAUSIBLE, upgrade, -1, -1, -1, bound.frame, bound.anchor));
             }
-            Sighting sighting = seen.get(upgrade);
+            SpeedRunDetector.Sighting sighting = detector.seen(upgrade);
             if (sighting != null && done.add(Event.SEEN)) {
-                reports.add(report(Event.SEEN, upgrade, sighting, bound.anchor));
+                reports.add(windowReport(Event.SEEN, upgrade, sighting, bound.anchor));
             }
-            Sighting early = earlyRuns.get(upgrade);
+            SpeedRunDetector.Sighting early = detector.earlyRun(upgrade);
             if (early != null && done.add(Event.EARLY_RUN)) {
-                reports.add(report(Event.EARLY_RUN, upgrade, early, bound.anchor));
+                reports.add(windowReport(Event.EARLY_RUN, upgrade, early, bound.anchor));
             }
         }
         return reports;
     }
 
-    private static Report report(Event event, UpgradeType upgrade, Sighting sighting, Anchor anchor) {
+    private boolean plausibleChanged(UpgradeType upgrade, Bound bound, int frame) {
+        Bound last = plausibleReported.get(upgrade);
+        if (last == null) {
+            return frame >= bound.frame;
+        }
+        return last.frame != bound.frame || last.anchor != bound.anchor;
+    }
+
+    /**
+     * A report of a window.
+     *
+     * @param event SEEN or EARLY_RUN
+     * @param upgrade the upgrade
+     * @param sighting the window
+     * @param anchor what the earliest finish rested on, or null for our own units
+     * @return the report
+     */
+    static Report windowReport(Event event, UpgradeType upgrade, SpeedRunDetector.Sighting sighting, Anchor anchor) {
         return new Report(event, upgrade, sighting.getMeasuredSpeed(), sighting.getTopSpeed(),
                 sighting.getRunFrames(), sighting.getBoundFrame(), anchor);
+    }
+
+    /**
+     * @param type Zergling or Hydralisk
+     * @return what the detector measured on the enemy's units of the type this game
+     */
+    public SpeedRunDetector.Diagnostic diagnostic(UnitType type) {
+        return detector.diagnostic(type);
     }
 
     /**
@@ -475,10 +426,10 @@ public class EnemySpeedTracker {
 
     /**
      * @param upgrade the upgrade
-     * @return the frame a run first made the upgrade SEEN, or -1
+     * @return the frame a window first made the upgrade SEEN, or -1
      */
     public int seenFrame(UpgradeType upgrade) {
-        Sighting sighting = seen.get(upgrade);
+        SpeedRunDetector.Sighting sighting = detector.seen(upgrade);
         return sighting == null ? -1 : sighting.getFrame();
     }
 
@@ -510,8 +461,8 @@ public class EnemySpeedTracker {
 
     /**
      * The earliest frame the enemy can have finished an upgrade with every Extractor first seen finished taken as
-     * ready at its build time from the start of the game: a lower bound a run must not precede to make the upgrade
-     * SEEN.
+     * ready at its build time from the start of the game: a lower bound a window must not start before to make the
+     * upgrade SEEN.
      *
      * @param upgrade Metabolic Boost or Muscular Augments
      * @return the frame

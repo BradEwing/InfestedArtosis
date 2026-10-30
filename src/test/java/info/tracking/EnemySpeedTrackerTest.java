@@ -24,9 +24,10 @@ class EnemySpeedTrackerTest {
     private static final UpgradeType BOOST = UpgradeType.Metabolic_Boost;
     private static final UpgradeType AUGMENTS = UpgradeType.Muscular_Augments;
     private static final int EXTRACTOR_ID = 900;
+    private static final int W = SpeedRunDetector.WINDOW_FRAMES;
 
     private static double fast(UnitType type) {
-        return type.topSpeed() * EnemySpeedTracker.SEEN_SPEED_MARGIN + 0.5;
+        return type.topSpeed() * SpeedRunDetector.SPEED_MARGIN + 0.5;
     }
 
     private static int gasFrames(int gas) {
@@ -39,7 +40,8 @@ class EnemySpeedTrackerTest {
     }
 
     /**
-     * Moves one unit in a straight line at a speed for a number of consecutive frames from a start frame.
+     * Moves one unit in a straight line at a speed for a number of consecutive frames from a start frame; a window
+     * passes from the frame {@link #W} after the start.
      */
     private static void run(EnemySpeedTracker tracker, int unitId, UnitType type, int start, int frames,
                             double speed) {
@@ -59,19 +61,12 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
-    void anUnupgradedLingAtTopSpeedIsNotFast() {
-        assertFalse(EnemySpeedTracker.exceedsBaseSpeed(UnitType.Zerg_Zergling, UnitType.Zerg_Zergling.topSpeed()));
-        assertTrue(EnemySpeedTracker.exceedsBaseSpeed(UnitType.Zerg_Zergling, fast(UnitType.Zerg_Zergling)));
-        assertFalse(EnemySpeedTracker.exceedsBaseSpeed(UnitType.Zerg_Mutalisk, 100));
-    }
-
-    @Test
-    void spikeFramesOnManyUnitsNeverMakeTheUpgradeSeen() {
+    void sightingsThatJumpBackEveryWindowNeverMakeTheUpgradeSeen() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         double speed = fast(UnitType.Zerg_Zergling);
         int frame = 10000;
         for (int unit = 0; unit < 200; unit++) {
-            for (int i = 0; i < EnemySpeedTracker.SEEN_RUN_FRAMES - 1; i++) {
+            for (int i = 0; i < W; i++) {
                 tracker.observe(frame, unit, UnitType.Zerg_Zergling, 100 + (int) (i * speed), 100, speed, true);
                 tracker.observe(frame, unit + 1000, UnitType.Zerg_Zergling, 500, 500, speed, true);
                 tracker.onFrame(frame);
@@ -87,29 +82,27 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
-    void aSustainedRunOnOneUnitAfterTheEarliestFinishMakesItSeenAndIsLogged() {
+    void aWindowAfterTheEarliestFinishMakesItSeenAndIsLogged() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         int start = boostFloor() + 100;
 
-        run(tracker, 7, UnitType.Zerg_Zergling, start, EnemySpeedTracker.SEEN_RUN_FRAMES,
-                fast(UnitType.Zerg_Zergling));
+        run(tracker, 7, UnitType.Zerg_Zergling, start, W + 1, fast(UnitType.Zerg_Zergling));
 
-        int last = start + EnemySpeedTracker.SEEN_RUN_FRAMES - 1;
+        int last = start + W;
         assertEquals(last, tracker.seenFrame(BOOST));
         assertEquals(Evidence.SEEN, tracker.evidence(BOOST, last));
         Report seen = only(tracker.announce(last), Event.SEEN);
-        assertEquals(EnemySpeedTracker.SEEN_RUN_FRAMES, seen.getRunFrames());
+        assertEquals(W, seen.getRunFrames());
         assertEquals(UnitType.Zerg_Zergling.topSpeed(), seen.getTopSpeed(), 1e-9);
-        assertTrue(seen.getMeasuredSpeed() > UnitType.Zerg_Zergling.topSpeed() * EnemySpeedTracker.SEEN_SPEED_MARGIN);
+        assertTrue(seen.getMeasuredSpeed() > UnitType.Zerg_Zergling.topSpeed() * SpeedRunDetector.SPEED_MARGIN);
         assertEquals(boostFloor(), seen.getBoundFrame());
     }
 
     @Test
-    void aRunOneFrameShortIsNotSeen() {
+    void aRunOneFrameShortOfAWindowIsNotSeen() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
 
-        run(tracker, 7, UnitType.Zerg_Zergling, boostFloor(), EnemySpeedTracker.SEEN_RUN_FRAMES - 1,
-                fast(UnitType.Zerg_Zergling));
+        run(tracker, 7, UnitType.Zerg_Zergling, boostFloor(), W, fast(UnitType.Zerg_Zergling));
 
         assertEquals(-1, tracker.seenFrame(BOOST));
     }
@@ -118,7 +111,7 @@ class EnemySpeedTrackerTest {
     void aFastVelocityThatCoversNoGroundIsNotSeen() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         int start = boostFloor();
-        for (int i = 0; i < EnemySpeedTracker.SEEN_RUN_FRAMES * 3; i++) {
+        for (int i = 0; i < W * 3; i++) {
             tracker.observe(start + i, 7, UnitType.Zerg_Zergling, 100 + i % 2, 100, fast(UnitType.Zerg_Zergling),
                     true);
             tracker.onFrame(start + i);
@@ -128,41 +121,46 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
-    void aFrameMissedOrNotUnderItsOwnPowerEndsTheRun() {
+    void aUnitUnseenForLongerThanTheGapStartsAfreshButItsMovingFlagDoesNotMatter() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         int start = boostFloor();
         double speed = fast(UnitType.Zerg_Zergling);
-        int half = EnemySpeedTracker.SEEN_RUN_FRAMES / 2 + 1;
+        int half = W / 2 + 1;
+        int gap = SpeedRunDetector.MAX_SAMPLE_GAP + 1;
 
         run(tracker, 7, UnitType.Zerg_Zergling, start, half, speed);
-        tracker.onFrame(start + half);
-        run(tracker, 7, UnitType.Zerg_Zergling, start + half + 1, half, speed);
-        int next = start + 2 * half + 1;
-        tracker.observe(next, 7, UnitType.Zerg_Zergling, 0, 0, speed, false);
-        tracker.onFrame(next);
-        run(tracker, 7, UnitType.Zerg_Zergling, next + 1, half, speed);
-
+        int resumed = start + half - 1 + gap;
+        for (int i = 0; i < half; i++) {
+            tracker.observe(resumed + i, 7, UnitType.Zerg_Zergling,
+                    100 + (int) Math.round((resumed + i - start) * speed), 100, speed, true);
+            tracker.onFrame(resumed + i);
+        }
         assertEquals(-1, tracker.seenFrame(BOOST));
+
+        int next = resumed + 2 * W;
+        for (int i = 0; i <= W; i++) {
+            tracker.observe(next + i, 8, UnitType.Zerg_Zergling, 100 + (int) Math.round(i * speed), 100, 0.0, false);
+            tracker.onFrame(next + i);
+        }
+        assertEquals(next + W, tracker.seenFrame(BOOST));
     }
 
     @Test
-    void aRunBeforeTheEarliestFinishIsRefusedAndReportedOnceThenALaterRunIsSeen() {
+    void aWindowBeforeTheEarliestFinishIsRefusedAndReportedOnceThenALaterWindowIsSeen() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         int early = boostFloor() - 500;
 
-        run(tracker, 7, UnitType.Zerg_Zergling, early, EnemySpeedTracker.SEEN_RUN_FRAMES,
-                fast(UnitType.Zerg_Zergling));
+        run(tracker, 7, UnitType.Zerg_Zergling, early, W + 1, fast(UnitType.Zerg_Zergling));
 
         assertEquals(-1, tracker.seenFrame(BOOST));
-        assertEquals(Evidence.NONE, tracker.evidence(BOOST, early + EnemySpeedTracker.SEEN_RUN_FRAMES));
-        Report refused = only(tracker.announce(early + EnemySpeedTracker.SEEN_RUN_FRAMES), Event.EARLY_RUN);
+        assertEquals(Evidence.NONE, tracker.evidence(BOOST, early + W));
+        Report refused = only(tracker.announce(early + W), Event.EARLY_RUN);
         assertEquals(boostFloor(), refused.getBoundFrame());
-        assertNull(only(tracker.announce(early + EnemySpeedTracker.SEEN_RUN_FRAMES + 1), Event.EARLY_RUN));
+        assertNull(only(tracker.announce(early + W + 1), Event.EARLY_RUN));
 
-        run(tracker, 8, UnitType.Zerg_Zergling, boostFloor(), EnemySpeedTracker.SEEN_RUN_FRAMES,
-                fast(UnitType.Zerg_Zergling));
+        run(tracker, 8, UnitType.Zerg_Zergling, boostFloor(), W + 1, fast(UnitType.Zerg_Zergling));
 
-        assertEquals(boostFloor() + EnemySpeedTracker.SEEN_RUN_FRAMES - 1, tracker.seenFrame(BOOST));
+        assertEquals(boostFloor() + W, tracker.seenFrame(BOOST));
     }
 
     @Test
@@ -191,6 +189,22 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
+    void aPlausibleRowIsReportedAgainWheneverTheBoundOrItsAnchorChanges() {
+        EnemySpeedTracker tracker = new EnemySpeedTracker();
+        assertNull(only(tracker.announce(boostFloor() - 1), Event.PLAUSIBLE));
+        assertEquals(Anchor.FLOOR, only(tracker.announce(boostFloor()), Event.PLAUSIBLE).getAnchor());
+        assertNull(only(tracker.announce(boostFloor() + 1), Event.PLAUSIBLE));
+
+        tracker.observeStructure(3000, EXTRACTOR_ID, UnitType.Zerg_Extractor, true, 0);
+        Report moved = only(tracker.announce(3000), Event.PLAUSIBLE);
+
+        assertEquals(Anchor.EXTRACTOR, moved.getAnchor());
+        assertEquals(tracker.earliestFinishFrame(BOOST), moved.getBoundFrame());
+        assertTrue(moved.getBoundFrame() > 3000);
+        assertNull(only(tracker.announce(3001), Event.PLAUSIBLE));
+    }
+
+    @Test
     void anExtractorFirstSeenFinishedDelaysThePlausibleBoundButNotTheSoundBoundARunIsHeldTo() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
 
@@ -200,12 +214,10 @@ class EnemySpeedTrackerTest {
         assertEquals(3000 + gasFrames(BOOST.gasPrice()) + BOOST.upgradeTime(), tracker.earliestFinishFrame(BOOST));
         assertEquals(boostFloor(), tracker.soundEarliestFinishFrame(BOOST));
 
-        run(tracker, 7, UnitType.Zerg_Zergling, 2600 - EnemySpeedTracker.SEEN_RUN_FRAMES,
-                EnemySpeedTracker.SEEN_RUN_FRAMES, fast(UnitType.Zerg_Zergling));
+        run(tracker, 7, UnitType.Zerg_Zergling, 2600 - W - 1, W + 1, fast(UnitType.Zerg_Zergling));
         assertEquals(-1, tracker.seenFrame(BOOST));
-        run(tracker, 8, UnitType.Zerg_Zergling, 3100, EnemySpeedTracker.SEEN_RUN_FRAMES,
-                fast(UnitType.Zerg_Zergling));
-        int last = 3100 + EnemySpeedTracker.SEEN_RUN_FRAMES - 1;
+        run(tracker, 8, UnitType.Zerg_Zergling, 3100, W + 1, fast(UnitType.Zerg_Zergling));
+        int last = 3100 + W;
 
         assertEquals(last, tracker.seenFrame(BOOST));
         List<Report> reports = tracker.announce(last);
@@ -214,16 +226,15 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
-    void aRunThatBeganBeforeTheBoundStartsAgainAtItAndIsSeenOnlyAFullRunLater() {
+    void aRunThatBeganBeforeTheBoundIsSeenOnlyAWholeWindowAfterIt() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         int bound = tracker.soundEarliestFinishFrame(BOOST);
         int start = bound - 200;
 
-        run(tracker, 7, UnitType.Zerg_Zergling, start, bound + EnemySpeedTracker.SEEN_RUN_FRAMES - 1 - start,
-                fast(UnitType.Zerg_Zergling));
+        run(tracker, 7, UnitType.Zerg_Zergling, start, bound + W - start, fast(UnitType.Zerg_Zergling));
         assertEquals(-1, tracker.seenFrame(BOOST));
 
-        int last = bound + EnemySpeedTracker.SEEN_RUN_FRAMES - 1;
+        int last = bound + W;
         double speed = fast(UnitType.Zerg_Zergling);
         tracker.observe(last, 7, UnitType.Zerg_Zergling, 100 + (int) Math.round((last - start) * speed), 100, speed,
                 true);
@@ -344,13 +355,11 @@ class EnemySpeedTrackerTest {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         int augmentsFloor = tracker.earliestFinishFrame(AUGMENTS);
 
-        run(tracker, 3, UnitType.Zerg_Hydralisk, augmentsFloor - 200, EnemySpeedTracker.SEEN_RUN_FRAMES,
-                fast(UnitType.Zerg_Hydralisk));
+        run(tracker, 3, UnitType.Zerg_Hydralisk, augmentsFloor - 200, W + 1, fast(UnitType.Zerg_Hydralisk));
         assertEquals(-1, tracker.seenFrame(AUGMENTS));
 
-        run(tracker, 3, UnitType.Zerg_Hydralisk, augmentsFloor, EnemySpeedTracker.SEEN_RUN_FRAMES,
-                fast(UnitType.Zerg_Hydralisk));
-        assertEquals(Evidence.SEEN, tracker.evidence(AUGMENTS, augmentsFloor + EnemySpeedTracker.SEEN_RUN_FRAMES));
+        run(tracker, 3, UnitType.Zerg_Hydralisk, augmentsFloor, W + 1, fast(UnitType.Zerg_Hydralisk));
+        assertEquals(Evidence.SEEN, tracker.evidence(AUGMENTS, augmentsFloor + W));
         assertEquals(-1, tracker.seenFrame(BOOST));
     }
 

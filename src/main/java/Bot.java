@@ -414,6 +414,7 @@ public class Bot extends DefaultBWListener {
             fixedFireLogger.onEnd();
         }
         if (speedParityLogger != null) {
+            gameState.reportSpeedDiagnostics(game.getFrameCount());
             speedParityLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
