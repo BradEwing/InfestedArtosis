@@ -18,13 +18,16 @@ import java.util.function.ToIntFunction;
  * <p>Each unit keeps the positions it was seen at over the last {@link #LONG_WINDOW_FRAMES} frames. A window of a
  * length ends on a frame the unit is seen and starts at the latest position seen at least that many frames earlier;
  * its speed is the straight-line distance between the two positions over the frames between them. A window of
- * {@link #WINDOW_FRAMES} passes when its speed is above {@link #SPEED_MARGIN} times the type's
- * {@link UnitType#topSpeed()}, the unupgraded top speed, which an unupgraded unit cannot cover whatever its order,
- * velocity or moving flag read; JBWAPI's {@code Player.topSpeed} makes the upgraded top speed 1.5 times it.
+ * {@link #WINDOW_FRAMES} passes when that distance, less how far its longest step between two sightings went beyond
+ * the type's {@link UnitType#topSpeed()} per frame, is above {@link #SPEED_MARGIN} times the top speed per frame,
+ * see {@link #passes}. The top speed is the unupgraded one, which an unupgraded unit cannot cover whatever its order,
+ * velocity or moving flag read; JBWAPI's {@code Player.topSpeed} makes the upgraded top speed
+ * {@link #UPGRADED_SPEED_FACTOR} times it. Discounting the longest step keeps an unupgraded unit at top speed with
+ * two steps at the step cut below the margin.
  *
- * <p>A unit seen again after more than {@link #MAX_SAMPLE_GAP} frames, or seen further from its last position than
- * {@link #MAX_STEP_FACTOR} times its top speed per frame between, as when a transport unloads it, starts its
- * positions afresh, so no window spans the gap or the jump.
+ * <p>A unit seen again after more than {@link #MAX_SAMPLE_GAP} frames, or seen further from its last position than an
+ * upgraded unit moves between plus {@link #POSITION_ROUNDING}, as when a transport unloads it, starts its positions
+ * afresh, so no window spans the gap or the jump.
  *
  * <p>The first window that passes before the upgrade's bound is an early run. The first that passes and starts at
  * or after the bound makes the upgrade seen, so a run that began before the bound is seen only a whole window after
@@ -48,8 +51,11 @@ public class SpeedRunDetector {
     /** The most frames between two sightings of a unit that one window spans. */
     public static final int MAX_SAMPLE_GAP = 2;
 
-    /** Multiples of the unupgraded top speed per frame between two sightings that no unit walks. */
-    public static final double MAX_STEP_FACTOR = 2.0;
+    /** The upgraded top speed as a multiple of the unupgraded one, as JBWAPI's {@code Player.topSpeed} gives it. */
+    public static final double UPGRADED_SPEED_FACTOR = 1.5;
+
+    /** The most the integer positions can add to the distance between two sightings, pixels. */
+    public static final double POSITION_ROUNDING = 2 * Math.sqrt(2);
 
     private static final int[] WINDOWS = {SHORT_WINDOW_FRAMES, WINDOW_FRAMES, LONG_WINDOW_FRAMES};
 
@@ -150,7 +156,7 @@ public class SpeedRunDetector {
     }
 
     /**
-     * Whether a unit moved further between two sightings than any unit of its type walks.
+     * Whether a unit moved further between two sightings than an upgraded unit of its type walks, rounding included.
      *
      * @param type the unit type
      * @param distance pixels between the two positions
@@ -158,7 +164,21 @@ public class SpeedRunDetector {
      * @return true for a jump, as when a transport unloads the unit
      */
     public static boolean impossibleStep(UnitType type, double distance, int frames) {
-        return distance > type.topSpeed() * MAX_STEP_FACTOR * frames;
+        return distance > type.topSpeed() * UPGRADED_SPEED_FACTOR * frames + POSITION_ROUNDING;
+    }
+
+    /**
+     * Whether a window passes: its distance less its longest step's excess over the top speed is above the margin.
+     *
+     * @param type the unit type
+     * @param distance pixels between the window's first and last positions
+     * @param longestStepExcess the most one step between two sightings in the window went beyond the top speed times
+     *     the frames between them, pixels, or 0
+     * @param frames frames the window spans
+     * @return true when the window moved faster than an unupgraded unit can
+     */
+    public static boolean passes(UnitType type, double distance, double longestStepExcess, int frames) {
+        return exceedsBaseSpeed(type, (distance - longestStepExcess) / frames);
     }
 
     /**
@@ -208,11 +228,13 @@ public class SpeedRunDetector {
             if (start == null) {
                 continue;
             }
-            double speed = Math.hypot(x - start.x, y - start.y) / (frame - start.frame);
+            int span = frame - start.frame;
+            double distance = Math.hypot(x - start.x, y - start.y);
+            double speed = distance / span;
             tally.fastest[i] = Math.max(tally.fastest[i], speed / type.topSpeed());
             if (WINDOWS[i] == WINDOW_FRAMES) {
                 tally.windows++;
-                passed = exceedsBaseSpeed(type, speed);
+                passed = passes(type, distance, longestStepExcess(track.samples, start, type), span);
                 if (passed) {
                     pass(upgrade, type, frame, start, speed);
                 }
@@ -233,6 +255,22 @@ public class SpeedRunDetector {
         } else if (start.frame >= boundFrame) {
             seen.put(upgrade, sighting);
         }
+    }
+
+    private static double longestStepExcess(Deque<Sample> samples, Sample start, UnitType type) {
+        double excess = 0;
+        Sample previous = null;
+        for (Sample sample : samples) {
+            if (sample.frame < start.frame) {
+                continue;
+            }
+            if (previous != null) {
+                double step = Math.hypot(sample.x - previous.x, sample.y - previous.y);
+                excess = Math.max(excess, step - type.topSpeed() * (sample.frame - previous.frame));
+            }
+            previous = sample;
+        }
+        return excess;
     }
 
     private static void trim(Deque<Sample> samples, int frame) {

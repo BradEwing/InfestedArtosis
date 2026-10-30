@@ -189,6 +189,35 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
+    void anUnchangedTrustedGasReadingWritesAPlausibleRowOnlyEveryFewHundredFrames() {
+        EnemySpeedTracker tracker = new EnemySpeedTracker();
+        assertEquals(Anchor.FLOOR, only(tracker.announce(boostFloor()), Event.PLAUSIBLE).getAnchor());
+        int start = boostFloor() + 1;
+        tracker.observeStructure(start, EXTRACTOR_ID, UnitType.Zerg_Extractor, true, 0);
+        tracker.observeGasReading(start, EXTRACTOR_ID, 8);
+        int rows = 0;
+        int anchorChanges = 0;
+        Anchor last = Anchor.FLOOR;
+        for (int frame = start; frame < start + 1000; frame++) {
+            tracker.observeGasReading(frame, EXTRACTOR_ID, frame == start ? 8 : 16);
+            Report plausible = only(tracker.announce(frame), Event.PLAUSIBLE);
+            if (plausible != null) {
+                rows++;
+                if (plausible.getAnchor() != last) {
+                    anchorChanges++;
+                    last = plausible.getAnchor();
+                }
+            }
+        }
+
+        assertEquals(Anchor.GAS_READING, tracker.earliestFinishAnchor(BOOST));
+        assertEquals(Anchor.GAS_READING, last);
+        assertTrue(anchorChanges >= 1);
+        assertTrue(rows > anchorChanges);
+        assertTrue(rows < 15);
+    }
+
+    @Test
     void aPlausibleRowIsReportedAgainWheneverTheBoundOrItsAnchorChanges() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         assertNull(only(tracker.announce(boostFloor() - 1), Event.PLAUSIBLE));

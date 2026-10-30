@@ -125,6 +125,54 @@ class SpeedRunDetectorTest {
     }
 
     @Test
+    void anUnupgradedUnitAtTopSpeedWithUpToTwoStepsAtTheCutAndWorstRoundingNeverPasses() {
+        for (UnitType type : new UnitType[] {LING, UnitType.Zerg_Hydralisk}) {
+            double v = type.topSpeed();
+            double rounding = SpeedRunDetector.POSITION_ROUNDING;
+            double cut = v * SpeedRunDetector.UPGRADED_SPEED_FACTOR + rounding;
+            for (int steps = 1; steps <= 2; steps++) {
+                double distance = (W - steps) * v + steps * cut + rounding;
+                assertFalse(SpeedRunDetector.passes(type, distance, cut - v, W));
+            }
+            assertFalse(SpeedRunDetector.passes(type, (W - 1) * v + cut + rounding, 0, W));
+            assertFalse(SpeedRunDetector.impossibleStep(type, cut, 1));
+            assertTrue(SpeedRunDetector.impossibleStep(type, cut + 0.01, 1));
+        }
+    }
+
+    @Test
+    void anUpgradedUnitWithAStepAtTheCutAndWorstRoundingStillPasses() {
+        for (UnitType type : new UnitType[] {LING, UnitType.Zerg_Hydralisk}) {
+            double upgraded = type.topSpeed() * SpeedRunDetector.UPGRADED_SPEED_FACTOR;
+            double rounding = SpeedRunDetector.POSITION_ROUNDING;
+            double longest = upgraded + rounding;
+
+            assertFalse(SpeedRunDetector.impossibleStep(type, longest, 1));
+            assertTrue(SpeedRunDetector.passes(type, W * upgraded - rounding, longest - type.topSpeed(), W));
+        }
+    }
+
+    @Test
+    void anUnupgradedLingAndHydraWithTwoLongStepsInEveryWindowAreNeverSeen() {
+        for (UnitType type : new UnitType[] {LING, UnitType.Zerg_Hydralisk}) {
+            SpeedRunDetector detector = detector();
+            double v = type.topSpeed();
+            double longStep = v * SpeedRunDetector.UPGRADED_SPEED_FACTOR + SpeedRunDetector.POSITION_ROUNDING - 1.2;
+            double x = 100;
+            for (int i = 0; i < 20 * W; i++) {
+                int phase = i % W;
+                x += phase == 5 || phase == 9 ? longStep : v;
+                detector.observe(BOUND + i, 7, type, (int) Math.round(x), 100, 0, true);
+                detector.onFrame(BOUND + i);
+            }
+
+            UpgradeType upgrade = EnemySpeedTracker.upgradeFor(type);
+            assertNull(detector.seen(upgrade));
+            assertTrue(detector.diagnostic(type).getWindows() > 10 * W);
+        }
+    }
+
+    @Test
     void aWindowThatPassesBeforeTheBoundIsAnEarlyRunAndOneStraddlingItIsNeither() {
         SpeedRunDetector detector = detector();
         int start = BOUND - W - 1;

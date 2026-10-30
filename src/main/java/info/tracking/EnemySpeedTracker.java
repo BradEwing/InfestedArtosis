@@ -46,6 +46,9 @@ public class EnemySpeedTracker {
     /** The most gas one Extractor is taken to yield per frame. */
     public static final double GAS_PER_FRAME = 0.25;
 
+    /** How far the earliest finish moves, with the same anchor, before it is reported again. */
+    public static final int PLAUSIBLE_REPORT_FRAMES = 120;
+
     private static final double FRAME_EPSILON = 1e-9;
 
     private static final UpgradeType[] FOLLOWED = {UpgradeType.Metabolic_Boost, UpgradeType.Muscular_Augments};
@@ -74,7 +77,7 @@ public class EnemySpeedTracker {
 
     /** What a report is about. */
     public enum Event {
-        /** The frame reached the earliest finish, or the earliest finish or its anchor changed since. */
+        /** The frame reached the earliest finish, or its anchor changed or it moved far since the last report. */
         PLAUSIBLE,
         /** A window made the upgrade SEEN. */
         SEEN,
@@ -342,8 +345,8 @@ public class EnemySpeedTracker {
 
     /**
      * Reports what is new for each upgrade: a PLAUSIBLE report the first frame reaching its earliest finish and on
-     * every later frame the earliest finish or its anchor changed, the window that made it SEEN, and the first window
-     * refused before the earliest finish.
+     * every later frame its anchor changed or it moved {@link #PLAUSIBLE_REPORT_FRAMES} or more from the last earliest
+     * finish reported, the window that made it SEEN, and the first window refused before the earliest finish.
      *
      * @param frame current frame
      * @return the reports, in the order of {@link #FOLLOWED} and then of {@link Event}
@@ -374,7 +377,7 @@ public class EnemySpeedTracker {
         if (last == null) {
             return frame >= bound.frame;
         }
-        return last.frame != bound.frame || last.anchor != bound.anchor;
+        return last.anchor != bound.anchor || Math.abs(bound.frame - last.frame) >= PLAUSIBLE_REPORT_FRAMES;
     }
 
     /**

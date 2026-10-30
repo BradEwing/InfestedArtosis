@@ -26,19 +26,22 @@ import java.util.Map;
  * Metabolic Boost evidence and bound on the frame it ended.
  *
  * <p>An ENEMY_SPEED row, side ENEMY, is written for each report of the enemy speed tracker, with the upgrade and the
- * event in evidence: PLAUSIBLE the first frame reaching the upgrade's earliest finish and every later frame the
- * earliest finish or its anchor changed, so a bound_frame after the row's frame means the bound moved past it; SEEN
- * when a window made it SEEN; and EARLY_RUN for the first window refused because it passed before the earliest
- * finish. bound_frame is the earliest finish on that frame and bound_anchor what it rests on. A SEEN or EARLY_RUN row
- * also carries the window: measured_speed is the distance one unit covered over it per frame, top_speed its type's
- * unupgraded top speed, and run_frames the frames it spans; its last frame is the row's frame.
+ * event in evidence: PLAUSIBLE the first frame reaching the upgrade's earliest finish and every later frame its
+ * anchor changed or it moved 120 frames or more from the last one reported, so a bound_frame after the row's frame
+ * means the bound moved past it; SEEN when a window made it SEEN; and EARLY_RUN for the first window refused
+ * because it passed before the earliest finish. bound_frame is the earliest finish on that frame and bound_anchor
+ * what it rests on. A SEEN or EARLY_RUN row also carries the window: measured_speed is the distance one unit covered
+ * over it per frame, before the longest step's excess is discounted, top_speed its type's unupgraded top speed, and
+ * run_frames the frames it spans; its last frame is the row's frame.
  *
  * <p>A SELF_SPEED row, side SELF, is the same detector run on our own units: EARLY_RUN for the first window that
  * passed before our upgrade finished, with bound_frame -1, and SEEN for the first one that started at or after it,
  * with bound_frame our finish.
  *
- * <p>A SPEED_DIAG row is written for each side and unit type when the game ends, and for SELF and the upgraded type
- * when our upgrade finishes; the tally then starts afresh, so the two SELF rows split the game at our finish. upgrade
+ * <p>A SPEED_DIAG row is written for each side and unit type when the game ends, and also on frame 9000 and on the
+ * frame of the first ENEMY SEEN, for games that never end cleanly; those rows are cumulative and told apart from the
+ * game-end ones by their frame. One is also written for SELF and the upgraded type when our upgrade finishes; that
+ * tally then starts afresh, so the SELF rows after it start at our finish, as from_frame says. upgrade
  * names the type's upgrade, top_speed its unupgraded top speed and run_frames the deciding window. from_frame is the
  * frame the tally began, longest_run the most consecutive sightings of one unit whose deciding window passed, and
  * max_speed_8, max_speed_16 and max_speed_24 the fastest window of that many frames as a multiple of the top speed.

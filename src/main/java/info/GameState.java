@@ -174,7 +174,11 @@ public class GameState {
     private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
     private DarkSwarmTracker darkSwarmTracker = new DarkSwarmTracker();
     private EnemySpeedTracker enemySpeedTracker = new EnemySpeedTracker();
+    private static final int SPEED_DIAGNOSTIC_FRAME = 9000;
+
     private boolean ownSpeedReported = false;
+    private boolean speedDiagnosticFrameReported = false;
+    private boolean speedDiagnosticSeenReported = false;
     private final OwnSpeedCalibration ownSpeedCalibration = new OwnSpeedCalibration();
     private final Map<TilePosition, Integer> enemyGeyserStarts = new HashMap<>();
     private StrategyTracker strategyTracker;
@@ -423,15 +427,41 @@ public class GameState {
             }
         }
         enemySpeedTracker.onFrame(frame);
-        if (!ownSpeedReported && techProgression.isMetabolicBoost()) {
+        if (!ownSpeedReported && hasOwnUpgrade(UpgradeType.Metabolic_Boost)) {
             ownSpeedReported = true;
             SpeedParityTelemetry.ownSpeedFinished(frame);
         }
+        boolean enemySeen = false;
         for (EnemySpeedTracker.Report report : enemySpeedTracker.announce(frame)) {
             SpeedParityTelemetry.enemySpeed(frame, report);
+            enemySeen |= report.getEvent() == EnemySpeedTracker.Event.SEEN;
         }
         if (SpeedParityTelemetry.isRegistered()) {
             updateOwnSpeedCalibration(frame);
+            reportSpeedDiagnosticSnapshots(frame, enemySeen);
+        }
+    }
+
+    /**
+     * Whether we have an upgrade on this frame, read from the player rather than from the tech progression, which is
+     * brought up to date after this frame's game state.
+     */
+    private boolean hasOwnUpgrade(UpgradeType upgrade) {
+        return game.self().getUpgradeLevel(upgrade) > 0;
+    }
+
+    /**
+     * Logs the cumulative speed diagnostics once on frame 9000 and once on the frame of
+     * the first enemy SEEN, so a game that never reaches its end still has them.
+     */
+    private void reportSpeedDiagnosticSnapshots(int frame, boolean enemySeen) {
+        if (!speedDiagnosticFrameReported && frame >= SPEED_DIAGNOSTIC_FRAME) {
+            speedDiagnosticFrameReported = true;
+            reportSpeedDiagnostics(frame);
+        }
+        if (!speedDiagnosticSeenReported && enemySeen) {
+            speedDiagnosticSeenReported = true;
+            reportSpeedDiagnostics(frame);
         }
     }
 
@@ -449,10 +479,10 @@ public class GameState {
             }
         }
         ownSpeedCalibration.onFrame(frame);
-        if (techProgression.isMetabolicBoost()) {
+        if (hasOwnUpgrade(UpgradeType.Metabolic_Boost)) {
             reportOwnUpgradeFinished(frame, UpgradeType.Metabolic_Boost);
         }
-        if (techProgression.isMuscularAugments()) {
+        if (hasOwnUpgrade(UpgradeType.Muscular_Augments)) {
             reportOwnUpgradeFinished(frame, UpgradeType.Muscular_Augments);
         }
         for (EnemySpeedTracker.Report report : ownSpeedCalibration.announce(frame)) {
@@ -468,9 +498,10 @@ public class GameState {
     }
 
     /**
-     * Logs what the speed detectors measured on each followed unit type of each side this game, when it ends.
+     * Logs what the speed detectors measured on each followed unit type of each side this game so far: when the game
+     * ends, on frame 9000, and on the frame of the first enemy SEEN.
      *
-     * @param frame the last frame
+     * @param frame current frame
      */
     public void reportSpeedDiagnostics(int frame) {
         for (UnitType type : new UnitType[] {UnitType.Zerg_Zergling, UnitType.Zerg_Hydralisk}) {
