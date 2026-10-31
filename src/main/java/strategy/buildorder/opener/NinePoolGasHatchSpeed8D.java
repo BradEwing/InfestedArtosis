@@ -89,6 +89,11 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
     }
 
     @Override
+    public boolean isAllInOrRush() {
+        return true;
+    }
+
+    @Override
     protected boolean openerComplete(GameState gameState) {
         return openerComplete(zerglingPlans, gameState.isLingFloodHold(), gameState.getGameTime())
                 || earlyHandOver(gameState.getOpponentRace(), speedQueued, zerglingPlans);

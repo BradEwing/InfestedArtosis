@@ -23,9 +23,12 @@ import info.map.GameMap;
 import info.map.MapTile;
 import info.tracking.DarkSwarm;
 import info.tracking.DarkSwarmTracker;
+import info.tracking.EnemySpeedTracker;
 import info.tracking.EnemyReachMemory;
 import info.tracking.ObservedBulletTracker;
 import info.tracking.ObservedUnitTracker;
+import info.tracking.OwnSpeedCalibration;
+import info.tracking.SpeedRunDetector;
 import info.tracking.PsiStormTracker;
 import info.tracking.StrategyTracker;
 import learning.Decisions;
@@ -45,6 +48,8 @@ import macro.plan.PlanState;
 import strategy.buildorder.BuildOrder;
 import strategy.buildorder.SunkenTargets;
 import telemetry.PlanEvents;
+import telemetry.SpeedParitySink;
+import telemetry.SpeedParityTelemetry;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.ContainHeldTimer;
@@ -168,6 +173,14 @@ public class GameState {
     private Map<Unit, Integer> recentBunkerShotVictims = new HashMap<>();
     private PsiStormTracker psiStormTracker = new PsiStormTracker(observedBulletTracker);
     private DarkSwarmTracker darkSwarmTracker = new DarkSwarmTracker();
+    private EnemySpeedTracker enemySpeedTracker = new EnemySpeedTracker();
+    private static final int SPEED_DIAGNOSTIC_FRAME = 9000;
+
+    private boolean ownSpeedReported = false;
+    private boolean speedDiagnosticFrameReported = false;
+    private boolean speedDiagnosticSeenReported = false;
+    private final OwnSpeedCalibration ownSpeedCalibration = new OwnSpeedCalibration();
+    private final Map<TilePosition, Integer> enemyGeyserStarts = new HashMap<>();
     private StrategyTracker strategyTracker;
 
     // Initialized in InformationManager
@@ -203,6 +216,7 @@ public class GameState {
         updateBunkerGarrisonCounts();
         learnReachFromHits(frame);
         updateDarkSwarms();
+        updateEnemySpeed(frame);
         strategyTracker.onFrame();
         clearVisibleStaleLocations();
         baseData.updateSquadRallyBase();
@@ -387,6 +401,144 @@ public class GameState {
             if (bunker.getDistance(unit) <= range) return true;
         }
         return false;
+    }
+
+    /**
+     * Feeds the enemy speed tracker each visible enemy Zergling and Hydralisk not in a transport with its position,
+     * velocity and moving flag, each visible enemy structure its timing depends on, and the gas mined from each
+     * finished enemy Extractor, then logs the enemy diagnostics up to each upgrade's sound earliest finish when it is
+     * first reached, the tracker's reports, our own Metabolic Boost finishing, and with speed
+     * telemetry on the calibration on our own units, see {@link #updateOwnSpeedCalibration}.
+     */
+    private void updateEnemySpeed(int frame) {
+        for (Unit enemy : observedUnitTracker.getVisibleEnemyUnits()) {
+            UnitType type = enemy.getType();
+            if (EnemySpeedTracker.upgradeFor(type) != null) {
+                if (!enemy.isLoaded()) {
+                    enemySpeedTracker.observe(frame, enemy.getID(), type, enemy.getX(), enemy.getY(),
+                            Math.hypot(enemy.getVelocityX(), enemy.getVelocityY()), enemy.isMoving());
+                }
+            } else if (EnemySpeedTracker.followsStructure(type)) {
+                boolean completed = enemy.isCompleted() && !enemy.isMorphing();
+                enemySpeedTracker.observeStructure(frame, enemy.getID(), type, completed,
+                        enemy.getRemainingBuildTime());
+                if (type == UnitType.Zerg_Extractor && completed) {
+                    observeEnemyGas(frame, enemy);
+                }
+            }
+        }
+        enemySpeedTracker.onFrame(frame);
+        for (UpgradeType upgrade : new UpgradeType[] {UpgradeType.Metabolic_Boost, UpgradeType.Muscular_Augments}) {
+            SpeedRunDetector.Diagnostic before = enemySpeedTracker.soundBoundCrossed(upgrade, frame);
+            if (before != null) {
+                SpeedParityTelemetry.speedDiagnostic(frame, SpeedParitySink.Side.ENEMY, before);
+            }
+        }
+        if (!ownSpeedReported && hasOwnUpgrade(UpgradeType.Metabolic_Boost)) {
+            ownSpeedReported = true;
+            SpeedParityTelemetry.ownSpeedFinished(frame);
+        }
+        boolean enemySeen = false;
+        for (EnemySpeedTracker.Report report : enemySpeedTracker.announce(frame)) {
+            SpeedParityTelemetry.enemySpeed(frame, report);
+            enemySeen |= report.getEvent() == EnemySpeedTracker.Event.SEEN;
+        }
+        if (SpeedParityTelemetry.isRegistered()) {
+            updateOwnSpeedCalibration(frame);
+            reportSpeedDiagnosticSnapshots(frame, enemySeen);
+        }
+    }
+
+    /**
+     * Whether we have an upgrade on this frame, read from the player rather than from the tech progression, which is
+     * brought up to date after this frame's game state.
+     */
+    private boolean hasOwnUpgrade(UpgradeType upgrade) {
+        return game.self().getUpgradeLevel(upgrade) > 0;
+    }
+
+    /**
+     * Logs the cumulative speed diagnostics once on frame 9000 and once on the frame of
+     * the first enemy SEEN, so a game that never reaches its end still has them.
+     */
+    private void reportSpeedDiagnosticSnapshots(int frame, boolean enemySeen) {
+        if (!speedDiagnosticFrameReported && frame >= SPEED_DIAGNOSTIC_FRAME) {
+            speedDiagnosticFrameReported = true;
+            reportSpeedDiagnostics(frame);
+        }
+        if (!speedDiagnosticSeenReported && enemySeen) {
+            speedDiagnosticSeenReported = true;
+            reportSpeedDiagnostics(frame);
+        }
+    }
+
+    /**
+     * Feeds the speed detector's calibration each of our finished Zerglings and Hydralisks not in a transport, records
+     * our Metabolic Boost and Muscular Augments finishing with a SELF diagnostic of the frames before, and logs its
+     * windows. Nothing decides on it.
+     */
+    private void updateOwnSpeedCalibration(int frame) {
+        for (Unit unit : game.self().getUnits()) {
+            UnitType type = unit.getType();
+            if (EnemySpeedTracker.upgradeFor(type) != null && unit.isCompleted() && !unit.isLoaded()) {
+                ownSpeedCalibration.observe(frame, unit.getID(), type, unit.getX(), unit.getY(),
+                        Math.hypot(unit.getVelocityX(), unit.getVelocityY()), unit.isMoving());
+            }
+        }
+        ownSpeedCalibration.onFrame(frame);
+        if (hasOwnUpgrade(UpgradeType.Metabolic_Boost)) {
+            reportOwnUpgradeFinished(frame, UpgradeType.Metabolic_Boost);
+        }
+        if (hasOwnUpgrade(UpgradeType.Muscular_Augments)) {
+            reportOwnUpgradeFinished(frame, UpgradeType.Muscular_Augments);
+        }
+        for (EnemySpeedTracker.Report report : ownSpeedCalibration.announce(frame)) {
+            SpeedParityTelemetry.selfSpeed(frame, report);
+        }
+    }
+
+    private void reportOwnUpgradeFinished(int frame, UpgradeType upgrade) {
+        SpeedRunDetector.Diagnostic before = ownSpeedCalibration.upgradeFinished(upgrade, frame);
+        if (before != null) {
+            SpeedParityTelemetry.speedDiagnostic(frame, SpeedParitySink.Side.SELF, before);
+        }
+    }
+
+    /**
+     * Logs what the speed detectors measured on each followed unit type of each side this game so far: when the game
+     * ends, on frame 9000, and on the frame of the first enemy SEEN.
+     *
+     * @param frame current frame
+     */
+    public void reportSpeedDiagnostics(int frame) {
+        for (UnitType type : new UnitType[] {UnitType.Zerg_Zergling, UnitType.Zerg_Hydralisk}) {
+            SpeedParityTelemetry.speedDiagnostic(frame, SpeedParitySink.Side.ENEMY,
+                    enemySpeedTracker.diagnostic(type));
+            SpeedParityTelemetry.speedDiagnostic(frame, SpeedParitySink.Side.SELF, ownSpeedCalibration.diagnostic(type));
+        }
+    }
+
+    /**
+     * Hands the enemy speed tracker the gas mined from a finished enemy Extractor: its geyser's starting gas, read
+     * from the static geyser on its tile, less what it holds now. A reading of no gas left or more than the start is
+     * not a reading.
+     */
+    private void observeEnemyGas(int frame, Unit extractor) {
+        int initial = enemyGeyserStarts.computeIfAbsent(extractor.getTilePosition(), this::staticGeyserResources);
+        int resources = extractor.getResources();
+        if (initial <= 0 || resources <= 0 || resources > initial) {
+            return;
+        }
+        enemySpeedTracker.observeGasReading(frame, extractor.getID(), initial - resources);
+    }
+
+    private int staticGeyserResources(TilePosition tile) {
+        for (Unit geyser : game.getStaticGeysers()) {
+            if (geyser.getInitialTilePosition().equals(tile)) {
+                return geyser.getInitialResources();
+            }
+        }
+        return 0;
     }
 
     private void updateObservedUnitGroundHeights() {
