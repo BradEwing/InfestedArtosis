@@ -24,10 +24,10 @@ class EnemySpeedTrackerTest {
     private static final UpgradeType BOOST = UpgradeType.Metabolic_Boost;
     private static final UpgradeType AUGMENTS = UpgradeType.Muscular_Augments;
     private static final int EXTRACTOR_ID = 900;
-    private static final int W = SpeedRunDetector.WINDOW_FRAMES;
+    private static final int W = SpeedRunDetector.MIN_RUN_FRAMES;
 
     private static double fast(UnitType type) {
-        return type.topSpeed() * SpeedRunDetector.SPEED_MARGIN + 0.5;
+        return type.topSpeed() * SpeedRunDetector.speedMargin(type) + 0.5;
     }
 
     private static int gasFrames(int gas) {
@@ -40,7 +40,7 @@ class EnemySpeedTrackerTest {
     }
 
     /**
-     * Moves one unit in a straight line at a speed for a number of consecutive frames from a start frame; a window
+     * Moves one unit in a straight line at a speed for a number of consecutive frames from a start frame; a run
      * passes from the frame {@link #W} after the start.
      */
     private static void run(EnemySpeedTracker tracker, int unitId, UnitType type, int start, int frames,
@@ -94,7 +94,8 @@ class EnemySpeedTrackerTest {
         Report seen = only(tracker.announce(last), Event.SEEN);
         assertEquals(W, seen.getRunFrames());
         assertEquals(UnitType.Zerg_Zergling.topSpeed(), seen.getTopSpeed(), 1e-9);
-        assertTrue(seen.getMeasuredSpeed() > UnitType.Zerg_Zergling.topSpeed() * SpeedRunDetector.SPEED_MARGIN);
+        assertTrue(seen.getMeasuredSpeed() > UnitType.Zerg_Zergling.topSpeed()
+                * SpeedRunDetector.speedMargin(UnitType.Zerg_Zergling));
         assertEquals(boostFloor(), seen.getBoundFrame());
     }
 

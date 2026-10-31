@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class OwnSpeedCalibrationTest {
 
     private static final UnitType LING = UnitType.Zerg_Zergling;
-    private static final int W = SpeedRunDetector.WINDOW_FRAMES;
+    private static final int W = SpeedRunDetector.MIN_RUN_FRAMES;
 
     private static void run(OwnSpeedCalibration calibration, int unitId, int start, double speed) {
         for (int i = 0; i <= W; i++) {
@@ -25,9 +25,9 @@ class OwnSpeedCalibrationTest {
     }
 
     @Test
-    void aWindowBeforeOurUpgradeIsAnEarlyRunAndTheFirstAfterItIsSeenAgainstOurFinish() {
+    void aRunBeforeOurUpgradeIsAnEarlyRunAndTheFirstAfterItIsSeenAgainstOurFinish() {
         OwnSpeedCalibration calibration = new OwnSpeedCalibration();
-        double fast = LING.topSpeed() * SpeedRunDetector.SPEED_MARGIN + 0.5;
+        double fast = LING.topSpeed() * SpeedRunDetector.speedMargin(LING) + 0.5;
 
         run(calibration, 7, 2000, fast);
         List<Report> early = calibration.announce(2000 + W);
@@ -38,7 +38,7 @@ class OwnSpeedCalibrationTest {
 
         SpeedRunDetector.Diagnostic before = calibration.upgradeFinished(UpgradeType.Metabolic_Boost, 4000);
         assertEquals(0, before.getFromFrame());
-        assertEquals(1, before.getWindows());
+        assertEquals(W - SpeedRunDetector.WINDOW_FRAMES + 1, before.getWindows());
         assertNull(calibration.upgradeFinished(UpgradeType.Metabolic_Boost, 4100));
         assertEquals(4000, calibration.diagnostic(LING).getFromFrame());
         assertEquals(0, calibration.diagnostic(LING).getWindows());

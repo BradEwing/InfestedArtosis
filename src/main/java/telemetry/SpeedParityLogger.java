@@ -6,9 +6,12 @@ import bwapi.UpgradeType;
 import info.tracking.EnemySpeedTracker;
 import info.tracking.SpeedRunDetector;
 
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * Writes telemetry_speed_parity.csv: the speed parity gate's holds, the enemy speed inferences, and the speed
@@ -28,15 +31,16 @@ import java.util.Map;
  * <p>An ENEMY_SPEED row, side ENEMY, is written for each report of the enemy speed tracker, with the upgrade and the
  * event in evidence: PLAUSIBLE the first frame reaching the upgrade's earliest finish and every later frame its
  * anchor changed or it moved 120 frames or more from the last one reported, so a bound_frame after the row's frame
- * means the bound moved past it; SEEN when a window made it SEEN; and EARLY_RUN for the first window refused
- * because it passed before the earliest finish. bound_frame is the earliest finish on that frame and bound_anchor
- * what it rests on. A SEEN or EARLY_RUN row also carries the window: measured_speed is the distance one unit covered
- * over it per frame, before the longest step's excess is discounted, top_speed its type's unupgraded top speed, and
- * run_frames the frames it spans; its last frame is the row's frame.
+ * means the bound moved past it; SEEN when a run made it SEEN; and EARLY_RUN for the first run refused because it
+ * ended before the earliest finish. bound_frame is the earliest finish on that frame and bound_anchor what it rests
+ * on. A SEEN or EARLY_RUN row also carries the run, two passing windows of one unit, see {@link SpeedRunDetector}:
+ * measured_speed is the distance that unit covered per frame over the slower of the two, top_speed its type's
+ * unupgraded top speed, and run_frames the frames from the start of the first window to the end of the second; its
+ * last frame is the row's frame.
  *
- * <p>A SELF_SPEED row, side SELF, is the same detector run on our own units: EARLY_RUN for the first window that
- * passed before our upgrade finished, with bound_frame -1, and SEEN for the first one that started at or after it,
- * with bound_frame our finish.
+ * <p>A SELF_SPEED row, side SELF, is the same detector run on our own units: EARLY_RUN for the first run that ended
+ * before our upgrade finished, with bound_frame -1, and SEEN for the first one that started at or after it, with
+ * bound_frame our finish.
  *
  * <p>A SPEED_DIAG row is written for each side and unit type when the game ends, and also on frame 9000 and on the
  * frame of the first ENEMY SEEN, for games that never end cleanly; those rows are cumulative and told apart from the
@@ -47,6 +51,11 @@ import java.util.Map;
  * max_speed_8, max_speed_16 and max_speed_24 the fastest window of that many frames as a multiple of the top speed.
  * windows counts the deciding windows measured, velocity_frames the sightings whose velocity was above the cut, and
  * not_moving_frames the sightings whose moving flag was false while the unit had moved since its last sighting.
+ * clears_gap counts the units started afresh after going unseen, and clears_jump those started afresh after a jump.
+ * steps_0 to steps_over_2 count the steps between two sightings by their distance per frame as a multiple of the top
+ * speed: none, up to 1, 1.25, 1.5 and 2, and above 2. max_discounted_8 is the fastest deciding window less its longest
+ * step's excess over the top speed, and max_run_8 the fastest run, the slower of its two deciding windows, which is
+ * what SEEN compares with the type's margin; both as multiples of the top speed.
  *
  * <p>An OWN_SPEED row, side SELF, is written the first frame our Metabolic Boost is finished, with evidence FINISHED.
  *
@@ -59,7 +68,8 @@ public class SpeedParityLogger implements SpeedParitySink {
     static final String HEADER = "game_id,frame,event,squad_id,suppressed_by,applied,our_speed,enemy_speed,upgrade,"
             + "evidence,squad_supply,move_out_threshold,base_threshold,zerglings,measured_speed,top_speed,run_frames,"
             + "bound_frame,bound_anchor,side,longest_run,max_speed_8,max_speed_16,max_speed_24,windows,velocity_frames,"
-            + "not_moving_frames,from_frame";
+            + "not_moving_frames,from_frame,clears_gap,clears_jump,steps_0,steps_1,steps_1_25,steps_1_5,steps_2,"
+            + "steps_over_2,max_discounted_8,max_run_8";
 
     static final String EVENT_GATE = "GATE";
     static final String EVENT_GATE_END = "GATE_END";
@@ -73,7 +83,9 @@ public class SpeedParityLogger implements SpeedParitySink {
     private static final String NONE = "NONE";
     private static final String NO_WINDOW = String.join(",", "-1", "-1", "-1");
     private static final String NO_RUN = String.join(",", NO_WINDOW, "-1", NONE);
-    private static final String NO_DIAGNOSTIC = String.join(",", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1");
+    private static final int DIAGNOSTIC_COLUMNS = 18;
+    private static final String NO_DIAGNOSTIC = String.join(",",
+            Collections.nCopies(DIAGNOSTIC_COLUMNS, String.valueOf(NOT_EVALUATED)));
 
     private final Game game;
     private final String gameId;
@@ -254,10 +266,13 @@ public class SpeedParityLogger implements SpeedParitySink {
                 String.valueOf(NOT_EVALUATED), String.valueOf(NOT_EVALUATED), String.valueOf(NOT_EVALUATED),
                 String.valueOf(NOT_EVALUATED), speed(type.topSpeed()), String.valueOf(SpeedRunDetector.WINDOW_FRAMES),
                 String.valueOf(NOT_EVALUATED), NONE, side.name(), String.valueOf(diagnostic.getLongestRun()),
-                speed(diagnostic.getShortWindowSpeed()), speed(diagnostic.getWindowSpeed()),
+                speed(diagnostic.getWindowSpeed()), speed(diagnostic.getMidWindowSpeed()),
                 speed(diagnostic.getLongWindowSpeed()), String.valueOf(diagnostic.getWindows()),
                 String.valueOf(diagnostic.getVelocityFrames()), String.valueOf(diagnostic.getNotMovingFrames()),
-                String.valueOf(diagnostic.getFromFrame()));
+                String.valueOf(diagnostic.getFromFrame()), String.valueOf(diagnostic.getGapClears()),
+                String.valueOf(diagnostic.getJumpClears()),
+                Arrays.stream(diagnostic.getSteps()).mapToObj(String::valueOf).collect(Collectors.joining(",")),
+                speed(diagnostic.getDiscountedWindowSpeed()), speed(diagnostic.getRunSpeed()));
     }
 
     private static String speed(double pixelsPerFrame) {

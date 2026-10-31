@@ -14,8 +14,8 @@ import java.util.Set;
 
 /**
  * Runs the enemy speed detector on our own Zerglings and Hydralisks, whose upgrades we know the finish of, to score
- * it: a window that passes before our upgrade finished is a false positive, and the first one starting at or after
- * the finish is a hit. Nothing decides on it.
+ * it: a run that ends before our upgrade finished is a false positive, and the first one starting at or after the
+ * finish is a hit. Nothing decides on it.
  *
  * <p>An upgrade's bound is the frame it finished for us, and no frame before we have it. The diagnostics of the
  * upgraded type are handed over and start afresh when the upgrade finishes, so one tally covers the frames before it
@@ -71,7 +71,7 @@ public class OwnSpeedCalibration {
     }
 
     /**
-     * Reports, once each, the first window that passed before our upgrade finished and the one that passed after.
+     * Reports, once each, the first run that ended before our upgrade finished and the first that started after.
      *
      * @param frame current frame
      * @return EARLY_RUN and SEEN reports, without an anchor; an early run's bound is -1
@@ -82,7 +82,7 @@ public class OwnSpeedCalibration {
             Set<Event> done = reported.computeIfAbsent(upgrade, u -> EnumSet.noneOf(Event.class));
             SpeedRunDetector.Sighting sighting = detector.seen(upgrade);
             if (sighting != null && done.add(Event.SEEN)) {
-                reports.add(EnemySpeedTracker.windowReport(Event.SEEN, upgrade, sighting, null));
+                reports.add(EnemySpeedTracker.runReport(Event.SEEN, upgrade, sighting, null));
             }
             SpeedRunDetector.Sighting early = detector.earlyRun(upgrade);
             if (early != null && done.add(Event.EARLY_RUN)) {

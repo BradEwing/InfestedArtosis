@@ -21,9 +21,10 @@ import java.util.TreeMap;
  *
  * <p>Each upgrade has an earliest finish frame, when the enemy can have finished it given what we observed, see
  * {@link #earliestFinishFrame}. From that frame the upgrade is {@link Evidence#PLAUSIBLE}. It is
- * {@link Evidence#SEEN} once one unit covered more ground than its type can unupgraded over a window that starts at
- * or after the sound earliest finish, see {@link SpeedRunDetector} and {@link #soundEarliestFinishFrame}. A window
- * that ends before the sound earliest finish is kept as an early run and never makes the upgrade SEEN. SEEN is
+ * {@link Evidence#SEEN} once one unit covered more ground than its type can unupgraded over a run of two windows
+ * that starts at or after the sound earliest finish, see {@link SpeedRunDetector} and
+ * {@link #soundEarliestFinishFrame}. A run that ends before the sound earliest finish is kept as an early run and
+ * never makes the upgrade SEEN. SEEN is
  * permanent; PLAUSIBLE follows the earliest finish, which moves later as observations rule earlier finishes out.
  *
  * <p>An earliest finish is the research start plus {@link UpgradeType#upgradeTime()}. The research starts no earlier
@@ -59,7 +60,7 @@ public class EnemySpeedTracker {
         NONE,
         /** At or after the earliest finish, not seen. */
         PLAUSIBLE,
-        /** A unit was seen covering more ground than the unupgraded top speed allows over a whole window. */
+        /** A unit was seen covering more ground than the unupgraded top speed allows over a whole run. */
         SEEN
     }
 
@@ -79,9 +80,9 @@ public class EnemySpeedTracker {
     public enum Event {
         /** The frame reached the earliest finish, or its anchor changed or it moved far since the last report. */
         PLAUSIBLE,
-        /** A window made the upgrade SEEN. */
+        /** A run made the upgrade SEEN. */
         SEEN,
-        /** A window passed before the earliest finish and was refused. */
+        /** A run ended before the earliest finish and was refused. */
         EARLY_RUN
     }
 
@@ -90,15 +91,15 @@ public class EnemySpeedTracker {
     public static class Report {
         Event event;
         UpgradeType upgrade;
-        /** Distance covered over the window per frame, or -1 when no window applies. */
+        /** Distance covered per frame over the slower of the run's two windows, or -1 when no run applies. */
         double measuredSpeed;
-        /** The type's unupgraded top speed, or -1 when no window applies. */
+        /** The type's unupgraded top speed, or -1 when no run applies. */
         double topSpeed;
-        /** Frames the window spans, or -1 when no window applies. */
+        /** Frames the run spans, or -1 when no run applies. */
         int runFrames;
-        /** The earliest finish on the reported frame; for a window, the bound it was held to. */
+        /** The earliest finish on the reported frame; for a run, the bound it was held to. */
         int boundFrame;
-        /** What the earliest finish rested on, or null for a window on our own units. */
+        /** What the earliest finish rested on, or null for a run of our own units. */
         Anchor anchor;
     }
 
@@ -346,7 +347,7 @@ public class EnemySpeedTracker {
     /**
      * Reports what is new for each upgrade: a PLAUSIBLE report the first frame reaching its earliest finish and on
      * every later frame its anchor changed or it moved {@link #PLAUSIBLE_REPORT_FRAMES} or more from the last earliest
-     * finish reported, the window that made it SEEN, and the first window refused before the earliest finish.
+     * finish reported, the run that made it SEEN, and the first run refused before the earliest finish.
      *
      * @param frame current frame
      * @return the reports, in the order of {@link #FOLLOWED} and then of {@link Event}
@@ -362,11 +363,11 @@ public class EnemySpeedTracker {
             }
             SpeedRunDetector.Sighting sighting = detector.seen(upgrade);
             if (sighting != null && done.add(Event.SEEN)) {
-                reports.add(windowReport(Event.SEEN, upgrade, sighting, bound.anchor));
+                reports.add(runReport(Event.SEEN, upgrade, sighting, bound.anchor));
             }
             SpeedRunDetector.Sighting early = detector.earlyRun(upgrade);
             if (early != null && done.add(Event.EARLY_RUN)) {
-                reports.add(windowReport(Event.EARLY_RUN, upgrade, early, bound.anchor));
+                reports.add(runReport(Event.EARLY_RUN, upgrade, early, bound.anchor));
             }
         }
         return reports;
@@ -381,15 +382,15 @@ public class EnemySpeedTracker {
     }
 
     /**
-     * A report of a window.
+     * A report of a run.
      *
      * @param event SEEN or EARLY_RUN
      * @param upgrade the upgrade
-     * @param sighting the window
+     * @param sighting the run
      * @param anchor what the earliest finish rested on, or null for our own units
      * @return the report
      */
-    static Report windowReport(Event event, UpgradeType upgrade, SpeedRunDetector.Sighting sighting, Anchor anchor) {
+    static Report runReport(Event event, UpgradeType upgrade, SpeedRunDetector.Sighting sighting, Anchor anchor) {
         return new Report(event, upgrade, sighting.getMeasuredSpeed(), sighting.getTopSpeed(),
                 sighting.getRunFrames(), sighting.getBoundFrame(), anchor);
     }
@@ -429,7 +430,7 @@ public class EnemySpeedTracker {
 
     /**
      * @param upgrade the upgrade
-     * @return the frame a window first made the upgrade SEEN, or -1
+     * @return the frame a run first made the upgrade SEEN, or -1
      */
     public int seenFrame(UpgradeType upgrade) {
         SpeedRunDetector.Sighting sighting = detector.seen(upgrade);
@@ -464,7 +465,7 @@ public class EnemySpeedTracker {
 
     /**
      * The earliest frame the enemy can have finished an upgrade with every Extractor first seen finished taken as
-     * ready at its build time from the start of the game: a lower bound a window must not start before to make the
+     * ready at its build time from the start of the game: a lower bound a run must not start before to make the
      * upgrade SEEN.
      *
      * @param upgrade Metabolic Boost or Muscular Augments

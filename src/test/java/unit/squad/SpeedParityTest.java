@@ -84,11 +84,12 @@ class SpeedParityTest {
     }
 
     private static int fastRun(EnemySpeedTracker tracker, int start) {
-        double speed = UnitType.Zerg_Zergling.topSpeed() * SpeedRunDetector.SPEED_MARGIN + 0.5;
-        for (int i = 0; i <= SpeedRunDetector.WINDOW_FRAMES; i++) {
+        double speed = UnitType.Zerg_Zergling.topSpeed() * SpeedRunDetector.speedMargin(UnitType.Zerg_Zergling)
+                + 0.5;
+        for (int i = 0; i <= SpeedRunDetector.MIN_RUN_FRAMES; i++) {
             tracker.observe(start + i, 7, UnitType.Zerg_Zergling, 100 + (int) Math.round(i * speed), 100, speed, true);
         }
-        return start + SpeedRunDetector.WINDOW_FRAMES;
+        return start + SpeedRunDetector.MIN_RUN_FRAMES;
     }
 
     @Test
@@ -303,14 +304,15 @@ class SpeedParityTest {
     void theCalibrationOnOurOwnUnitsNeverMovesTheHold() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
         OwnSpeedCalibration calibration = new OwnSpeedCalibration();
-        double speed = UnitType.Zerg_Zergling.topSpeed() * SpeedRunDetector.SPEED_MARGIN + 0.5;
+        double speed = UnitType.Zerg_Zergling.topSpeed() * SpeedRunDetector.speedMargin(UnitType.Zerg_Zergling)
+                + 0.5;
         int start = 5000;
         calibration.upgradeFinished(UpgradeType.Metabolic_Boost, start);
-        for (int i = 0; i <= SpeedRunDetector.WINDOW_FRAMES; i++) {
+        for (int i = 0; i <= SpeedRunDetector.MIN_RUN_FRAMES; i++) {
             calibration.observe(start + i, 7, UnitType.Zerg_Zergling, 100 + (int) Math.round(i * speed), 100, speed,
                     true);
         }
-        int frame = start + SpeedRunDetector.WINDOW_FRAMES;
+        int frame = start + SpeedRunDetector.MIN_RUN_FRAMES;
 
         assertEquals(1, calibration.announce(frame).size());
         assertEquals(Evidence.PLAUSIBLE, tracker.evidence(UpgradeType.Metabolic_Boost, frame));
