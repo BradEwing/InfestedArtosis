@@ -100,6 +100,23 @@ class EnemySpeedTrackerTest {
     }
 
     @Test
+    void theEnemyTallyIsHandedOverOnceAtTheSoundEarliestFinishAndStartsAfresh() {
+        EnemySpeedTracker tracker = new EnemySpeedTracker();
+        int bound = tracker.soundEarliestFinishFrame(BOOST);
+        run(tracker, 7, UnitType.Zerg_Zergling, bound - 3 * W, 2 * W, UnitType.Zerg_Zergling.topSpeed());
+
+        assertNull(tracker.soundBoundCrossed(BOOST, bound - 1));
+        SpeedRunDetector.Diagnostic before = tracker.soundBoundCrossed(BOOST, bound);
+        assertEquals(0, before.getFromFrame());
+        assertTrue(before.getWindows() > 0);
+        assertNull(tracker.soundBoundCrossed(BOOST, bound + 1));
+        assertNull(tracker.soundBoundCrossed(UpgradeType.Adrenal_Glands, bound));
+        assertEquals(bound, tracker.diagnostic(UnitType.Zerg_Zergling).getFromFrame());
+        assertEquals(0, tracker.diagnostic(UnitType.Zerg_Zergling).getWindows());
+        assertEquals(0, tracker.diagnostic(UnitType.Zerg_Hydralisk).getFromFrame());
+    }
+
+    @Test
     void aRunOneFrameShortOfAWindowIsNotSeen() {
         EnemySpeedTracker tracker = new EnemySpeedTracker();
 

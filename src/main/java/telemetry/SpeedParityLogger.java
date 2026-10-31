@@ -44,18 +44,23 @@ import java.util.stream.Collectors;
  *
  * <p>A SPEED_DIAG row is written for each side and unit type when the game ends, and also on frame 9000 and on the
  * frame of the first ENEMY SEEN, for games that never end cleanly; those rows are cumulative and told apart from the
- * game-end ones by their frame. One is also written for SELF and the upgraded type when our upgrade finishes; that
- * tally then starts afresh, so the SELF rows after it start at our finish, as from_frame says. upgrade
+ * game-end ones by their frame. One is also written for SELF and the upgraded type when our upgrade finishes, and for
+ * ENEMY and the upgrade's type on the frame first reaching its sound earliest finish; that side's tally then starts
+ * afresh, so its later rows start at our finish or at that earliest finish, as from_frame says. upgrade
  * names the type's upgrade, top_speed its unupgraded top speed and run_frames the deciding window. from_frame is the
  * frame the tally began, longest_run the most consecutive sightings of one unit whose deciding window passed, and
  * max_speed_8, max_speed_16 and max_speed_24 the fastest window of that many frames as a multiple of the top speed.
  * windows counts the deciding windows measured, velocity_frames the sightings whose velocity was above the cut, and
  * not_moving_frames the sightings whose moving flag was false while the unit had moved since its last sighting.
- * clears_gap counts the units started afresh after going unseen, and clears_jump those started afresh after a jump.
+ * clears_gap and clears_jump count the units started afresh after a gap and after a jump.
  * steps_0 to steps_over_2 count the steps between two sightings by their distance per frame as a multiple of the top
  * speed: none, up to 1, 1.25, 1.5 and 2, and above 2. max_discounted_8 is the fastest deciding window less its longest
  * step's excess over the top speed, and max_run_8 the fastest run, the slower of its two deciding windows, which is
- * what SEEN compares with the type's margin; both as multiples of the top speed.
+ * what SEEN compares with the type's margin, over windows with no step that outwalks; both as multiples of the top
+ * speed. clears_gap counts only units seen again after a gap with no drop between; clears_dropped counts the units
+ * dropped after going unseen, as when they died, morphed, left sight or were loaded. outwalk_windows counts the
+ * deciding windows that could not pass because one of their steps, with the one before it, covered more ground than a
+ * walking upgraded unit.
  *
  * <p>An OWN_SPEED row, side SELF, is written the first frame our Metabolic Boost is finished, with evidence FINISHED.
  *
@@ -69,7 +74,7 @@ public class SpeedParityLogger implements SpeedParitySink {
             + "evidence,squad_supply,move_out_threshold,base_threshold,zerglings,measured_speed,top_speed,run_frames,"
             + "bound_frame,bound_anchor,side,longest_run,max_speed_8,max_speed_16,max_speed_24,windows,velocity_frames,"
             + "not_moving_frames,from_frame,clears_gap,clears_jump,steps_0,steps_1,steps_1_25,steps_1_5,steps_2,"
-            + "steps_over_2,max_discounted_8,max_run_8";
+            + "steps_over_2,max_discounted_8,max_run_8,clears_dropped,outwalk_windows";
 
     static final String EVENT_GATE = "GATE";
     static final String EVENT_GATE_END = "GATE_END";
@@ -83,7 +88,7 @@ public class SpeedParityLogger implements SpeedParitySink {
     private static final String NONE = "NONE";
     private static final String NO_WINDOW = String.join(",", "-1", "-1", "-1");
     private static final String NO_RUN = String.join(",", NO_WINDOW, "-1", NONE);
-    private static final int DIAGNOSTIC_COLUMNS = 18;
+    private static final int DIAGNOSTIC_COLUMNS = 20;
     private static final String NO_DIAGNOSTIC = String.join(",",
             Collections.nCopies(DIAGNOSTIC_COLUMNS, String.valueOf(NOT_EVALUATED)));
 
@@ -272,7 +277,8 @@ public class SpeedParityLogger implements SpeedParitySink {
                 String.valueOf(diagnostic.getFromFrame()), String.valueOf(diagnostic.getGapClears()),
                 String.valueOf(diagnostic.getJumpClears()),
                 Arrays.stream(diagnostic.getSteps()).mapToObj(String::valueOf).collect(Collectors.joining(",")),
-                speed(diagnostic.getDiscountedWindowSpeed()), speed(diagnostic.getRunSpeed()));
+                speed(diagnostic.getDiscountedWindowSpeed()), speed(diagnostic.getRunSpeed()),
+                String.valueOf(diagnostic.getDroppedClears()), String.valueOf(diagnostic.getOutwalkWindows()));
     }
 
     private static String speed(double pixelsPerFrame) {

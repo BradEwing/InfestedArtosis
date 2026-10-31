@@ -406,7 +406,8 @@ public class GameState {
     /**
      * Feeds the enemy speed tracker each visible enemy Zergling and Hydralisk not in a transport with its position,
      * velocity and moving flag, each visible enemy structure its timing depends on, and the gas mined from each
-     * finished enemy Extractor, then logs the tracker's reports, our own Metabolic Boost finishing, and with speed
+     * finished enemy Extractor, then logs the enemy diagnostics up to each upgrade's sound earliest finish when it is
+     * first reached, the tracker's reports, our own Metabolic Boost finishing, and with speed
      * telemetry on the calibration on our own units, see {@link #updateOwnSpeedCalibration}.
      */
     private void updateEnemySpeed(int frame) {
@@ -427,6 +428,12 @@ public class GameState {
             }
         }
         enemySpeedTracker.onFrame(frame);
+        for (UpgradeType upgrade : new UpgradeType[] {UpgradeType.Metabolic_Boost, UpgradeType.Muscular_Augments}) {
+            SpeedRunDetector.Diagnostic before = enemySpeedTracker.soundBoundCrossed(upgrade, frame);
+            if (before != null) {
+                SpeedParityTelemetry.speedDiagnostic(frame, SpeedParitySink.Side.ENEMY, before);
+            }
+        }
         if (!ownSpeedReported && hasOwnUpgrade(UpgradeType.Metabolic_Boost)) {
             ownSpeedReported = true;
             SpeedParityTelemetry.ownSpeedFinished(frame);

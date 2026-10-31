@@ -132,22 +132,72 @@ class SpeedRunDetectorTest {
     void unevenUpgradedStepsNeverClearTheUnitAndAreSeen() {
         for (UnitType type : FOLLOWED) {
             UpgradeType upgrade = EnemySpeedTracker.upgradeFor(type);
-            double u = upgraded(type);
-            SpeedRunDetector stillThenDouble = detector();
-            walk(stillThenDouble, type, BOUND, 20 * R, uneven(u));
-            SpeedRunDetector twoStillThenTriple = detector();
-            walk(twoStillThenTriple, type, BOUND, 20 * R, i -> i % 3 == 0 ? 3 * u : 0);
+            double[] speeds = {upgraded(type), type.topSpeed() * SpeedRunDetector.WALKING_SPEED_FACTOR};
+            for (double speed : speeds) {
+                SpeedRunDetector detector = detector();
+                walk(detector, type, BOUND, 20 * R, uneven(speed));
 
-            for (SpeedRunDetector detector : new SpeedRunDetector[] {stillThenDouble, twoStillThenTriple}) {
                 SpeedRunDetector.Diagnostic diagnostic = detector.diagnostic(type);
                 assertEquals(0, diagnostic.getJumpClears());
                 assertEquals(0, diagnostic.getGapClears());
+                assertEquals(0, diagnostic.getOutwalkWindows());
                 assertNotNull(detector.seen(upgrade));
                 assertTrue(detector.seen(upgrade).getFrame() <= BOUND + R + 2);
                 assertTrue(diagnostic.getRunSpeed() > SpeedRunDetector.speedMargin(type));
+                assertTrue(diagnostic.getSteps()[0] > 0);
+                assertTrue(diagnostic.getSteps()[5] > 0);
             }
-            assertTrue(stillThenDouble.diagnostic(type).getSteps()[0] > 0);
-            assertTrue(stillThenDouble.diagnostic(type).getSteps()[5] > 0);
+        }
+    }
+
+    @Test
+    void threeStillFramesThenACatchUpAtTheWalkingSpeedNeverClearTheUnit() {
+        for (UnitType type : FOLLOWED) {
+            double catchUp = 4 * type.topSpeed() * SpeedRunDetector.WALKING_SPEED_FACTOR;
+            SpeedRunDetector detector = detector();
+            walk(detector, type, BOUND, 20 * R, i -> i % 4 == 0 ? catchUp : 0);
+
+            assertFalse(SpeedRunDetector.impossibleStep(type, catchUp + SpeedRunDetector.POSITION_ROUNDING, 1));
+            assertEquals(0, detector.diagnostic(type).getJumpClears());
+            assertEquals(0, detector.diagnostic(type).getGapClears());
+        }
+    }
+
+    @Test
+    void anUnupgradedWalkWithOneShoveInAWindowNeverPasses() {
+        double[] ceilings = {LING_CEILING, HYDRA_CEILING};
+        for (int t = 0; t < FOLLOWED.length; t++) {
+            UnitType type = FOLLOWED[t];
+            double pace = type.topSpeed() * ceilings[t];
+            for (double shove : new double[] {16, 22, 30}) {
+                SpeedRunDetector detector = detector();
+                walk(detector, type, BOUND, 4 * R, i -> i == 2 * R ? shove : pace);
+
+                SpeedRunDetector.Diagnostic diagnostic = detector.diagnostic(type);
+                assertEquals(0, diagnostic.getJumpClears());
+                assertEquals(0, diagnostic.getLongestRun());
+                assertEquals(W + 1, diagnostic.getOutwalkWindows());
+                assertTrue(diagnostic.getWindowSpeed() > SpeedRunDetector.speedMargin(type));
+                assertTrue(diagnostic.getRunSpeed() < SpeedRunDetector.speedMargin(type));
+            }
+        }
+    }
+
+    @Test
+    void twoShovesTwentyFramesApartNeverMakeTheUpgradeSeen() {
+        double[] ceilings = {LING_CEILING, HYDRA_CEILING};
+        for (int t = 0; t < FOLLOWED.length; t++) {
+            UnitType type = FOLLOWED[t];
+            double pace = type.topSpeed() * ceilings[t];
+            SpeedRunDetector detector = detector();
+            SpeedRunDetector early = new SpeedRunDetector(u -> Integer.MAX_VALUE);
+            for (SpeedRunDetector each : new SpeedRunDetector[] {detector, early}) {
+                walk(each, type, BOUND, 200, i -> i == 30 || i == 50 ? 22 : pace);
+            }
+
+            assertNull(detector.seen(EnemySpeedTracker.upgradeFor(type)));
+            assertNull(early.earlyRun(EnemySpeedTracker.upgradeFor(type)));
+            assertEquals(2 * (W + 1), detector.diagnostic(type).getOutwalkWindows());
         }
     }
 
@@ -228,7 +278,8 @@ class SpeedRunDetectorTest {
                 carried.onFrame(start + i);
             }
             assertNull(carried.seen(upgrade));
-            assertEquals(1, carried.diagnostic(type).getGapClears());
+            assertEquals(1, carried.diagnostic(type).getDroppedClears());
+            assertEquals(0, carried.diagnostic(type).getGapClears());
             assertTrue(carried.diagnostic(type).getRunSpeed() < SpeedRunDetector.speedMargin(type));
 
             SpeedRunDetector jumped = detector();
@@ -239,12 +290,13 @@ class SpeedRunDetectorTest {
 
             assertTrue(SpeedRunDetector.impossibleStep(type, 400, 1));
             assertFalse(SpeedRunDetector.impossibleStep(type, 4 * upgraded(type), 1));
-            assertFalse(SpeedRunDetector.impossibleStep(type, 6 * upgraded(type), 2));
+            assertFalse(SpeedRunDetector.impossibleStep(type, 6 * upgraded(type), 1));
+            assertFalse(SpeedRunDetector.impossibleStep(type, 9 * upgraded(type), 2));
         }
     }
 
     @Test
-    void theStepHistogramAndTheClearsCountEachStepAndRestart() {
+    void theStepHistogramAndTheClearsCountEachStepRestartAndDrop() {
         SpeedRunDetector detector = detector();
         double v = LING.topSpeed();
         double[] steps = {0, 0.5 * v, 1.1 * v, 1.4 * v, 1.8 * v, 3 * v, 400};
@@ -266,7 +318,12 @@ class SpeedRunDetectorTest {
         SpeedRunDetector.Diagnostic diagnostic = detector.diagnostic(LING);
         assertArrayEquals(new int[] {1, 1, 1, 1, 1, 2}, diagnostic.getSteps());
         assertEquals(1, diagnostic.getJumpClears());
-        assertEquals(1, diagnostic.getGapClears());
+        assertEquals(0, diagnostic.getGapClears());
+        assertEquals(1, diagnostic.getDroppedClears());
+
+        detector.observe(frame + SpeedRunDetector.MAX_SAMPLE_GAP + 1, 7, LING, 100, 100, 0, true);
+        assertEquals(1, detector.diagnostic(LING).getGapClears());
+        assertEquals(1, detector.diagnostic(LING).getDroppedClears());
     }
 
     @Test

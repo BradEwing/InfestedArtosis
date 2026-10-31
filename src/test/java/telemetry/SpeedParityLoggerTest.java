@@ -14,7 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class SpeedParityLoggerTest {
 
-    private static final String NO_DIAGNOSTIC = "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1";
+    private static final String NO_DIAGNOSTIC = "-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1";
 
     private static int columns(String csv) {
         return csv.split(",", -1).length;
@@ -39,7 +39,7 @@ class SpeedParityLoggerTest {
 
         String row = SpeedParityLogger.enemySpeedRow("game", 6000, report);
 
-        assertEquals(38, columns(SpeedParityLogger.HEADER));
+        assertEquals(40, columns(SpeedParityLogger.HEADER));
         assertEquals(columns(SpeedParityLogger.HEADER), columns(row));
         assertEquals("game,6000,ENEMY_SPEED,NONE,NONE,NONE,NONE,NONE,Metabolic_Boost,SEEN,-1,-1,-1,-1,"
                 + "7.250,5.490,16,4300,GAS_READING,ENEMY," + NO_DIAGNOSTIC, row);
@@ -71,7 +71,7 @@ class SpeedParityLoggerTest {
     @Test
     void aDiagnosticRowCarriesTheTallyTheClearsAndTheStepHistogram() {
         SpeedRunDetector.Diagnostic diagnostic = new SpeedRunDetector.Diagnostic(UnitType.Zerg_Hydralisk, 4000, 3,
-                0.9, 1.2, 1.1, 250, 12, 40, 7, 2, new int[] {5, 100, 20, 10, 3, 2}, 1.05, 1.31);
+                0.9, 1.2, 1.1, 250, 12, 40, 7, 2, new int[] {5, 100, 20, 10, 3, 2}, 1.05, 1.31, 9, 4);
 
         String row = SpeedParityLogger.diagnosticRow("game", 9000, SpeedParitySink.Side.ENEMY, diagnostic);
 
@@ -79,7 +79,7 @@ class SpeedParityLoggerTest {
         assertEquals("game,9000,SPEED_DIAG,NONE,NONE,NONE,NONE,NONE,Muscular_Augments,NONE,-1,-1,-1,-1,-1,"
                 + String.format(Locale.ROOT, "%.3f", UnitType.Zerg_Hydralisk.topSpeed()) + ","
                 + SpeedRunDetector.WINDOW_FRAMES + ",-1,NONE,ENEMY,3,0.900,1.200,1.100,250,12,40,4000,7,2,"
-                + "5,100,20,10,3,2,1.050,1.310", row);
+                + "5,100,20,10,3,2,1.050,1.310,9,4", row);
     }
 
     @Test

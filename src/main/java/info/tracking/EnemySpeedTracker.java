@@ -136,6 +136,7 @@ public class EnemySpeedTracker {
     private final Map<UpgradeType, Bound> soundBounds = new HashMap<>();
     private final Map<UpgradeType, Set<Event>> reported = new HashMap<>();
     private final Map<UpgradeType, Bound> plausibleReported = new HashMap<>();
+    private final Set<UpgradeType> boundsCrossed = new HashSet<>();
     private boolean boundsStale = true;
 
     /**
@@ -396,8 +397,34 @@ public class EnemySpeedTracker {
     }
 
     /**
+     * Hands over, once per upgrade, the diagnostics of its unit type from before the frame first reaching its sound
+     * earliest finish, and starts them afresh from that finish, so one tally covers enemy units that cannot have the
+     * upgrade and the next those that can.
+     *
+     * @param upgrade Metabolic Boost or Muscular Augments
+     * @param frame current frame
+     * @return the diagnostics up to the sound earliest finish, or null before it, once handed over, or for any other
+     *     upgrade
+     */
+    public SpeedRunDetector.Diagnostic soundBoundCrossed(UpgradeType upgrade, int frame) {
+        UnitType type = unitFor(upgrade);
+        if (type == null || boundsCrossed.contains(upgrade)) {
+            return null;
+        }
+        int soundBound = soundEarliestFinishFrame(upgrade);
+        if (frame < soundBound) {
+            return null;
+        }
+        boundsCrossed.add(upgrade);
+        SpeedRunDetector.Diagnostic before = detector.diagnostic(type);
+        detector.resetDiagnostic(type, soundBound);
+        return before;
+    }
+
+    /**
      * @param type Zergling or Hydralisk
-     * @return what the detector measured on the enemy's units of the type this game
+     * @return what the detector measured on the enemy's units of the type since its tally began, see
+     *     {@link #soundBoundCrossed}
      */
     public SpeedRunDetector.Diagnostic diagnostic(UnitType type) {
         return detector.diagnostic(type);

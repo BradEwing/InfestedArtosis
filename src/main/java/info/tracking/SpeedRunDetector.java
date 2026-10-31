@@ -19,7 +19,9 @@ import java.util.function.ToIntFunction;
  * length ends on a frame the unit is seen and starts at the latest position seen at least that many frames earlier;
  * its speed is the straight-line distance between the two positions over the frames between them. A window of
  * {@link #WINDOW_FRAMES} passes when its speed is above the type's {@link #speedMargin} times its unupgraded
- * {@link UnitType#topSpeed()}, see {@link #passes}. JBWAPI's {@code Player.topSpeed} makes the upgraded top speed
+ * {@link UnitType#topSpeed()}, see {@link #passes}, and none of its steps outwalks, see {@link #outwalks}: a unit
+ * shoved, spawned apart or moved by anything but walking covers ground no walking unit does, and its window is
+ * measured but cannot pass. JBWAPI's {@code Player.topSpeed} makes the upgraded top speed
  * {@link #UPGRADED_SPEED_FACTOR} times the unupgraded one.
  *
  * <p>A run is two passing windows of one unit that do not overlap, the second ending at most
@@ -28,9 +30,10 @@ import java.util.function.ToIntFunction;
  * before the bound is seen only two windows after it. A run that starts before the bound and ends after it is
  * neither.
  *
- * <p>A unit seen again after more than {@link #MAX_SAMPLE_GAP} frames, as when it left sight or was carried in a
- * transport, or seen further from its last position than {@link #impossibleStep} allows, starts afresh: its
- * positions and its passing windows are dropped, so no window or run spans the gap or the jump.
+ * <p>A unit unseen for more than {@link #MAX_SAMPLE_GAP} frames, as when it died, morphed, left sight or was
+ * carried in a transport, is dropped by {@link #onFrame}. A unit seen again after more than that many frames with no
+ * {@link #onFrame} between, or seen further from its last position than {@link #impossibleStep} allows, starts afresh:
+ * its positions and its passing windows are dropped, so no window or run spans the gap or the jump.
  *
  * <p>Per unit type it also tallies diagnostics, see {@link Diagnostic}.
  */
@@ -63,7 +66,13 @@ public class SpeedRunDetector {
     public static final double UPGRADED_SPEED_FACTOR = 1.5;
 
     /** How many times further than an upgraded unit walks a step must go to be a jump, see {@link #impossibleStep}. */
-    public static final double JUMP_FACTOR = 2;
+    public static final double JUMP_FACTOR = 3;
+
+    /**
+     * The fastest an upgraded unit walks, as a multiple of the unupgraded top speed: {@link #UPGRADED_SPEED_FACTOR}
+     * times the 1.095 our unupgraded units reach over 16 frames, see {@link #outwalks}.
+     */
+    public static final double WALKING_SPEED_FACTOR = UPGRADED_SPEED_FACTOR * 1.095;
 
     /** The most the integer positions can add to the distance between two sightings, pixels. */
     public static final double POSITION_ROUNDING = 2 * Math.sqrt(2);
@@ -111,7 +120,7 @@ public class SpeedRunDetector {
         int velocityFrames;
         /** Sightings whose moving flag was false while the unit moved since its last sighting. */
         int notMovingFrames;
-        /** Units started afresh after more than {@link #MAX_SAMPLE_GAP} frames unseen. */
+        /** Units seen again after more than {@link #MAX_SAMPLE_GAP} frames with no drop between, started afresh. */
         int gapClears;
         /** Units started afresh after a jump, see {@link #impossibleStep}. */
         int jumpClears;
@@ -125,19 +134,32 @@ public class SpeedRunDetector {
          * frames, as a multiple of the top speed.
          */
         double discountedWindowSpeed;
-        /** Fastest run, the slower of its two {@link #WINDOW_FRAMES} windows, as a multiple of the top speed. */
+        /**
+         * Fastest run of two {@link #WINDOW_FRAMES} windows with no step that outwalks, the slower of the two, as a
+         * multiple of the top speed.
+         */
         double runSpeed;
+        /** Units dropped after more than {@link #MAX_SAMPLE_GAP} frames unseen, see {@link #onFrame}. */
+        int droppedClears;
+        /** {@link #WINDOW_FRAMES} windows measured that could not pass because one of their steps outwalks. */
+        int outwalkWindows;
     }
 
     private static final class Sample {
         final int frame;
         final int x;
         final int y;
+        final double step;
+        final int gap;
+        final boolean outwalked;
 
-        Sample(int frame, int x, int y) {
+        Sample(int frame, int x, int y, double step, int gap, boolean outwalked) {
             this.frame = frame;
             this.x = x;
             this.y = y;
+            this.step = step;
+            this.gap = gap;
+            this.outwalked = outwalked;
         }
     }
 
@@ -145,11 +167,15 @@ public class SpeedRunDetector {
         final int start;
         final int end;
         final double speed;
+        final boolean passed;
+        final boolean outwalked;
 
-        Window(int start, int end, double speed) {
+        Window(int start, int end, double speed, boolean passed, boolean outwalked) {
             this.start = start;
             this.end = end;
             this.speed = speed;
+            this.passed = passed;
+            this.outwalked = outwalked;
         }
     }
 
@@ -180,6 +206,8 @@ public class SpeedRunDetector {
         int notMovingFrames;
         int gapClears;
         int jumpClears;
+        int droppedClears;
+        int outwalkWindows;
         double fastestDiscounted;
         double fastestRun;
 
@@ -230,9 +258,24 @@ public class SpeedRunDetector {
     }
 
     /**
+     * Whether a step, with the step before it, covers more ground than a walking upgraded unit of its type: more than
+     * {@link #WALKING_SPEED_FACTOR} times the top speed per frame the two span, rounding included. A still frame
+     * followed by a step of two at the walking speed does not; a unit at its unupgraded pace shoved a few pixels
+     * further does. A unit's first step is taken as following a still frame.
+     *
+     * @param type the unit type
+     * @param distance pixels of the step and the step before it
+     * @param frames frames the two steps span
+     * @return true when no walking unit covers the distance
+     */
+    public static boolean outwalks(UnitType type, double distance, int frames) {
+        return distance > type.topSpeed() * WALKING_SPEED_FACTOR * frames + POSITION_ROUNDING;
+    }
+
+    /**
      * Whether a unit moved further between two sightings than {@link #JUMP_FACTOR} times what an upgraded unit of its
      * type walks in one frame more than the frames between them, rounding included. The extra frame and the factor
-     * leave room for a walking unit's uneven steps, a still frame followed by a step of two included, at any speed it
+     * leave room for a walking unit's uneven steps, still frames followed by a catch-up step included, at any speed it
      * reaches.
      *
      * @param type the unit type
@@ -285,6 +328,7 @@ public class SpeedRunDetector {
         if (exceedsBaseSpeed(type, velocity)) {
             tally.velocityFrames++;
         }
+        Sample sample = new Sample(frame, x, y, 0, 1, false);
         if (last != null) {
             int gap = frame - last.frame;
             double step = Math.hypot(x - last.x, y - last.y);
@@ -296,12 +340,15 @@ public class SpeedRunDetector {
                 if (impossibleStep(type, step, gap)) {
                     tally.jumpClears++;
                     track.clear();
-                } else if (step > 0 && !moving) {
-                    tally.notMovingFrames++;
+                } else {
+                    if (step > 0 && !moving) {
+                        tally.notMovingFrames++;
+                    }
+                    sample = new Sample(frame, x, y, step, gap, outwalks(type, last.step + step, last.gap + gap));
                 }
             }
         }
-        track.samples.addLast(new Sample(frame, x, y));
+        track.samples.addLast(sample);
         trim(track.samples, frame);
         boolean passed = false;
         for (int i = 0; i < WINDOWS.length; i++) {
@@ -316,8 +363,12 @@ public class SpeedRunDetector {
                 tally.windows++;
                 double discounted = distance - longestStepExcess(track.samples, start, type);
                 tally.fastestDiscounted = Math.max(tally.fastestDiscounted, discounted / span / type.topSpeed());
-                passed = passes(type, distance, span);
-                window(track, tally, upgrade, new Window(start.frame, frame, distance / span), passed);
+                boolean outwalked = outwalked(track.samples, start);
+                if (outwalked) {
+                    tally.outwalkWindows++;
+                }
+                passed = !outwalked && passes(type, distance, span);
+                window(track, tally, upgrade, new Window(start.frame, frame, distance / span, passed, outwalked));
             }
         }
         track.passing = passed ? track.passing + 1 : 0;
@@ -340,7 +391,16 @@ public class SpeedRunDetector {
         return STEP_BINS.length;
     }
 
-    private void window(Track track, Tally tally, UpgradeType upgrade, Window current, boolean passed) {
+    private static boolean outwalked(Deque<Sample> samples, Sample start) {
+        for (Sample sample : samples) {
+            if (sample.frame > start.frame && sample.outwalked) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void window(Track track, Tally tally, UpgradeType upgrade, Window current) {
         while (!track.windows.isEmpty() && track.windows.peekFirst().end < current.end - PAIR_SPAN_FRAMES) {
             track.windows.removeFirst();
         }
@@ -350,9 +410,11 @@ public class SpeedRunDetector {
             if (earlier.end > current.start) {
                 break;
             }
-            double runSpeed = Math.min(earlier.speed, current.speed);
-            tally.fastestRun = Math.max(tally.fastestRun, runSpeed / track.type.topSpeed());
-            if (passed && exceedsBaseSpeed(track.type, earlier.speed) && (first == null || first.start < boundFrame)) {
+            if (!current.outwalked && !earlier.outwalked) {
+                double runSpeed = Math.min(earlier.speed, current.speed);
+                tally.fastestRun = Math.max(tally.fastestRun, runSpeed / track.type.topSpeed());
+            }
+            if (current.passed && earlier.passed && (first == null || first.start < boundFrame)) {
                 first = earlier;
             }
         }
@@ -415,7 +477,7 @@ public class SpeedRunDetector {
     }
 
     /**
-     * Drops the units not seen for more than {@link #MAX_SAMPLE_GAP} frames, each a gap clear of its type.
+     * Drops the units not seen for more than {@link #MAX_SAMPLE_GAP} frames, each a dropped clear of its type.
      *
      * @param frame current frame
      */
@@ -423,7 +485,7 @@ public class SpeedRunDetector {
         tracks.values().removeIf(track -> {
             boolean stale = track.samples.isEmpty() || track.samples.peekLast().frame < frame - MAX_SAMPLE_GAP;
             if (stale && !track.samples.isEmpty()) {
-                tally(track.type).gapClears++;
+                tally(track.type).droppedClears++;
             }
             return stale;
         });
@@ -462,7 +524,8 @@ public class SpeedRunDetector {
         Tally tally = tallies.getOrDefault(type, new Tally(0));
         return new Diagnostic(type, tally.fromFrame, tally.longestRun, tally.fastest[0], tally.fastest[1],
                 tally.fastest[2], tally.windows, tally.velocityFrames, tally.notMovingFrames, tally.gapClears,
-                tally.jumpClears, tally.steps.clone(), tally.fastestDiscounted, tally.fastestRun);
+                tally.jumpClears, tally.steps.clone(), tally.fastestDiscounted, tally.fastestRun, tally.droppedClears,
+                tally.outwalkWindows);
     }
 
     /**
