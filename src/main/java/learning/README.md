@@ -171,7 +171,7 @@ data at all.
 ### Special Cases
 
 - **CannonRush reaction**: If the last game's detected strategies include "CannonRush", the system forces the `Overpool` opener regardless of UCB scores.
-- **Config overrides**: `config.openerOverride` and `config.strategyOverride` bypass UCB selection entirely for local testing.
+- **Config overrides**: `config.openerOverride` and `config.strategyOverride` bypass UCB selection entirely for local testing. `strategyOverride` may list several builds separated by commas, e.g. `1HatchSpire,2HatchMuta,3HatchMuta`; the first one offered for the opponent's race is used.
 
 ## Learning File Structure
 
