@@ -48,6 +48,12 @@ public final class Config {
      * decision step turns to one status. On unless IA_SQUAD_SHARED_VERDICT is set to false.
      */
     public static boolean squadSharedVerdict = true;
+    /**
+     * Whether a fighting Mutalisk kites each weapon cooldown: it steps just out of the reach of what can attack air
+     * and turns back in time to fire when the cooldown ends, instead of fleeing every enemy near it for a fixed time.
+     * On unless IA_MUTA_COOLDOWN_KITE is set to false.
+     */
+    public static boolean mutaCooldownKite = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -141,6 +147,7 @@ public final class Config {
         bunkerEcon = enabledUnlessFalse(setting(dotenv, "IA_BUNKER_ECON"));
         fightHysteresis = enabledUnlessFalse(setting(dotenv, "IA_FIGHT_HYSTERESIS"));
         squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
+        mutaCooldownKite = enabledUnlessFalse(setting(dotenv, "IA_MUTA_COOLDOWN_KITE"));
     }
 
     /**

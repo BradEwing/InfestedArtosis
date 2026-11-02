@@ -13,7 +13,8 @@ import lombok.Getter;
  * attack started after the last sample of a unit that leaves alive is not. The first attack frame is the last attack
  * the unit had started by the first reading that saw any, at most one sample interval after the true first attack.
  * The damage dealt is read the same way, from the unit's own tally of the damage its weapon fire was priced at, which
- * does not depend on the attack count.
+ * does not depend on the attack count. The attack cycle columns are read the same way from the unit's own
+ * unit.managed.AttackCycles, as their change between arrival and exit; they stay 0 unless combat telemetry is on.
  */
 @Getter
 class EngagementUnit {
@@ -26,6 +27,8 @@ class EngagementUnit {
     private final String squadAtArrival;
     private final int attacksAtArrival;
     private final int damageAtArrival;
+    private final AttackTally tallyAtArrival;
+    private AttackTally tallyAtExit;
 
     private int exitFrame;
     private int hitPointsAtExit;
@@ -51,6 +54,8 @@ class EngagementUnit {
         this.hitPointsAtExit = hitPoints;
         this.attacksAtExit = attacks.getAttacksStarted();
         this.damageAtExit = attacks.getDamageDealt();
+        this.tallyAtArrival = attacks;
+        this.tallyAtExit = attacks;
     }
 
     /**
@@ -68,6 +73,7 @@ class EngagementUnit {
     void observeAttacks(AttackTally attacks) {
         this.attacksAtExit = attacks.getAttacksStarted();
         this.damageAtExit = attacks.getDamageDealt();
+        this.tallyAtExit = attacks;
         if (firstAttackFrame < 0 && attacksAtExit > attacksAtArrival) {
             firstAttackFrame = attacks.getLastAttackStartFrame();
         }
@@ -85,6 +91,41 @@ class EngagementUnit {
      */
     int getDamageInEngagement() {
         return damageAtExit - damageAtArrival;
+    }
+
+    /**
+     * @return attack cycles the unit completed inside the engagement
+     */
+    int getAttackCyclesInEngagement() {
+        return tallyAtExit.getAttackCycles() - tallyAtArrival.getAttackCycles();
+    }
+
+    /**
+     * @return frames of the attack cycles the unit completed inside the engagement, summed
+     */
+    int getCycleFramesInEngagement() {
+        return tallyAtExit.getCycleFrames() - tallyAtArrival.getCycleFrames();
+    }
+
+    /**
+     * @return frames inside the engagement the unit spent cooling down inside anti-air reach
+     */
+    int getCooldownFramesInThreatInEngagement() {
+        return tallyAtExit.getCooldownFramesInThreat() - tallyAtArrival.getCooldownFramesInThreat();
+    }
+
+    /**
+     * @return hit points plus shields the unit lost inside the engagement while cooling down
+     */
+    int getCooldownDamageTakenInEngagement() {
+        return tallyAtExit.getCooldownDamageTaken() - tallyAtArrival.getCooldownDamageTaken();
+    }
+
+    /**
+     * @return ready frames of the attack cycles the unit completed inside the engagement
+     */
+    int getReadyFramesInEngagement() {
+        return tallyAtExit.getReadyFrames() - tallyAtArrival.getReadyFrames();
     }
 
     void markDied(int frame, Position position) {

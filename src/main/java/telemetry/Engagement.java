@@ -282,6 +282,11 @@ class Engagement {
             fields.add(String.valueOf(unit.getFirstAttackFrame()));
             fields.add(String.valueOf(unit.getAttacksInEngagement()));
             fields.add(String.valueOf(unit.getDamageInEngagement()));
+            fields.add(String.valueOf(unit.getAttackCyclesInEngagement()));
+            fields.add(String.valueOf(unit.getCycleFramesInEngagement()));
+            fields.add(String.valueOf(unit.getCooldownFramesInThreatInEngagement()));
+            fields.add(String.valueOf(unit.getCooldownDamageTakenInEngagement()));
+            fields.add(String.valueOf(unit.getReadyFramesInEngagement()));
             rows.add(String.join(",", fields));
         }
         return rows;

@@ -15,11 +15,13 @@ import lombok.Setter;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import telemetry.PlanEvents;
+import unit.squad.AirHarassTargeting;
 import util.Filter;
 import util.MapEdge;
 import util.MeleeOverflowGate;
 import util.Vec2;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -130,6 +132,12 @@ public class ManagedUnit {
     private int damageDealt;
     private int lastGroundWeaponCooldown = -1;
     private int lastAirWeaponCooldown = -1;
+    @Getter
+    private int lastWeaponFireFrame = -1;
+    @Getter
+    private final AttackCycles attackCycles = new AttackCycles();
+    /** Tuning value: pixels around a flyer searched for enemies that can attack air, wider than any air reach. */
+    static final int AIR_THREAT_SCAN_RADIUS = 384;
 
     private Position evadePosition;
     private int evadeFrame = -1;
@@ -803,11 +811,66 @@ public class ManagedUnit {
         int groundCooldown = unit.getGroundWeaponCooldown();
         int airCooldown = unit.getAirWeaponCooldown();
         if (weaponFired(lastGroundWeaponCooldown, groundCooldown) || weaponFired(lastAirWeaponCooldown, airCooldown)) {
+            lastWeaponFireFrame = frame;
             Unit target = weaponTarget();
             damageDealt += target != null && target.exists() ? damagePerHit(target) : 0;
         }
         lastGroundWeaponCooldown = groundCooldown;
         lastAirWeaponCooldown = airCooldown;
+    }
+
+    /**
+     * Feeds this frame to the unit's {@link AttackCycles}. Read after {@link #observeAttack} on the same frame, so an
+     * attack it counted is the attack start the cycles see. Whether the unit stands in anti-air reach is read only for
+     * a flyer whose weapon is cooling down; a ground unit always reads as out of it.
+     *
+     * @param frame current frame
+     */
+    public void observeAttackCycle(int frame) {
+        int cooldown = Math.max(unit.getGroundWeaponCooldown(), unit.getAirWeaponCooldown());
+        boolean inThreat = cooldown > 0 && unit.isFlying() && insideAnyReach(unit.getPosition(), airThreats());
+        attackCycles.observe(frame, lastAttackStartFrame == frame, cooldown, isClosingOnTarget(), role, inThreat,
+                unit.getHitPoints() + unit.getShields());
+    }
+
+    /**
+     * @param point a point
+     * @param threats threats
+     * @return true when the point lies inside the reach of any of them
+     */
+    static boolean insideAnyReach(Position point, List<CooldownKite.Threat> threats) {
+        for (CooldownKite.Threat threat : threats) {
+            if (threat.margin(point) <= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Every completed enemy within {@link #AIR_THREAT_SCAN_RADIUS} that can attack air, with its reach to this unit
+     * centre to centre: its air range for its owner, see {@link AirHarassTargeting#airRange}, plus both units' largest
+     * half extents. A Bunker counts, with its Marines' range.
+     *
+     * @return the threats
+     */
+    protected List<CooldownKite.Threat> airThreats() {
+        List<CooldownKite.Threat> threats = new ArrayList<>();
+        int ownHalfExtent = CooldownKite.largestHalfExtent(unit.getType());
+        for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), AIR_THREAT_SCAN_RADIUS)) {
+            UnitType type = enemy.getType();
+            if (!enemy.getPlayer().isEnemy(game.self()) || !enemy.isCompleted()
+                    || !AirHarassTargeting.isAntiAir(type)) {
+                continue;
+            }
+            int range = AirHarassTargeting.airRange(type, weapon -> enemy.getPlayer().weaponMaxRange(weapon));
+            if (range <= 0) {
+                continue;
+            }
+            threats.add(new CooldownKite.Threat(enemy.getPosition(),
+                    CooldownKite.reach(range, CooldownKite.largestHalfExtent(type), ownHalfExtent)));
+        }
+        return threats;
     }
 
     /**

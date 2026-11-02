@@ -26,7 +26,7 @@ class EngagementTest {
     @Test
     void engagementRowMatchesTheEngagementHeader() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
         engagement.noteSupply(1, 12, 8);
 
         assertEquals(TelemetryLog.ENGAGEMENT_HEADER.split(",", -1).length, engagementFields(engagement).length);
@@ -35,7 +35,7 @@ class EngagementTest {
     @Test
     void unitRowMatchesTheUnitHeader() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Hydralisk, 80, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Hydralisk, 80, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
 
         List<String> rows = engagement.toUnitRows(GAME_ID);
         assertEquals(1, rows.size());
@@ -59,15 +59,56 @@ class EngagementTest {
         String[] columns = TelemetryLog.ENGAGEMENT_UNIT_HEADER.split(",", -1);
 
         assertEquals(unitColumn("attacks_started") + 1, unitColumn("damage_dealt"));
-        assertEquals("damage_dealt", columns[columns.length - 1]);
+        assertEquals(unitColumn("damage_dealt") + 1, unitColumn("attack_cycles"));
+    }
+
+    @Test
+    void theCycleColumnsAreAppendedAfterTheDamageColumn() {
+        String[] columns = TelemetryLog.ENGAGEMENT_UNIT_HEADER.split(",", -1);
+
+        assertEquals(unitColumn("attack_cycles") + 1, unitColumn("cycle_frames_sum"));
+        assertEquals(unitColumn("cycle_frames_sum") + 1, unitColumn("cooldown_frames_in_threat"));
+        assertEquals(unitColumn("cooldown_frames_in_threat") + 1, unitColumn("cooldown_damage_taken"));
+        assertEquals(unitColumn("cooldown_damage_taken") + 1, unitColumn("ready_frames_out_of_range"));
+        assertEquals("ready_frames_out_of_range", columns[columns.length - 1]);
+    }
+
+    @Test
+    void aUnitRecordsOnlyTheCyclesItCompletedInsideTheEngagement() {
+        Engagement engagement = engagementAt(100);
+        engagement.noteUnit(100, 1, UnitType.Zerg_Mutalisk, 120, "FIGHT", "squad-a",
+                new AttackTally(4, 90, 36, 3, 100, 12, 9, 7));
+        engagement.noteUnit(108, 1, UnitType.Zerg_Mutalisk, 120, "FIGHT", "squad-a",
+                new AttackTally(6, 104, 54, 5, 170, 20, 18, 10));
+
+        String[] row = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
+        assertEquals("2", row[unitColumn("attack_cycles")]);
+        assertEquals("70", row[unitColumn("cycle_frames_sum")]);
+        assertEquals("8", row[unitColumn("cooldown_frames_in_threat")]);
+        assertEquals("9", row[unitColumn("cooldown_damage_taken")]);
+        assertEquals("3", row[unitColumn("ready_frames_out_of_range")]);
+    }
+
+    @Test
+    void aUnitThatDiesBetweenSamplesKeepsTheCyclesItCompletedAfterItsLastSample() {
+        Engagement engagement = engagementAt(100);
+        engagement.noteUnit(100, 1, UnitType.Zerg_Mutalisk, 120, "FIGHT", "squad-a",
+                new AttackTally(4, 90, 36, 3, 100, 12, 9, 7));
+
+        engagement.recordDeath(1, 115, new Position(500, 600), new AttackTally(5, 112, 45, 4, 133, 30, 40, 7));
+
+        String[] row = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
+        assertEquals("1", row[unitColumn("attack_cycles")]);
+        assertEquals("33", row[unitColumn("cycle_frames_sum")]);
+        assertEquals("31", row[unitColumn("cooldown_damage_taken")]);
     }
 
     @Test
     void aUnitRecordsOnlyTheDamageItDealtInsideTheEngagement() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 25));
-        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(4, 104, 30));
-        engagement.noteUnit(116, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(5, 112, 35));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 25, 0, 0, 0, 0, 0));
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(4, 104, 30, 0, 0, 0, 0, 0));
+        engagement.noteUnit(116, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(5, 112, 35, 0, 0, 0, 0, 0));
 
         String[] row = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
         assertEquals("10", row[unitColumn("damage_dealt")]);
@@ -76,10 +117,10 @@ class EngagementTest {
     @Test
     void aUnitThatDiesBetweenSamplesKeepsTheDamageItDealtAfterItsLastSample() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 25));
-        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 25));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 25, 0, 0, 0, 0, 0));
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 25, 0, 0, 0, 0, 0));
 
-        engagement.recordDeath(1, 115, new Position(500, 600), new AttackTally(4, 111, 30));
+        engagement.recordDeath(1, 115, new Position(500, 600), new AttackTally(4, 111, 30, 0, 0, 0, 0, 0));
 
         String[] row = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
         assertEquals("5", row[unitColumn("damage_dealt")]);
@@ -88,8 +129,8 @@ class EngagementTest {
     @Test
     void aUnitThatNeverHitAnythingDealtNoDamage() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(2, 40, 25));
-        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(2, 40, 25));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(2, 40, 25, 0, 0, 0, 0, 0));
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(2, 40, 25, 0, 0, 0, 0, 0));
 
         String[] row = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
         assertEquals("0", row[unitColumn("damage_dealt")]);
@@ -98,10 +139,10 @@ class EngagementTest {
     @Test
     void aUnitThatDiesBetweenSamplesKeepsTheAttacksItStartedAfterItsLastSample() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0));
-        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0, 0, 0, 0, 0, 0));
 
-        engagement.recordDeath(1, 115, new Position(500, 600), new AttackTally(4, 111, 0));
+        engagement.recordDeath(1, 115, new Position(500, 600), new AttackTally(4, 111, 0, 0, 0, 0, 0, 0));
 
         String[] fields = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
         assertEquals("111", fields[unitColumn("first_attack_frame")]);
@@ -111,8 +152,8 @@ class EngagementTest {
     @Test
     void aDeathWithoutTheUnitsAttacksKeepsTheSampledCount() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0));
-        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 30, "FIGHT", "squad-a", new AttackTally(5, 104, 0));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 30, "FIGHT", "squad-a", new AttackTally(5, 104, 0, 0, 0, 0, 0, 0));
 
         engagement.recordDeath(1, 115, new Position(500, 600));
 
@@ -123,10 +164,10 @@ class EngagementTest {
     @Test
     void aUnitThatAttackedRecordsItsFirstAttackAndOnlyTheAttacksStartedInsideTheEngagement() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0));
-        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0));
-        engagement.noteUnit(116, 1, UnitType.Zerg_Zergling, 30, "FIGHT", "squad-a", new AttackTally(4, 111, 0));
-        engagement.noteUnit(124, 1, UnitType.Zerg_Zergling, 20, "FIGHT", "squad-a", new AttackTally(6, 122, 0));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(3, 40, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(116, 1, UnitType.Zerg_Zergling, 30, "FIGHT", "squad-a", new AttackTally(4, 111, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(124, 1, UnitType.Zerg_Zergling, 20, "FIGHT", "squad-a", new AttackTally(6, 122, 0, 0, 0, 0, 0, 0));
 
         String[] row = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
         assertEquals("111", row[unitColumn("first_attack_frame")]);
@@ -136,8 +177,8 @@ class EngagementTest {
     @Test
     void aUnitThatNeverAttackedHasNoFirstAttackFrame() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(2, 40, 0));
-        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(2, 40, 0));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(2, 40, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(2, 40, 0, 0, 0, 0, 0, 0));
 
         String[] row = engagement.toUnitRows(GAME_ID).get(0).split(",", -1);
         assertEquals("-1", row[unitColumn("first_attack_frame")]);
@@ -147,8 +188,8 @@ class EngagementTest {
     @Test
     void arrivalOffsetIsRelativeToTheEngagementStart() {
         Engagement engagement = engagementAt(100);
-        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
-        engagement.noteUnit(340, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-b", new AttackTally(0, -1, 0));
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(340, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-b", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
 
         List<String> rows = engagement.toUnitRows(GAME_ID);
         assertEquals("0", rows.get(0).split(",", -1)[6]);
@@ -158,10 +199,10 @@ class EngagementTest {
     @Test
     void supplyWeightedArrivalQuantilesUseHalfSupply() {
         Engagement engagement = engagementAt(0);
-        engagement.noteUnit(0, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
-        engagement.noteUnit(0, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
-        engagement.noteUnit(0, 3, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
-        engagement.noteUnit(480, 4, UnitType.Zerg_Ultralisk, 400, "FIGHT", "squad-b", new AttackTally(0, -1, 0));
+        engagement.noteUnit(0, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(0, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(0, 3, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(480, 4, UnitType.Zerg_Ultralisk, 400, "FIGHT", "squad-b", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
 
         String[] fields = engagementFields(engagement);
         assertEquals("0", fields[12]);
@@ -172,8 +213,8 @@ class EngagementTest {
     @Test
     void deathsAreCountedOnceAndInHalfSupply() {
         Engagement engagement = engagementAt(0);
-        engagement.noteUnit(0, 1, UnitType.Zerg_Hydralisk, 80, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
-        engagement.noteUnit(0, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
+        engagement.noteUnit(0, 1, UnitType.Zerg_Hydralisk, 80, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
+        engagement.noteUnit(0, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
 
         engagement.recordDeath(1, 24, new Position(500, 600));
         engagement.recordDeath(1, 32, new Position(500, 600));
@@ -207,12 +248,12 @@ class EngagementTest {
     @Test
     void absorbKeepsTheOlderStartAndSumsLosses() {
         Engagement first = engagementAt(100);
-        first.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
+        first.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
         first.noteSupply(1, 10, 4);
         first.recordDeath(1, 110, new Position(1, 1));
 
         Engagement second = new Engagement(8, 200, new Position(1200, 1000));
-        second.noteUnit(200, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-b", new AttackTally(0, -1, 0));
+        second.noteUnit(200, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-b", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
         second.noteSupply(1, 10, 6);
         second.recordDeath(2, 210, new Position(2, 2));
 
@@ -231,10 +272,10 @@ class EngagementTest {
     @Test
     void absorbedUnitsKeepTheirAbsoluteArrivalAndGetRebasedOffsets() {
         Engagement first = engagementAt(100);
-        first.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
+        first.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
 
         Engagement second = new Engagement(8, 300, new Position(1200, 1000));
-        second.noteUnit(300, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-b", new AttackTally(0, -1, 0));
+        second.noteUnit(300, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-b", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
 
         first.absorb(second);
 
@@ -247,7 +288,7 @@ class EngagementTest {
     @Test
     void noRowFieldContainsAComma() {
         Engagement engagement = engagementAt(0);
-        engagement.noteUnit(0, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0));
+        engagement.noteUnit(0, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", new AttackTally(0, -1, 0, 0, 0, 0, 0, 0));
         engagement.noteSupply(1, 10, 4);
         engagement.noteStatus("FIGHT");
         engagement.noteSim(1.25, 1.4, "RETREAT", "Terran_Marine:4;Terran_Medic:1");
