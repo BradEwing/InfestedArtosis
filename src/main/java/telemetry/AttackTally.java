@@ -1,5 +1,7 @@
 package telemetry;
 
+import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.Value;
 
 /**
@@ -22,4 +24,25 @@ class AttackTally {
      * Damage the unit's weapon fire was priced at.
      */
     int damageDealt;
+
+    /**
+     * Counts of every {@link CycleColumn}, indexed by ordinal.
+     */
+    @Getter(AccessLevel.NONE)
+    int[] cycleCounts;
+
+    /**
+     * A tally with every cycle count 0.
+     */
+    static AttackTally of(int attacksStarted, int lastAttackStartFrame, int damageDealt) {
+        return new AttackTally(attacksStarted, lastAttackStartFrame, damageDealt, new int[CycleColumn.values().length]);
+    }
+
+    /**
+     * @param column a cycle column
+     * @return its count
+     */
+    int cycleCount(CycleColumn column) {
+        return cycleCounts[column.ordinal()];
+    }
 }

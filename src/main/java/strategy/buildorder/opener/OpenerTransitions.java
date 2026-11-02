@@ -38,17 +38,17 @@ final class OpenerTransitions {
 
     /**
      * Whether TwoHatchHydraTerran is offered: the persisted TerranMech prior holds, or the strategy override
-     * names it.
+     * lists it.
      */
     static boolean offersHydraBuild(StrategyTracker strategyTracker, Config config) {
         return strategyTracker != null && strategyTracker.isTerranMechPersistent() || isHydraBuildForced(config);
     }
 
     /**
-     * Whether the strategy override names {@link TwoHatchHydraTerran}.
+     * Whether the strategy override lists {@link TwoHatchHydraTerran}, alone or among other names.
      */
     static boolean isHydraBuildForced(Config config) {
-        return config != null && TwoHatchHydraTerran.NAME.equals(config.strategyOverride);
+        return config != null && StrategyOverride.lists(config.strategyOverride, TwoHatchHydraTerran.NAME);
     }
 
     static Set<BuildOrder> forRace(Race opponentRace) {

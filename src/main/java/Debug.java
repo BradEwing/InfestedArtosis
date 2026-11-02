@@ -24,7 +24,9 @@ import info.tracking.PsiStormTracker;
 import learning.Record;
 import learning.OpponentRecord;
 import strategy.buildorder.BuildOrder;
+import unit.managed.CooldownKite;
 import unit.managed.ManagedUnit;
+import unit.managed.Mutalisk;
 import unit.squad.CombatSimulator.CombatResult;
 import unit.squad.Squad;
 import unit.squad.SquadManager;
@@ -604,6 +606,10 @@ public class Debug {
             game.drawLineMap(unitPosition, managedUnit.retreatTarget, Color.Purple);
         }
 
+        if (managedUnit instanceof Mutalisk) {
+            debugCooldownKite((Mutalisk) managedUnit, unitPosition);
+        }
+
         if (managedUnit.fightTarget != null) {
             Position fightTargetPos = managedUnit.fightTarget.getPosition();
             if (fightTargetPos != null) {
@@ -619,6 +625,22 @@ public class Debug {
             String distanceText = String.format("Distance: %d", distance);
             Position textPosition = unitPosition.add(new Position(8, 8));
             game.drawTextMap(textPosition, distanceText, Text.Cyan);
+        }
+    }
+
+    /**
+     * Draws a Mutalisk's back-off point for this cooldown in orange, and the reach of the widest threat that covered
+     * it when the cooldown was planned, grown by the back-off margin, as an orange circle.
+     */
+    private void debugCooldownKite(Mutalisk mutalisk, Position unitPosition) {
+        Position point = mutalisk.getKitePoint();
+        if (point != null) {
+            game.drawLineMap(unitPosition, point, Color.Orange);
+            game.drawCircleMap(point, 4, Color.Orange, true);
+        }
+        CooldownKite.Threat threat = mutalisk.getKiteThreat();
+        if (threat != null) {
+            game.drawCircleMap(threat.getPosition(), threat.getReach() + CooldownKite.MARGIN, Color.Orange);
         }
     }
 

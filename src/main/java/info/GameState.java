@@ -233,6 +233,9 @@ public class GameState {
         for (ManagedUnit managedUnit : managedUnits) {
             managedUnit.observeHitPoints(frame);
             managedUnit.observeAttack(frame);
+            if (ManagedUnit.readsAttackCycles(config.telemetryCombat)) {
+                managedUnit.observeAttackCycle(frame);
+            }
         }
     }
 

@@ -15,11 +15,13 @@ import lombok.Setter;
 import macro.plan.Plan;
 import macro.plan.PlanState;
 import telemetry.PlanEvents;
+import unit.squad.AirHarassTargeting;
 import util.Filter;
 import util.MapEdge;
 import util.MeleeOverflowGate;
 import util.Vec2;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -130,6 +132,12 @@ public class ManagedUnit {
     private int damageDealt;
     private int lastGroundWeaponCooldown = -1;
     private int lastAirWeaponCooldown = -1;
+    @Getter
+    private int lastWeaponFireFrame = -1;
+    @Getter
+    private final AttackCycles attackCycles = new AttackCycles();
+    /** Tuning value: pixels around a flyer searched for enemies that can attack air, wider than any air reach. */
+    static final int AIR_THREAT_SCAN_RADIUS = 384;
 
     private Position evadePosition;
     private int evadeFrame = -1;
@@ -803,11 +811,115 @@ public class ManagedUnit {
         int groundCooldown = unit.getGroundWeaponCooldown();
         int airCooldown = unit.getAirWeaponCooldown();
         if (weaponFired(lastGroundWeaponCooldown, groundCooldown) || weaponFired(lastAirWeaponCooldown, airCooldown)) {
+            lastWeaponFireFrame = frame;
             Unit target = weaponTarget();
             damageDealt += target != null && target.exists() ? damagePerHit(target) : 0;
         }
         lastGroundWeaponCooldown = groundCooldown;
         lastAirWeaponCooldown = airCooldown;
+    }
+
+    /**
+     * Feeds this frame to the unit's {@link AttackCycles}, then {@link #observeKite}. Read after {@link #observeAttack}
+     * on the same frame, so an attack it counted is the attack start the cycles see. Whether the unit stands in
+     * anti-air reach is read only for a flyer whose weapon is cooling down; a ground unit always reads as out of it.
+     *
+     * @param frame current frame
+     */
+    public void observeAttackCycle(int frame) {
+        int cooldown = Math.max(unit.getGroundWeaponCooldown(), unit.getAirWeaponCooldown());
+        boolean inThreat = cooldown > 0 && unit.isFlying() && insideAnyReach(unit.getPosition(), airThreats());
+        boolean targetHeld = isClosingOnTarget();
+        attackCycles.observe(frame, lastAttackStartFrame == frame, cooldown,
+                targetHeld ? fightTarget.getID() : -1, targetHeld && isFightTargetInWeaponRange(), role, inThreat,
+                unit.getHitPoints() + unit.getShields());
+        observeKite(cooldown);
+    }
+
+    /**
+     * Records, without acting, what this unit's cooldown kite would decide, for a unit whose kite is not acting. Only a
+     * Mutalisk kites.
+     *
+     * @param cooldown frames left on the weapon cooldown
+     */
+    protected void observeKite(int cooldown) {
+    }
+
+    /**
+     * Whether attack cycles are read this frame: only with combat telemetry on, since the read scans for anti-air.
+     *
+     * @param telemetryCombat true when combat telemetry is on
+     * @return true when they are read
+     */
+    public static boolean readsAttackCycles(boolean telemetryCombat) {
+        return telemetryCombat;
+    }
+
+    /**
+     * @param point a point
+     * @param threats threats
+     * @return true when the point lies inside the reach of any of them
+     */
+    static boolean insideAnyReach(Position point, List<CooldownKite.Threat> threats) {
+        for (CooldownKite.Threat threat : threats) {
+            if (threat.margin(point) <= 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Every enemy within {@link #AIR_THREAT_SCAN_RADIUS} that can fire on air now, see {@link #firesOnAirNow}, with
+     * its reach to this unit centre to centre: its air range for its owner, see {@link AirHarassTargeting#airRange},
+     * plus both units' largest half extents. A Bunker counts, with its Marines' range. A unit that is not a building
+     * is mobile, at its owner's top speed for its type. Only units the game shows are seen: a threat in fog, or
+     * cloaked and undetected, is not.
+     *
+     * @return the threats
+     */
+    protected List<CooldownKite.Threat> airThreats() {
+        List<CooldownKite.Threat> threats = new ArrayList<>();
+        int ownHalfExtent = CooldownKite.largestHalfExtent(unit.getType());
+        for (Unit enemy : game.getUnitsInRadius(unit.getPosition(), AIR_THREAT_SCAN_RADIUS)) {
+            UnitType type = enemy.getType();
+            boolean disabled = enemy.isLockedDown() || enemy.isStasised() || enemy.isMaelstrommed();
+            if (!firesOnAirNow(type, enemy.getPlayer().isEnemy(game.self()), enemy.isCompleted(), enemy.isPowered(),
+                    enemy.isBurrowed(), disabled)) {
+                continue;
+            }
+            int range = AirHarassTargeting.airRange(type, weapon -> enemy.getPlayer().weaponMaxRange(weapon));
+            if (range <= 0) {
+                continue;
+            }
+            threats.add(new CooldownKite.Threat(enemy.getPosition(),
+                    CooldownKite.reach(range, CooldownKite.largestHalfExtent(type), ownHalfExtent),
+                    !type.isBuilding(), enemy.getPlayer().topSpeed(type)));
+        }
+        return threats;
+    }
+
+    /**
+     * Whether a unit can fire on air now: an enemy of an anti-air type, see {@link AirHarassTargeting#isAntiAir},
+     * that is completed, not burrowed, not locked down, in stasis or maelstrommed, and, for a building, powered.
+     * A burrowed unit is dropped because no type with an air weapon attacks while burrowed (the Lurker has none). A
+     * Scourge passes here, with its suicide weapon's range, but as fast as a Mutalisk it is never counted by the kite,
+     * see {@link CooldownKite.Threat#counts}.
+     *
+     * @param type its type
+     * @param enemy true when its owner is our enemy
+     * @param completed true when it is completed
+     * @param powered true when the game reports it powered
+     * @param burrowed true when it is burrowed
+     * @param disabled true when it is locked down, in stasis or maelstrommed
+     * @return true when it can
+     */
+    static boolean firesOnAirNow(UnitType type, boolean enemy, boolean completed, boolean powered, boolean burrowed,
+                                 boolean disabled) {
+        if (!enemy || !completed || burrowed || disabled || type.isBuilding() && !powered) {
+            return false;
+        }
+        return AirHarassTargeting.isAntiAir(type);
     }
 
     /**

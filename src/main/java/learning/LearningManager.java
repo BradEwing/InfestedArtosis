@@ -9,6 +9,7 @@ import info.tracking.terran.TerranMech;
 import info.tracking.terran.TerranWall;
 import strategy.BuildOrderFactory;
 import strategy.buildorder.BuildOrder;
+import strategy.buildorder.opener.StrategyOverride;
 import telemetry.PlanEvents;
 
 import java.io.IOException;
@@ -131,11 +132,7 @@ public class LearningManager {
     }
 
     private BuildOrder forcedStrategy() {
-        if (config.strategyOverride == null) {
-            return null;
-        }
-        BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);
-        return forced != null && !forced.isOpener() ? forced : null;
+        return StrategyOverride.atGameStart(config.strategyOverride, opponentRace, buildOrderFactory::getByName);
     }
 
     private void seedRacePrior() {
@@ -577,11 +574,9 @@ public class LearningManager {
                 opponentRecord, racePrior, recordAccumulator, RacePrior.isActive(Config.racePrior, historyGames),
                 RacePrior.raceKey(opponentRace));
 
-        if (config.strategyOverride != null) {
-            BuildOrder forced = buildOrderFactory.getByName(config.strategyOverride);
-            if (forced != null && candidates.contains(forced)) {
-                return forced;
-            }
+        BuildOrder forced = StrategyOverride.pick(config.strategyOverride, candidates, buildOrderFactory::getByName);
+        if (forced != null) {
+            return forced;
         }
         
         if (candidates.size() == 1) {

@@ -407,7 +407,8 @@ public class CombatTelemetry {
     }
 
     private static AttackTally attacksOf(ManagedUnit unit) {
-        return new AttackTally(unit.getAttacksStarted(), unit.getLastAttackStartFrame(), unit.getDamageDealt());
+        return new AttackTally(unit.getAttacksStarted(), unit.getLastAttackStartFrame(), unit.getDamageDealt(),
+                CycleColumn.read(unit.getAttackCycles()));
     }
 
     private void emit(Engagement engagement) {

@@ -282,6 +282,9 @@ class Engagement {
             fields.add(String.valueOf(unit.getFirstAttackFrame()));
             fields.add(String.valueOf(unit.getAttacksInEngagement()));
             fields.add(String.valueOf(unit.getDamageInEngagement()));
+            for (CycleColumn column : CycleColumn.values()) {
+                fields.add(String.valueOf(unit.cycleCountInEngagement(column)));
+            }
             rows.add(String.join(",", fields));
         }
         return rows;

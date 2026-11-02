@@ -76,6 +76,22 @@ public final class TestUnits {
     }
 
     /**
+     * Sets the unit's order and the position it targets, as the BWAPI server writes them.
+     */
+    public void setOrder(Unit unit, Order order, Position target) {
+        data.get(unit).setOrder(order.id);
+        data.get(unit).setOrderTargetPositionX(target.getX());
+        data.get(unit).setOrderTargetPositionY(target.getY());
+    }
+
+    /**
+     * Sets whether the unit reports that it is playing an attack frame, as the BWAPI server writes it.
+     */
+    public void setAttackFrame(Unit unit, boolean attackFrame) {
+        data.get(unit).setIsAttackFrame(attackFrame);
+    }
+
+    /**
      * Sets the unit's ground and air weapon cooldowns, as the BWAPI server writes them.
      */
     public void setWeaponCooldowns(Unit unit, int ground, int air) {
