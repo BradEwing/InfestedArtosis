@@ -15,7 +15,8 @@ import lombok.Getter;
  * counted on every frame the weapon is cooling down, whatever the cycle. Hit points and shields lost are also counted
  * on every frame, as the sum of the drops, so regeneration does not hide them.
  *
- * <p>The kite counters record how each planned cooldown came out, see {@link CooldownKite.Outcome}.
+ * <p>The kite counters record how each planned cooldown came out, see {@link CooldownKite.Outcome}, counting each
+ * cooldown's first plan; a cooldown planned again is counted once more as a re-plan, not again by outcome.
  */
 @Getter
 public final class AttackCycles {
@@ -46,6 +47,8 @@ public final class AttackCycles {
     private int kiteNoClear;
     /** Plans with no counted threat in reach. */
     private int kiteNoThreat;
+    /** Cooldowns planned with no counted threat that were planned again once a static threat came near. */
+    private int kiteReplans;
 
     private int lastStartFrame = -1;
     private boolean cycleHolds;
@@ -129,5 +132,12 @@ public final class AttackCycles {
                 kiteNoThreat++;
                 break;
         }
+    }
+
+    /**
+     * Counts one cooldown planned again after it was planned with no counted threat.
+     */
+    public void noteReplan() {
+        kiteReplans++;
     }
 }

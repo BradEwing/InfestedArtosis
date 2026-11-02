@@ -66,7 +66,8 @@ class EngagementTest {
     void theCycleColumnsAreAppendedAfterTheDamageColumnInOrder() {
         List<String> expected = Arrays.asList("attack_cycles", "cycle_frames_sum", "cooldown_frames_in_threat",
                 "cooldown_damage_taken", "ready_frames_out_of_range", "in_reach_cycles", "in_reach_cycle_frames_sum",
-                "cooldown_frames", "hp_lost_total", "kite_plans", "kite_backoffs", "kite_no_clear", "kite_no_threat");
+                "cooldown_frames", "hp_lost_total", "kite_plans", "kite_backoffs", "kite_no_clear", "kite_no_threat",
+                "kite_replans");
         List<String> columns = Arrays.asList(TelemetryLog.ENGAGEMENT_UNIT_HEADER.split(",", -1));
         int first = unitColumn("damage_dealt") + 1;
 
@@ -82,8 +83,8 @@ class EngagementTest {
     @Test
     void everyCycleColumnRecordsOnlyItsRiseInsideTheEngagement() {
         Engagement engagement = engagementAt(100);
-        int[] arrival = {3, 100, 12, 9, 7, 2, 70, 90, 40, 3, 2, 1, 0};
-        int[] exit = {5, 170, 20, 18, 10, 3, 101, 150, 75, 5, 3, 1, 1};
+        int[] arrival = {3, 100, 12, 9, 7, 2, 70, 90, 40, 3, 2, 1, 0, 0};
+        int[] exit = {5, 170, 20, 18, 10, 3, 101, 150, 75, 5, 3, 1, 1, 2};
         engagement.noteUnit(100, 1, UnitType.Zerg_Mutalisk, 120, "FIGHT", "squad-a", tally(4, 90, 36, arrival));
         engagement.noteUnit(108, 1, UnitType.Zerg_Mutalisk, 120, "FIGHT", "squad-a", tally(6, 104, 54, exit));
 

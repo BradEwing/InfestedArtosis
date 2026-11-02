@@ -9,6 +9,8 @@ import config.Config;
 import info.map.GameMap;
 import util.Time;
 
+import java.util.List;
+
 public class Mutalisk extends ManagedUnit {
     private Time retreatUntilFrame = null;
     static final int RETREAT_DURATION_FRAMES = 30;
@@ -106,7 +108,7 @@ public class Mutalisk extends ManagedUnit {
     /**
      * Kites one weapon cooldown at a time. Nothing is ordered while the attack animation plays. Each time the weapon
      * fires, or the role or fight target changes, the previous plan and retreat target are dropped and the cooldown is
-     * planned once, see {@link CooldownKite#plan}, with the cooldown the unit reports, see {@link #cooldownFramesLeft}.
+     * planned, see {@link #planOrReplan}, with the cooldown the unit reports, see {@link #cooldownFramesLeft}.
      * With no back-off it keeps its attack on the target. It flies to the back-off point, ordering the move again only
      * when the unit is not already moving there, and turns back once the cooldown left is only enough to fly back
      * within its reach of the target, see {@link CooldownKite#mustTurnBack}; a committed back-off turns back on
@@ -133,11 +135,7 @@ public class Mutalisk extends ManagedUnit {
         }
 
         setUnready(KITE_ORDER_FRAMES);
-        if (!kite.isPlanned()) {
-            CooldownKite.Plan plan = planCooldown(cooldown);
-            kite.accept(plan);
-            getAttackCycles().notePlan(plan.getOutcome());
-        }
+        planOrReplan(kite, cooldown);
 
         Position self = unit.getPosition();
         Position point = kite.getPoint();
@@ -159,22 +157,48 @@ public class Mutalisk extends ManagedUnit {
     }
 
     /**
+     * Plans the cooldown once, and plans it again for the frames left when it was planned with no counted threat and
+     * a static threat has since come near, see {@link CooldownKite#staticThreatNear}. A re-plan always finds a counted
+     * threat, so a cooldown is planned again at most once. Threats are scanned only while the plan could change.
+     *
+     * @param plans the cooldown's plan holder
+     * @param cooldown frames left on the cooldown
+     */
+    private void planOrReplan(CooldownKite plans, int cooldown) {
+        if (!plans.isPlanned()) {
+            CooldownKite.Plan plan = planCooldown(cooldown, airThreats());
+            plans.accept(plan);
+            getAttackCycles().notePlan(plan.getOutcome());
+            return;
+        }
+        if (plans.getOutcome() != CooldownKite.Outcome.NO_THREAT) {
+            return;
+        }
+        List<CooldownKite.Threat> threats = airThreats();
+        if (CooldownKite.staticThreatNear(threats, unit.getPosition())) {
+            plans.accept(planCooldown(cooldown, threats));
+            getAttackCycles().noteReplan();
+        }
+    }
+
+    /**
      * Plans this cooldown from where the Mutalisk and its fight target stand now.
      *
      * @param cooldown frames left on the cooldown
+     * @param threats the threats around the Mutalisk
      * @return the plan
      */
-    private CooldownKite.Plan planCooldown(int cooldown) {
+    private CooldownKite.Plan planCooldown(int cooldown, List<CooldownKite.Threat> threats) {
         double topSpeed = ownTopSpeed();
         return CooldownKite.plan(unit.getPosition(), fightTarget.getPosition(), targetReach(fightTarget.getType()),
-                airThreats(), topSpeed, CooldownKite.flight(topSpeed, cooldown - overheadFrames()),
+                threats, topSpeed, CooldownKite.flight(topSpeed, cooldown - overheadFrames()),
                 mapWidthPixels(), mapHeightPixels());
     }
 
     /**
-     * With the kite off, plans each cooldown of a fighting Mutalisk read-only once its attack animation is over and
-     * counts the outcome, so the control arm records what the kite would have decided. Nothing is ordered. With the
-     * kite on, the kite counts its own plans.
+     * With the kite off, plans each cooldown of a fighting Mutalisk read-only once its attack animation is over, and
+     * plans it again as the kite would, see {@link #planOrReplan}, counting both, so the control arm records what the
+     * kite would have decided. Nothing is ordered. With the kite on, the kite counts its own plans.
      *
      * @param cooldown frames left on the weapon cooldown
      */
@@ -185,12 +209,7 @@ public class Mutalisk extends ManagedUnit {
             return;
         }
         shadowKite.begin(getLastWeaponFireFrame(), role, fightTarget.getID());
-        if (shadowKite.isPlanned()) {
-            return;
-        }
-        CooldownKite.Plan plan = planCooldown(cooldown);
-        shadowKite.accept(plan);
-        getAttackCycles().notePlan(plan.getOutcome());
+        planOrReplan(shadowKite, cooldown);
     }
 
     /**
@@ -207,7 +226,15 @@ public class Mutalisk extends ManagedUnit {
      *     orders, and {@link CooldownKite#TURN_FRAMES}
      */
     protected int overheadFrames() {
-        return game.getLatencyFrames() + KITE_ORDER_FRAMES + CooldownKite.TURN_FRAMES;
+        return overheadFrames(game.getLatencyFrames());
+    }
+
+    /**
+     * @param latencyFrames the command latency in frames
+     * @return the latency, plus the frames between two orders, plus {@link CooldownKite#TURN_FRAMES}
+     */
+    static int overheadFrames(int latencyFrames) {
+        return latencyFrames + KITE_ORDER_FRAMES + CooldownKite.TURN_FRAMES;
     }
 
     /**

@@ -51,15 +51,19 @@ public final class CooldownKite {
      */
     public static final double SPEED_SHARE = 0.5;
     /**
-     * Assumption, not measured or sourced: frames the plan sets aside for the two turns of an out-and-back leg, on
-     * top of the command latency and the frames between two orders. Read with SPEED_SHARE.
+     * Tuning value: frames the plan sets aside for the two turns of an out-and-back leg, on top of the command latency
+     * and the frames between two orders. Sized to the frames per cycle that Mutalisks which back off stand ready out of
+     * range beyond those which never back off, read with SPEED_SHARE and ready_frames_out_of_range per cycle.
      */
-    public static final int TURN_FRAMES = 2;
+    public static final int TURN_FRAMES = 6;
 
     private int cycleFireFrame = -1;
     private Object cycleRole;
     private int cycleTargetId = -1;
     private boolean planned;
+    /** How this cooldown's plan came out, null until it is planned. */
+    @Getter
+    private Outcome outcome;
     @Getter
     private Position point;
     @Getter
@@ -162,6 +166,7 @@ public final class CooldownKite {
      */
     public void reset() {
         planned = false;
+        outcome = null;
         point = null;
         threat = null;
         committed = false;
@@ -181,6 +186,7 @@ public final class CooldownKite {
      */
     public void accept(Plan plan) {
         planned = true;
+        outcome = plan.getOutcome();
         point = plan.getPoint();
         threat = plan.getWidest();
         committed = plan.isCommitted();
@@ -269,6 +275,23 @@ public final class CooldownKite {
             }
         }
         return near;
+    }
+
+    /**
+     * Whether a static threat's reach grown by {@link #NEAR_MARGIN} covers the Mutalisk, so a cooldown planned with
+     * no counted threat must be planned again.
+     *
+     * @param threats threats around the Mutalisk
+     * @param self the Mutalisk's position
+     * @return true when one does
+     */
+    public static boolean staticThreatNear(List<Threat> threats, Position self) {
+        for (Threat threat : threats) {
+            if (!threat.isMobile() && threat.margin(self) < NEAR_MARGIN) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -24,6 +24,8 @@ class MutaliskCooldownTest {
 
     private static final Position RETREAT_POINT = new Position(2000, 2500);
     private static final CooldownKite.Threat SPORE = new CooldownKite.Threat(new Position(2100, 2000), 200);
+    private static final CooldownKite.Threat HYDRALISK = new CooldownKite.Threat(new Position(2050, 2000), 150, true,
+            UnitType.Zerg_Hydralisk.topSpeed());
 
     private final boolean kiteSetting = Config.mutaCooldownKite;
     private final TestUnits units = new TestUnits();
@@ -337,5 +339,95 @@ class MutaliskCooldownTest {
         assertEquals(Mutalisk.MainStep.FLEE, Mutalisk.mainStep(false, attackFrame + 1, until));
         assertEquals(Mutalisk.MainStep.FLEE, Mutalisk.mainStep(false, attackFrame + 29, until));
         assertEquals(Mutalisk.MainStep.ENGAGE, Mutalisk.mainStep(false, attackFrame + 30, until));
+    }
+
+    @Test
+    void aStaticThreatComingNearAfterANoThreatPlanReplansTheCooldownIntoABackOff() {
+        Config.mutaCooldownKite = true;
+        Probe probe = fightingMutalisk();
+        fire(probe, 100, 0, 30);
+        probe.fight();
+        assertNull(probe.getKitePoint());
+
+        probe.threats = Collections.singletonList(SPORE);
+        probe.frame = 101;
+        probe.fight();
+
+        assertEquals(1, probe.moves.size());
+        assertNotNull(probe.getKitePoint());
+        assertTrue(SPORE.margin(probe.getKitePoint()) > 0);
+        assertEquals(1, probe.getAttackCycles().getKiteReplans());
+        assertEquals(1, probe.getAttackCycles().getKitePlans());
+        assertEquals(1, probe.getAttackCycles().getKiteNoThreat());
+    }
+
+    @Test
+    void withoutAStaticThreatANoThreatPlanIsNotReplanned() {
+        Config.mutaCooldownKite = true;
+        Probe probe = fightingMutalisk();
+        fire(probe, 100, 0, 30);
+        probe.fight();
+
+        probe.threats = Collections.singletonList(HYDRALISK);
+        probe.frame = 101;
+        probe.fight();
+        probe.threats = Collections.emptyList();
+        probe.frame = 102;
+        probe.fight();
+
+        assertTrue(probe.moves.isEmpty());
+        assertNull(probe.getKitePoint());
+        assertEquals(0, probe.getAttackCycles().getKiteReplans());
+    }
+
+    @Test
+    void aReplannedCooldownIsNotReplannedAgainOrRescanned() {
+        Config.mutaCooldownKite = true;
+        Probe probe = fightingMutalisk();
+        fire(probe, 100, 0, 30);
+        probe.fight();
+        probe.threats = Collections.singletonList(SPORE);
+        probe.frame = 101;
+        probe.fight();
+        int scans = probe.threatScans;
+        units.setOrder(mutaUnit, bwapi.Order.Move, probe.getKitePoint());
+
+        for (int frame = 102; frame < 108; frame++) {
+            probe.frame = frame;
+            probe.fight();
+        }
+
+        assertEquals(1, probe.getAttackCycles().getKiteReplans());
+        assertEquals(scans, probe.threatScans);
+        assertEquals(1, probe.moves.size());
+    }
+
+    @Test
+    void withTheSwitchOffAStaticThreatMidCooldownLeavesMainsOrdersAndIsReplannedReadOnly() {
+        Config.mutaCooldownKite = false;
+        Probe probe = fightingMutalisk();
+        units.setAttackFrame(mutaUnit, true);
+        probe.frame = 500;
+        probe.fight();
+        units.setAttackFrame(mutaUnit, false);
+        fire(probe, 500, 0, 30);
+        probe.observeAttackCycle(500);
+        probe.threats = Collections.singletonList(SPORE);
+        probe.frame = 501;
+        probe.fight();
+        probe.observeAttackCycle(501);
+        probe.frame = 530;
+        probe.fight();
+
+        assertEquals(Collections.singletonList(RETREAT_POINT), probe.moves);
+        assertEquals(Collections.singletonList(probe.fightTarget), probe.attacks);
+        assertEquals(1, probe.getAttackCycles().getKitePlans());
+        assertEquals(1, probe.getAttackCycles().getKiteReplans());
+    }
+
+    @Test
+    void theOverheadSetsAsideLatencyTheOrderGapAndSixTurnFrames() {
+        assertEquals(6, CooldownKite.TURN_FRAMES);
+        assertEquals(9, Mutalisk.overheadFrames(2));
     }
 }

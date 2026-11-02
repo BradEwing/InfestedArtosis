@@ -240,4 +240,29 @@ class CooldownKiteTest {
 
         assertEquals(1, near.size());
     }
+
+    @Test
+    void onlyAStaticThreatNearTheMutaliskCallsForAReplan() {
+        CooldownKite.Threat spore = new CooldownKite.Threat(new Position(2100, 2000), 200);
+        CooldownKite.Threat farSpore = new CooldownKite.Threat(new Position(2400, 2000), 200);
+        CooldownKite.Threat hydra = mobile(2050, 2000, 150, UnitType.Zerg_Hydralisk);
+
+        assertTrue(CooldownKite.staticThreatNear(Collections.singletonList(spore), SELF));
+        assertFalse(CooldownKite.staticThreatNear(Collections.singletonList(farSpore), SELF));
+        assertFalse(CooldownKite.staticThreatNear(Collections.singletonList(hydra), SELF));
+        assertFalse(CooldownKite.staticThreatNear(Collections.emptyList(), SELF));
+    }
+
+    @Test
+    void theAcceptedPlansOutcomeIsKeptUntilTheCooldownIsDropped() {
+        CooldownKite kite = new CooldownKite();
+        kite.begin(100, "FIGHT", 7);
+        assertNull(kite.getOutcome());
+
+        kite.accept(plan(SELF, TARGET, 500));
+        assertEquals(CooldownKite.Outcome.NO_THREAT, kite.getOutcome());
+
+        kite.reset();
+        assertNull(kite.getOutcome());
+    }
 }

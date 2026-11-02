@@ -22,7 +22,8 @@ enum CycleColumn {
     KITE_PLANS("kite_plans", AttackCycles::getKitePlans),
     KITE_BACKOFFS("kite_backoffs", AttackCycles::getKiteBackoffs),
     KITE_NO_CLEAR("kite_no_clear", AttackCycles::getKiteNoClear),
-    KITE_NO_THREAT("kite_no_threat", AttackCycles::getKiteNoThreat);
+    KITE_NO_THREAT("kite_no_threat", AttackCycles::getKiteNoThreat),
+    KITE_REPLANS("kite_replans", AttackCycles::getKiteReplans);
 
     private final String column;
     private final ToIntFunction<AttackCycles> reader;

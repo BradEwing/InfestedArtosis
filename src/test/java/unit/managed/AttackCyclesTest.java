@@ -138,6 +138,18 @@ class AttackCyclesTest {
         assertEquals(2, cycles.getKiteBackoffs());
         assertEquals(1, cycles.getKiteNoClear());
         assertEquals(1, cycles.getKiteNoThreat());
+        assertEquals(0, cycles.getKiteReplans());
+    }
+
+    @Test
+    void aReplanIsCountedApartFromTheOutcomes() {
+        cycles.notePlan(CooldownKite.Outcome.NO_THREAT);
+        cycles.noteReplan();
+
+        assertEquals(1, cycles.getKitePlans());
+        assertEquals(1, cycles.getKiteNoThreat());
+        assertEquals(1, cycles.getKiteReplans());
+        assertEquals(0, cycles.getKiteBackoffs());
     }
 
     @Test
