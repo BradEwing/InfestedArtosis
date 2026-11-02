@@ -9,14 +9,13 @@ import config.Config;
 import info.map.GameMap;
 import util.Time;
 
-import java.util.List;
-
 public class Mutalisk extends ManagedUnit {
     private Time retreatUntilFrame = null;
     static final int RETREAT_DURATION_FRAMES = 30;
-    /** Tuning value: frames between two orders while the weapon cools down. */
+    /** Tuning value: frames between two decisions while the weapon cools down. */
     static final int KITE_ORDER_FRAMES = 1;
     private final CooldownKite kite = new CooldownKite();
+    private final CooldownKite shadowKite = new CooldownKite();
 
     public Mutalisk(Game game, Unit unit, UnitRole role, GameMap gameMap) {
         super(game, unit, role, gameMap);
@@ -34,6 +33,21 @@ public class Mutalisk extends ManagedUnit {
             return;
         }
         fightWithFixedRetreat();
+    }
+
+    /**
+     * Sets the role. A change of role drops the cooldown kite's plan, so a Mutalisk that left FIGHT and came back
+     * within one cooldown plans it again.
+     *
+     * @param newRole the role
+     */
+    @Override
+    public void setRole(UnitRole newRole) {
+        if (newRole != role) {
+            kite.reset();
+            shadowKite.reset();
+        }
+        super.setRole(newRole);
     }
 
     /**
@@ -67,9 +81,9 @@ public class Mutalisk extends ManagedUnit {
     }
 
     private void fightWithFixedRetreat() {
-        MainStep step = mainStep(unit.isAttackFrame(), game.getFrameCount(), retreatUntilFrame);
+        MainStep step = mainStep(unit.isAttackFrame(), currentFrame(), retreatUntilFrame);
         if (step == MainStep.START_RETREAT) {
-            retreatUntilFrame = new Time(game.getFrameCount() + RETREAT_DURATION_FRAMES);
+            retreatUntilFrame = new Time(currentFrame() + RETREAT_DURATION_FRAMES);
             return;
         }
         setUnready(4);
@@ -79,9 +93,9 @@ public class Mutalisk extends ManagedUnit {
                 retreatTarget = getRetreatPosition();
             }
             if (retreatTarget != null) {
-                unit.move(retreatTarget);
+                issueMove(retreatTarget);
             } else if (rallyPoint != null) {
-                unit.move(rallyPoint);
+                issueMove(rallyPoint);
             }
             return;
         }
@@ -91,11 +105,12 @@ public class Mutalisk extends ManagedUnit {
 
     /**
      * Kites one weapon cooldown at a time. Nothing is ordered while the attack animation plays. Each time the weapon
-     * fires, the previous back-off point and retreat target are dropped and a new back-off is planned once, from the
-     * threats that can attack air and whose reach covers the Mutalisk, see {@link CooldownKite#backOffPoint}, with the
-     * cooldown the unit reports. With no such threat it keeps its attack on the target. It turns back once the
-     * cooldown left is only enough to fly back within its reach of the target, see {@link CooldownKite#mustTurnBack},
-     * and attacks again when the cooldown ends.
+     * fires, or the role or fight target changes, the previous plan and retreat target are dropped and the cooldown is
+     * planned once, see {@link CooldownKite#plan}, with the cooldown the unit reports, see {@link #cooldownFramesLeft}.
+     * With no back-off it keeps its attack on the target. It flies to the back-off point, ordering the move again only
+     * when the unit is not already moving there, and turns back once the cooldown left is only enough to fly back
+     * within its reach of the target, see {@link CooldownKite#mustTurnBack}; a committed back-off turns back on
+     * arrival instead. It attacks again when the cooldown ends.
      */
     private void fightWithCooldownKite() {
         if (unit.isAttackFrame()) {
@@ -108,7 +123,7 @@ public class Mutalisk extends ManagedUnit {
         }
 
         int cooldown = cooldownFramesLeft();
-        if (kite.begin(getLastWeaponFireFrame())) {
+        if (kite.begin(getLastWeaponFireFrame(), role, fightTarget.getID())) {
             retreatTarget = null;
         }
         if (cooldown <= 0) {
@@ -118,25 +133,21 @@ public class Mutalisk extends ManagedUnit {
         }
 
         setUnready(KITE_ORDER_FRAMES);
-        Position self = unit.getPosition();
-        Position target = fightTarget.getPosition();
-        int targetReach = targetReach(fightTarget.getType());
-        double topSpeed = unit.getType().topSpeed();
-        int framesLeft = cooldown - overheadFrames();
         if (!kite.isPlanned()) {
-            List<CooldownKite.Threat> near = CooldownKite.near(airThreats(), self);
-            kite.plan(CooldownKite.backOffPoint(self, target, targetReach, near,
-                    CooldownKite.flight(topSpeed, framesLeft), game.mapWidth() * 32, game.mapHeight() * 32),
-                    CooldownKite.widest(near));
+            CooldownKite.Plan plan = planCooldown(cooldown);
+            kite.accept(plan);
+            getAttackCycles().notePlan(plan.getOutcome());
         }
 
+        Position self = unit.getPosition();
         Position point = kite.getPoint();
-        boolean turnBack = point != null
-                && CooldownKite.mustTurnBack(self, target, targetReach, topSpeed, framesLeft);
         boolean arrived = point != null && self.getDistance(point) <= CooldownKite.ARRIVAL_DISTANCE;
+        boolean turnBack = point != null && (kite.isCommitted() ? arrived
+                : CooldownKite.mustTurnBack(self, fightTarget.getPosition(), targetReach(fightTarget.getType()),
+                ownTopSpeed(), cooldown - overheadFrames()));
         switch (CooldownKite.step(false, cooldown, point, arrived, turnBack)) {
             case BACK_OFF:
-                unit.move(point);
+                moveTo(point);
                 break;
             case HOLD:
                 break;
@@ -148,29 +159,102 @@ public class Mutalisk extends ManagedUnit {
     }
 
     /**
-     * @return frames left on the cooldown of the Glaive Wurm, the Mutalisk's only weapon, which is its air weapon
-     *     against ground and air targets alike
+     * Plans this cooldown from where the Mutalisk and its fight target stand now.
+     *
+     * @param cooldown frames left on the cooldown
+     * @return the plan
+     */
+    private CooldownKite.Plan planCooldown(int cooldown) {
+        double topSpeed = ownTopSpeed();
+        return CooldownKite.plan(unit.getPosition(), fightTarget.getPosition(), targetReach(fightTarget.getType()),
+                airThreats(), topSpeed, CooldownKite.flight(topSpeed, cooldown - overheadFrames()),
+                mapWidthPixels(), mapHeightPixels());
+    }
+
+    /**
+     * With the kite off, plans each cooldown of a fighting Mutalisk read-only once its attack animation is over and
+     * counts the outcome, so the control arm records what the kite would have decided. Nothing is ordered. With the
+     * kite on, the kite counts its own plans.
+     *
+     * @param cooldown frames left on the weapon cooldown
+     */
+    @Override
+    protected void observeKite(int cooldown) {
+        if (Config.mutaCooldownKite || role != UnitRole.FIGHT || cooldown <= 0 || unit.isAttackFrame()
+                || fightTarget == null || !fightTarget.exists()) {
+            return;
+        }
+        shadowKite.begin(getLastWeaponFireFrame(), role, fightTarget.getID());
+        if (shadowKite.isPlanned()) {
+            return;
+        }
+        CooldownKite.Plan plan = planCooldown(cooldown);
+        shadowKite.accept(plan);
+        getAttackCycles().notePlan(plan.getOutcome());
+    }
+
+    /**
+     * @return frames left on the Glaive Wurm's cooldown. JBWAPI gives the Mutalisk the Glaive Wurm as both its ground
+     *     and its air weapon, and which of the two cooldown fields the game counts down depends on the target, so the
+     *     larger is read
      */
     int cooldownFramesLeft() {
-        return unit.getAirWeaponCooldown();
+        return Math.max(unit.getGroundWeaponCooldown(), unit.getAirWeaponCooldown());
     }
 
     /**
      * @return frames of a cooldown set aside before a planned flight: the command latency, the frames between two
      *     orders, and {@link CooldownKite#TURN_FRAMES}
      */
-    private int overheadFrames() {
+    protected int overheadFrames() {
         return game.getLatencyFrames() + KITE_ORDER_FRAMES + CooldownKite.TURN_FRAMES;
     }
 
     /**
-     * @param targetType the target's type
-     * @return the Mutalisk's reach to the target centre to centre: its air weapon's range for its owner, which the
-     *     Glaive Wurm uses against ground and air alike, plus both units' smallest half extents
+     * @return the Mutalisk's top speed for its owner, in pixels per frame
      */
-    private int targetReach(UnitType targetType) {
+    protected double ownTopSpeed() {
+        return unit.getPlayer().topSpeed(unit.getType());
+    }
+
+    protected int currentFrame() {
+        return game.getFrameCount();
+    }
+
+    protected int mapWidthPixels() {
+        return game.mapWidth() * 32;
+    }
+
+    protected int mapHeightPixels() {
+        return game.mapHeight() * 32;
+    }
+
+    /**
+     * @param targetType the target's type
+     * @return the Mutalisk's reach to the target centre to centre: its weapon's range for its owner plus both units'
+     *     smallest half extents
+     */
+    protected int targetReach(UnitType targetType) {
         int range = unit.getPlayer().weaponMaxRange(unit.getType().airWeapon());
         return range + CooldownKite.smallestHalfExtent(unit.getType()) + CooldownKite.smallestHalfExtent(targetType);
+    }
+
+    protected void issueMove(Position point) {
+        unit.move(point);
+    }
+
+    protected void issueAttack(Unit target) {
+        unit.attack(target);
+    }
+
+    /**
+     * Orders the move to the point unless the unit is already moving there.
+     */
+    private void moveTo(Position point) {
+        if (!unit.isIdle() && unit.getOrder() == Order.Move && point.equals(unit.getOrderTargetPosition())) {
+            return;
+        }
+        issueMove(point);
     }
 
     /**
@@ -181,17 +265,17 @@ public class Mutalisk extends ManagedUnit {
         if (unit.getOrder() == Order.AttackUnit && fightTarget.equals(unit.getOrderTarget())) {
             return;
         }
-        unit.attack(fightTarget);
+        issueAttack(fightTarget);
     }
 
     private void engageOrMoveOn() {
         if (fightTarget != null) {
-            unit.attack(fightTarget);
+            issueAttack(fightTarget);
             return;
         }
 
         if (movementTargetPosition != null) {
-            unit.move(movementTargetPosition.toPosition());
+            issueMove(movementTargetPosition.toPosition());
             return;
         }
 
@@ -206,7 +290,7 @@ public class Mutalisk extends ManagedUnit {
     }
 
     /**
-     * @return the threat with the largest reach that covered the Mutalisk when this cooldown was planned, or null
+     * @return the widest counted threat that covered the Mutalisk when this cooldown was planned, or null
      */
     public CooldownKite.Threat getKiteThreat() {
         return kite.getThreat();

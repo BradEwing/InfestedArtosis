@@ -94,38 +94,11 @@ class EngagementUnit {
     }
 
     /**
-     * @return attack cycles the unit completed inside the engagement
+     * @param column a cycle column
+     * @return how much its count rose between the unit's arrival and its last sample in the engagement, or its death
      */
-    int getAttackCyclesInEngagement() {
-        return tallyAtExit.getAttackCycles() - tallyAtArrival.getAttackCycles();
-    }
-
-    /**
-     * @return frames of the attack cycles the unit completed inside the engagement, summed
-     */
-    int getCycleFramesInEngagement() {
-        return tallyAtExit.getCycleFrames() - tallyAtArrival.getCycleFrames();
-    }
-
-    /**
-     * @return frames inside the engagement the unit spent cooling down inside anti-air reach
-     */
-    int getCooldownFramesInThreatInEngagement() {
-        return tallyAtExit.getCooldownFramesInThreat() - tallyAtArrival.getCooldownFramesInThreat();
-    }
-
-    /**
-     * @return hit points plus shields the unit lost inside the engagement while cooling down
-     */
-    int getCooldownDamageTakenInEngagement() {
-        return tallyAtExit.getCooldownDamageTaken() - tallyAtArrival.getCooldownDamageTaken();
-    }
-
-    /**
-     * @return ready frames of the attack cycles the unit completed inside the engagement
-     */
-    int getReadyFramesInEngagement() {
-        return tallyAtExit.getReadyFrames() - tallyAtArrival.getReadyFrames();
+    int cycleCountInEngagement(CycleColumn column) {
+        return tallyAtExit.cycleCount(column) - tallyAtArrival.cycleCount(column);
     }
 
     void markDied(int frame, Position position) {

@@ -11,55 +11,81 @@ import java.util.List;
 /**
  * Plans one weapon cooldown of a Mutalisk that fights: whether it steps back, to where, and when it turns back to its
  * target. The geometry is static over plain values; an instance holds the plan of the cooldown under way and drops
- * it when the next shot fires.
+ * it when the next shot fires, or when the Mutalisk's role or fight target changes.
  *
  * <p>Distances are measured centre to centre. A threat's reach is its air range plus its largest half extent plus the
  * Mutalisk's largest half extent, so a point outside it is outside the threat's range edge to edge. The Mutalisk's
  * reach to its target uses the smallest half extents instead, so a Mutalisk counted as back in range is in range.
+ *
+ * <p>The rule, see {@link #plan(Position, Position, int, List, double, double, int, int)}: only counted threats whose
+ * reach covers the Mutalisk matter. A static threat always counts; a mobile threat counts only when it is slower than
+ * the Mutalisk, since backing off from one as fast gains no distance on it. The back-off point must clear every such
+ * reach, else there is no back-off and the Mutalisk keeps attacking. Against a static threat the clearing point is
+ * taken even when the flight back costs time after the cooldown ends; against mobile threats alone it is taken only
+ * when the flight out and back fits in the cooldown.
  */
 public final class CooldownKite {
 
     /**
-     * Tuning value: pixels a back-off point keeps beyond the largest reach that covers the Mutalisk, the same cover
-     * margin the air harass keeps from anti-air zones. A point exactly on the reach edge is re-entered by the first
-     * pixel either unit moves.
+     * Tuning value: pixels a back-off point aims beyond every reach it leaves, the same cover margin the air harass
+     * keeps from anti-air zones. A point aimed exactly at the reach edge is re-entered by the first pixel either unit
+     * moves.
      */
     public static final int MARGIN = 16;
     /** Tuning value: pixels a threat's reach is grown by when deciding whether it is near enough to matter. */
     public static final int NEAR_MARGIN = MARGIN;
     /** Tuning value: pixels from the back-off point at which the Mutalisk counts as arrived. */
     public static final int ARRIVAL_DISTANCE = 8;
-    /** Tuning value: step, in pixels, by which a back-off that cannot be flown out and back is shortened. */
-    static final int SHORTEN_STEP = 4;
     /**
-     * Assumption, not measured: share of its top speed a Mutalisk is planned to keep over a leg that starts with a turn
-     * and from rest. The game's acceleration and turn rate are not converted here, so the plan takes half.
+     * Tuning value: the longest back-off, in pixels, the same 256 a fighting Mutalisk flees with the kite off, see
+     * {@link Mutalisk#retreatFleeDistance}.
+     */
+    public static final int MAX_BACK_OFF = 256;
+    /** Tuning value: degrees either side of the straight-away direction that a back-off may turn, tried in steps. */
+    static final int[] TURNS = {0, 30, -30, 60, -60, 90, -90};
+    /**
+     * Assumption, not measured or sourced: the share of its top speed a Mutalisk is planned to keep over a leg that
+     * starts with a turn and from rest. JBWAPI gives no units for UnitType acceleration and turn radius, so they are
+     * not converted; half the top speed makes the plan turn back early rather than late. Read against the control
+     * with ready_frames_out_of_range per cycle.
      */
     public static final double SPEED_SHARE = 0.5;
     /**
-     * Assumption, not measured: frames the plan sets aside for the two turns of an out-and-back leg, on top of the
-     * command latency and the frames between two orders.
+     * Assumption, not measured or sourced: frames the plan sets aside for the two turns of an out-and-back leg, on
+     * top of the command latency and the frames between two orders. Read with SPEED_SHARE.
      */
     public static final int TURN_FRAMES = 2;
 
     private int cycleFireFrame = -1;
+    private Object cycleRole;
+    private int cycleTargetId = -1;
     private boolean planned;
     @Getter
     private Position point;
     @Getter
     private Threat threat;
+    @Getter
+    private boolean committed;
 
     /**
-     * A unit that can hit the Mutalisk, as its position and its reach centre to centre.
+     * A unit that can hit the Mutalisk: its position, its reach centre to centre, and whether it moves and how fast.
      */
     @Getter
     public static final class Threat {
         private final Position position;
         private final int reach;
+        private final boolean mobile;
+        private final double topSpeed;
 
         public Threat(Position position, int reach) {
+            this(position, reach, false, 0);
+        }
+
+        public Threat(Position position, int reach, boolean mobile, double topSpeed) {
             this.position = position;
             this.reach = reach;
+            this.mobile = mobile;
+            this.topSpeed = topSpeed;
         }
 
         /**
@@ -69,24 +95,76 @@ public final class CooldownKite {
         public double margin(Position point) {
             return point.getDistance(position) - reach;
         }
+
+        /**
+         * @param ownTopSpeed the Mutalisk's top speed
+         * @return true when backing off can gain distance on this threat: it is static, or slower than the Mutalisk
+         */
+        public boolean counts(double ownTopSpeed) {
+            return !mobile || topSpeed < ownTopSpeed;
+        }
     }
 
     /**
-     * Starts a new cooldown when the weapon fired on a frame other than the one the plan was made for, dropping the
-     * back-off point so it is planned again from where the Mutalisk is now.
+     * How a cooldown's plan came out.
+     */
+    public enum Outcome {
+        /** No counted threat covered the Mutalisk; it keeps attacking. */
+        NO_THREAT,
+        /** Counted threats covered it but no back-off clears them; it keeps attacking. */
+        NO_CLEAR,
+        /** It backs off to a point that clears every counted threat. */
+        BACK_OFF
+    }
+
+    /**
+     * A cooldown's plan: the outcome, the back-off point, the widest counted threat that covered the Mutalisk, and
+     * whether the back-off is committed: a static threat's clearing point whose flight out and back does not fit in
+     * the cooldown, which the Mutalisk flies all the way to before it turns back.
+     */
+    @Getter
+    public static final class Plan {
+        private final Outcome outcome;
+        private final Position point;
+        private final Threat widest;
+        private final boolean committed;
+
+        Plan(Outcome outcome, Position point, Threat widest, boolean committed) {
+            this.outcome = outcome;
+            this.point = point;
+            this.widest = widest;
+            this.committed = committed;
+        }
+    }
+
+    /**
+     * Starts a new cooldown when the weapon fired on another frame, or the Mutalisk's role or fight target changed
+     * since the plan was made, dropping the back-off point so it is planned again from where the Mutalisk is now.
      *
      * @param fireFrame frame the Mutalisk's weapon last fired, -1 when it never has
+     * @param role the Mutalisk's role
+     * @param targetId its fight target's id, -1 for none
      * @return true when a new cooldown started
      */
-    public boolean begin(int fireFrame) {
-        if (fireFrame == cycleFireFrame) {
+    public boolean begin(int fireFrame, Object role, int targetId) {
+        if (fireFrame == cycleFireFrame && role == cycleRole && targetId == cycleTargetId) {
             return false;
         }
         cycleFireFrame = fireFrame;
+        cycleRole = role;
+        cycleTargetId = targetId;
+        reset();
+        return true;
+    }
+
+    /**
+     * Drops the plan, so the next ready frame plans the cooldown again.
+     */
+    public void reset() {
         planned = false;
         point = null;
         threat = null;
-        return true;
+        committed = false;
     }
 
     /**
@@ -99,13 +177,13 @@ public final class CooldownKite {
     /**
      * Records this cooldown's plan.
      *
-     * @param backOff the back-off point, or null to stay on the target
-     * @param widest the threat with the largest reach that covers the Mutalisk, or null
+     * @param plan the plan
      */
-    public void plan(Position backOff, Threat widest) {
+    public void accept(Plan plan) {
         planned = true;
-        point = backOff;
-        threat = widest;
+        point = plan.getPoint();
+        threat = plan.getWidest();
+        committed = plan.isCommitted();
     }
 
     /**
@@ -180,12 +258,13 @@ public final class CooldownKite {
     /**
      * @param threats threats around the Mutalisk
      * @param self the Mutalisk's position
-     * @return the threats whose reach grown by {@link #NEAR_MARGIN} covers the Mutalisk
+     * @param ownTopSpeed the Mutalisk's top speed
+     * @return the counted threats, see {@link Threat#counts}, whose reach grown by {@link #NEAR_MARGIN} covers it
      */
-    public static List<Threat> near(List<Threat> threats, Position self) {
+    public static List<Threat> near(List<Threat> threats, Position self, double ownTopSpeed) {
         List<Threat> near = new ArrayList<>();
         for (Threat threat : threats) {
-            if (threat.margin(self) < NEAR_MARGIN) {
+            if (threat.counts(ownTopSpeed) && threat.margin(self) < NEAR_MARGIN) {
                 near.add(threat);
             }
         }
@@ -218,41 +297,97 @@ public final class CooldownKite {
     }
 
     /**
-     * Where the Mutalisk steps back to for this cooldown: away from the near threats, weighted by how deep it stands
-     * in each, to {@link #MARGIN} outside every one of them. A back-off it could not fly out and back from before the
-     * cooldown ends, back to within its reach of the target, is shortened until it can; one shortened to nothing is
-     * no back-off. A point beyond the map is moved inside it, see {@link MapEdge#toward}.
+     * Plans the cooldown, see the class description.
      *
      * @param self the Mutalisk's position
      * @param target its target's position
      * @param targetReach its reach to the target centre to centre
-     * @param near threats whose reach covers it, see {@link #near}
+     * @param threats every threat around it, counted or not
+     * @param ownTopSpeed its top speed in pixels per frame
      * @param budget pixels it can fly before the cooldown ends, see {@link #flight}
      * @param mapWidth map width in pixels
      * @param mapHeight map height in pixels
-     * @return the back-off point, or null to stay on the target
+     * @return the plan
      */
-    public static Position backOffPoint(Position self, Position target, int targetReach, List<Threat> near,
-                                        double budget, int mapWidth, int mapHeight) {
-        if (near.isEmpty() || budget <= 0) {
-            return null;
+    public static Plan plan(Position self, Position target, int targetReach, List<Threat> threats,
+                            double ownTopSpeed, double budget, int mapWidth, int mapHeight) {
+        List<Threat> near = near(threats, self, ownTopSpeed);
+        if (near.isEmpty()) {
+            return new Plan(Outcome.NO_THREAT, null, null, false);
         }
+        Threat widest = widest(near);
+        Position point = clearingPoint(self, target, targetReach, near, mapWidth, mapHeight);
+        if (point == null) {
+            return new Plan(Outcome.NO_CLEAR, null, widest, false);
+        }
+        boolean anyStatic = near.stream().anyMatch(t -> !t.isMobile());
+        boolean overBudget = outAndBack(self, point, target, targetReach) > budget;
+        if (!anyStatic && overBudget) {
+            return new Plan(Outcome.NO_CLEAR, null, widest, false);
+        }
+        return new Plan(Outcome.BACK_OFF, point, widest, overBudget);
+    }
+
+    /**
+     * The back-off point with the shortest flight out and back that clears every near threat's reach: tried straight
+     * away from them, weighted by how deep the Mutalisk stands in each, and turned by each of {@link #TURNS}, each
+     * flown until it lies {@link #MARGIN} beyond every reach, no further than {@link #MAX_BACK_OFF}, and moved inside
+     * the map, see {@link MapEdge#toward}. A candidate the map edge or the length limit leaves inside a reach is
+     * dropped.
+     *
+     * @param self the Mutalisk's position
+     * @param target its target's position
+     * @param targetReach its reach to the target centre to centre
+     * @param near the threats to clear
+     * @param mapWidth map width in pixels
+     * @param mapHeight map height in pixels
+     * @return the point, or null when none clears
+     */
+    static Position clearingPoint(Position self, Position target, int targetReach, List<Threat> near, int mapWidth,
+                                  int mapHeight) {
         double[] away = awayFrom(self, target, near);
         if (away == null) {
             return null;
         }
-        double needed = 0;
-        for (Threat threat : near) {
-            needed = Math.max(needed, exitDistance(self, away, threat.getPosition(), threat.getReach() + MARGIN));
-        }
-        for (double length = Math.ceil(needed); length > 0; length -= SHORTEN_STEP) {
-            Position candidate = MapEdge.toward(self, new Position(self.getX() + (int) Math.round(away[0] * length),
-                    self.getY() + (int) Math.round(away[1] * length)), mapWidth, mapHeight);
-            if (outAndBack(self, candidate, target, targetReach) <= budget) {
-                return candidate.equals(self) ? null : candidate;
+        Position best = null;
+        double bestCost = Double.MAX_VALUE;
+        for (int turn : TURNS) {
+            double[] direction = rotate(away, Math.toRadians(turn));
+            double length = 0;
+            for (Threat threat : near) {
+                length = Math.max(length, exitDistance(self, direction, threat.getPosition(),
+                        threat.getReach() + MARGIN));
+            }
+            if (length <= 0 || length > MAX_BACK_OFF) {
+                continue;
+            }
+            Position candidate = MapEdge.toward(self, new Position(
+                    self.getX() + (int) Math.round(direction[0] * Math.ceil(length)),
+                    self.getY() + (int) Math.round(direction[1] * Math.ceil(length))), mapWidth, mapHeight);
+            if (candidate.equals(self) || !clearsAll(candidate, near)) {
+                continue;
+            }
+            double cost = outAndBack(self, candidate, target, targetReach);
+            if (cost < bestCost) {
+                best = candidate;
+                bestCost = cost;
             }
         }
-        return null;
+        return best;
+    }
+
+    /**
+     * @param point a point
+     * @param threats threats
+     * @return true when the point lies outside the reach of every one of them
+     */
+    static boolean clearsAll(Position point, List<Threat> threats) {
+        for (Threat threat : threats) {
+            if (threat.margin(point) <= 0) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /**
@@ -280,6 +415,12 @@ public final class CooldownKite {
                                        int framesLeft) {
         double back = Math.max(0, self.getDistance(target) - targetReach);
         return back >= flight(topSpeed, framesLeft);
+    }
+
+    private static double[] rotate(double[] direction, double radians) {
+        double cos = Math.cos(radians);
+        double sin = Math.sin(radians);
+        return new double[] {direction[0] * cos - direction[1] * sin, direction[0] * sin + direction[1] * cos};
     }
 
     private static double[] awayFrom(Position self, Position target, List<Threat> near) {

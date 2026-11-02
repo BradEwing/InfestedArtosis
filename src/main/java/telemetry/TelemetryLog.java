@@ -28,8 +28,7 @@ public final class TelemetryLog {
 
     static final String ENGAGEMENT_UNIT_HEADER = "game_id,engagement_id,unit_id,unit_type,supply,arrival_frame,"
             + "arrival_offset,exit_frame,died,death_frame,death_x,death_y,hp_at_arrival,hp_at_exit,role_at_arrival,"
-            + "squad_at_arrival,first_attack_frame,attacks_started,damage_dealt,attack_cycles,cycle_frames_sum,"
-            + "cooldown_frames_in_threat,cooldown_damage_taken,ready_frames_out_of_range";
+            + "squad_at_arrival,first_attack_frame,attacks_started,damage_dealt," + CycleColumn.header();
 
     private final boolean enabled;
     private final TelemetryWriter gameWriter;

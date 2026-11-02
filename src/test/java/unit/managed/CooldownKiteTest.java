@@ -24,12 +24,21 @@ class CooldownKiteTest {
     private static final int TARGET_REACH = 110;
     private static final double MUTA_SPEED = UnitType.Zerg_Mutalisk.topSpeed();
 
+    private static CooldownKite.Plan plan(Position self, Position target, double budget,
+                                          CooldownKite.Threat... threats) {
+        return CooldownKite.plan(self, target, TARGET_REACH, Arrays.asList(threats), MUTA_SPEED, budget, MAP, MAP);
+    }
+
+    private static CooldownKite.Threat mobile(int x, int y, int reach, UnitType type) {
+        return new CooldownKite.Threat(new Position(x, y), reach, true, type.topSpeed());
+    }
+
     @Test
     void withNoAntiAirThreatNearTheMutaliskStaysOnItsTarget() {
-        List<CooldownKite.Threat> near = CooldownKite.near(Collections.emptyList(), SELF);
+        CooldownKite.Plan plan = plan(SELF, TARGET, 500);
 
-        assertTrue(near.isEmpty());
-        assertNull(CooldownKite.backOffPoint(SELF, TARGET, TARGET_REACH, near, 500, MAP, MAP));
+        assertEquals(CooldownKite.Outcome.NO_THREAT, plan.getOutcome());
+        assertNull(plan.getPoint());
         assertEquals(CooldownKite.Step.ATTACK, CooldownKite.step(false, 20, null, false, false));
     }
 
@@ -37,69 +46,124 @@ class CooldownKiteTest {
     void aThreatWhoseReachDoesNotCoverTheMutaliskIsNotNear() {
         CooldownKite.Threat far = new CooldownKite.Threat(new Position(2300, 2000), 200);
 
-        assertTrue(CooldownKite.near(Collections.singletonList(far), SELF).isEmpty());
+        assertTrue(CooldownKite.near(Collections.singletonList(far), SELF, MUTA_SPEED).isEmpty());
+        assertEquals(CooldownKite.Outcome.NO_THREAT, plan(SELF, TARGET, 500, far).getOutcome());
     }
 
     @Test
     void theBackOffPointLiesJustOutsideTheReachAndCanBeFlownBackFromInTime() {
         CooldownKite.Threat spore = new CooldownKite.Threat(new Position(2150, 2000), 200);
-        List<CooldownKite.Threat> near = CooldownKite.near(Collections.singletonList(spore), SELF);
         double budget = 200;
 
-        Position point = CooldownKite.backOffPoint(SELF, TARGET, TARGET_REACH, near, budget, MAP, MAP);
+        CooldownKite.Plan plan = plan(SELF, TARGET, budget, spore);
 
-        assertNotNull(point);
+        assertEquals(CooldownKite.Outcome.BACK_OFF, plan.getOutcome());
+        Position point = plan.getPoint();
         double fromThreat = point.getDistance(spore.getPosition());
-        assertTrue(fromThreat >= 200 + CooldownKite.MARGIN - 1, "outside the reach plus margin: " + fromThreat);
-        assertTrue(fromThreat <= 200 + CooldownKite.MARGIN + CooldownKite.SHORTEN_STEP + 1, "just outside: " + fromThreat);
+        assertTrue(fromThreat > 200, "outside the reach: " + fromThreat);
+        assertTrue(fromThreat <= 200 + CooldownKite.MARGIN + 2, "just outside: " + fromThreat);
         assertTrue(CooldownKite.outAndBack(SELF, point, TARGET, TARGET_REACH) <= budget);
+        assertFalse(plan.isCommitted());
     }
 
     @Test
-    void aBackOffTooLongToFlyBackFromInTheCooldownIsShortened() {
+    void aStaticThreatsClearingPointIsTakenEvenWhenTheFlightBackRunsPastTheCooldown() {
         CooldownKite.Threat spore = new CooldownKite.Threat(new Position(2100, 2000), 200);
-        List<CooldownKite.Threat> near = CooldownKite.near(Collections.singletonList(spore), SELF);
-        double budget = 40;
 
-        Position point = CooldownKite.backOffPoint(SELF, TARGET, TARGET_REACH, near, budget, MAP, MAP);
+        CooldownKite.Plan plan = plan(SELF, TARGET, 40, spore);
 
-        assertNotNull(point);
-        assertTrue(CooldownKite.outAndBack(SELF, point, TARGET, TARGET_REACH) <= budget);
-        assertTrue(point.getDistance(spore.getPosition()) > SELF.getDistance(spore.getPosition()));
+        assertEquals(CooldownKite.Outcome.BACK_OFF, plan.getOutcome());
+        assertTrue(spore.margin(plan.getPoint()) > 0);
+        assertTrue(plan.isCommitted());
     }
 
     @Test
-    void withNoCooldownLeftToFlyThereIsNoBackOff() {
-        CooldownKite.Threat spore = new CooldownKite.Threat(new Position(2100, 2000), 200);
-        List<CooldownKite.Threat> near = CooldownKite.near(Collections.singletonList(spore), SELF);
+    void aMobileThreatsBackOffThatDoesNotFitTheCooldownIsNotFlown() {
+        CooldownKite.Threat marine = mobile(2100, 2000, 160, UnitType.Terran_Marine);
 
-        assertNull(CooldownKite.backOffPoint(SELF, TARGET, TARGET_REACH, near, 0, MAP, MAP));
+        CooldownKite.Plan plan = plan(SELF, TARGET, 20, marine);
+
+        assertEquals(CooldownKite.Outcome.NO_CLEAR, plan.getOutcome());
+        assertNull(plan.getPoint());
     }
 
     @Test
-    void theBackOffLeavesTheWidestReach() {
-        CooldownKite.Threat hydra = new CooldownKite.Threat(new Position(2060, 2000), 140);
-        CooldownKite.Threat spore = new CooldownKite.Threat(new Position(1950, 2100), 240);
-        List<CooldownKite.Threat> near = CooldownKite.near(Arrays.asList(hydra, spore), SELF);
+    void aMobileThreatsBackOffThatFitsTheCooldownClearsItsReach() {
+        CooldownKite.Threat marine = mobile(2100, 2000, 160, UnitType.Terran_Marine);
 
-        Position point = CooldownKite.backOffPoint(SELF, TARGET, TARGET_REACH, near, 1000, MAP, MAP);
+        CooldownKite.Plan plan = plan(SELF, TARGET, 400, marine);
 
-        assertNotNull(point);
-        assertTrue(spore.margin(point) >= CooldownKite.MARGIN - 1);
-        assertTrue(hydra.margin(point) >= CooldownKite.MARGIN - 1);
-        assertSame(spore, CooldownKite.widest(near));
+        assertEquals(CooldownKite.Outcome.BACK_OFF, plan.getOutcome());
+        assertTrue(marine.margin(plan.getPoint()) > 0);
+        assertFalse(plan.isCommitted());
+    }
+
+    @Test
+    void aThreatAsFastAsTheMutaliskIsNotCounted() {
+        CooldownKite.Threat enemyMuta = mobile(2050, 2000, 140, UnitType.Zerg_Mutalisk);
+        CooldownKite.Threat scourge = mobile(1980, 2000, 37, UnitType.Zerg_Scourge);
+
+        assertFalse(enemyMuta.counts(MUTA_SPEED));
+        assertFalse(scourge.counts(MUTA_SPEED));
+        assertEquals(CooldownKite.Outcome.NO_THREAT, plan(SELF, TARGET, 400, enemyMuta, scourge).getOutcome());
+    }
+
+    @Test
+    void opposingThreatsWithNoClearingPointWithinTheLimitMeanNoBackOff() {
+        CooldownKite.Threat west = new CooldownKite.Threat(new Position(1800, 2000), 400);
+        CooldownKite.Threat east = new CooldownKite.Threat(new Position(2200, 2000), 400);
+
+        CooldownKite.Plan plan = plan(SELF, TARGET, 1000, west, east);
+
+        assertEquals(CooldownKite.Outcome.NO_CLEAR, plan.getOutcome());
+        assertNull(plan.getPoint());
+    }
+
+    @Test
+    void opposingThreatsThatLeaveAGapAreClearedThroughIt() {
+        CooldownKite.Threat west = new CooldownKite.Threat(new Position(1800, 2000), 250);
+        CooldownKite.Threat east = new CooldownKite.Threat(new Position(2200, 2000), 250);
+
+        CooldownKite.Plan plan = plan(SELF, TARGET, 1000, west, east);
+
+        assertEquals(CooldownKite.Outcome.BACK_OFF, plan.getOutcome());
+        assertTrue(CooldownKite.clearsAll(plan.getPoint(), Arrays.asList(west, east)));
+    }
+
+    @Test
+    void aBackOffTheMapEdgeLeavesInsideTheReachIsNotFlown() {
+        Position corner = new Position(100, 100);
+        CooldownKite.Threat spore = new CooldownKite.Threat(new Position(300, 300), 420);
+
+        CooldownKite.Plan plan = plan(corner, new Position(150, 150), 1000, spore);
+
+        assertEquals(CooldownKite.Outcome.NO_CLEAR, plan.getOutcome());
+        assertNull(plan.getPoint());
     }
 
     @Test
     void aBackOffPointIsKeptInsideTheMap() {
         Position self = new Position(150, 2000);
         CooldownKite.Threat spore = new CooldownKite.Threat(new Position(250, 2000), 200);
-        List<CooldownKite.Threat> near = CooldownKite.near(Collections.singletonList(spore), self);
 
-        Position point = CooldownKite.backOffPoint(self, new Position(150, 1900), TARGET_REACH, near, 1000, MAP, MAP);
+        CooldownKite.Plan plan = plan(self, new Position(150, 1900), 1000, spore);
 
-        assertNotNull(point);
-        assertTrue(MapEdge.inside(point, MAP, MAP, MapEdge.INSET));
+        assertEquals(CooldownKite.Outcome.BACK_OFF, plan.getOutcome());
+        assertTrue(MapEdge.inside(plan.getPoint(), MAP, MAP, MapEdge.INSET));
+        assertTrue(spore.margin(plan.getPoint()) > 0);
+    }
+
+    @Test
+    void theBackOffLeavesEveryNearReachAndReportsTheWidest() {
+        CooldownKite.Threat hydra = mobile(2060, 2000, 140, UnitType.Zerg_Hydralisk);
+        CooldownKite.Threat spore = new CooldownKite.Threat(new Position(1950, 2100), 240);
+
+        CooldownKite.Plan plan = plan(SELF, TARGET, 1000, hydra, spore);
+
+        assertEquals(CooldownKite.Outcome.BACK_OFF, plan.getOutcome());
+        assertTrue(spore.margin(plan.getPoint()) > 0);
+        assertTrue(hydra.margin(plan.getPoint()) > 0);
+        assertSame(spore, plan.getWidest());
     }
 
     @Test
@@ -124,27 +188,35 @@ class CooldownKiteTest {
     }
 
     @Test
-    void theBackOffIsPlannedAgainForEveryShot() {
+    void theBackOffIsPlannedAgainForEveryShotRoleAndTarget() {
         CooldownKite kite = new CooldownKite();
-        CooldownKite.Threat spore = new CooldownKite.Threat(new Position(2100, 2000), 200);
+        CooldownKite.Plan backOff = plan(SELF, TARGET, 1000, new CooldownKite.Threat(new Position(2100, 2000), 200));
 
-        assertTrue(kite.begin(100));
-        kite.plan(new Position(1800, 2000), spore);
-        assertFalse(kite.begin(100));
+        assertTrue(kite.begin(100, UnitRole.FIGHT, 7));
+        kite.accept(backOff);
+        assertFalse(kite.begin(100, UnitRole.FIGHT, 7));
         assertTrue(kite.isPlanned());
-        assertEquals(new Position(1800, 2000), kite.getPoint());
+        assertNotNull(kite.getPoint());
 
-        assertTrue(kite.begin(131));
+        assertTrue(kite.begin(131, UnitRole.FIGHT, 7));
         assertFalse(kite.isPlanned());
         assertNull(kite.getPoint());
         assertNull(kite.getThreat());
+
+        kite.accept(backOff);
+        assertTrue(kite.begin(131, UnitRole.FIGHT, 8));
+        assertFalse(kite.isPlanned());
+
+        kite.accept(backOff);
+        assertTrue(kite.begin(131, UnitRole.HARASS, 8));
+        assertFalse(kite.isPlanned());
     }
 
     @Test
     void turningBackDropsThePointForTheRestOfTheCooldown() {
         CooldownKite kite = new CooldownKite();
-        kite.begin(100);
-        kite.plan(new Position(1800, 2000), null);
+        kite.begin(100, UnitRole.FIGHT, 7);
+        kite.accept(plan(SELF, TARGET, 1000, new CooldownKite.Threat(new Position(2100, 2000), 200)));
 
         kite.turnBack();
 
@@ -158,5 +230,14 @@ class CooldownKiteTest {
         int spore = CooldownKite.largestHalfExtent(UnitType.Zerg_Spore_Colony);
 
         assertEquals(224 + spore + muta, CooldownKite.reach(224, spore, muta));
+    }
+
+    @Test
+    void nearIgnoresThreatsThatDoNotCount() {
+        List<CooldownKite.Threat> near = CooldownKite.near(Arrays.asList(
+                mobile(2050, 2000, 140, UnitType.Zerg_Mutalisk),
+                mobile(2050, 2000, 140, UnitType.Zerg_Hydralisk)), SELF, MUTA_SPEED);
+
+        assertEquals(1, near.size());
     }
 }

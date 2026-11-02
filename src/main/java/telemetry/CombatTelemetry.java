@@ -8,7 +8,6 @@ import bwapi.Unit;
 import bwapi.UnitType;
 import info.GameState;
 import strategy.buildorder.BuildOrder;
-import unit.managed.AttackCycles;
 import unit.managed.ManagedUnit;
 import unit.managed.UnitRole;
 import unit.squad.CombatSimulator;
@@ -408,10 +407,8 @@ public class CombatTelemetry {
     }
 
     private static AttackTally attacksOf(ManagedUnit unit) {
-        AttackCycles cycles = unit.getAttackCycles();
         return new AttackTally(unit.getAttacksStarted(), unit.getLastAttackStartFrame(), unit.getDamageDealt(),
-                cycles.getCycles(), cycles.getCycleFrames(), cycles.getCooldownFramesInThreat(),
-                cycles.getCooldownDamageTaken(), cycles.getReadyFrames());
+                CycleColumn.read(unit.getAttackCycles()));
     }
 
     private void emit(Engagement engagement) {

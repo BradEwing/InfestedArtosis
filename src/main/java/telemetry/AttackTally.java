@@ -1,5 +1,7 @@
 package telemetry;
 
+import lombok.AccessLevel;
+import lombok.Getter;
 import lombok.Value;
 
 /**
@@ -24,27 +26,23 @@ class AttackTally {
     int damageDealt;
 
     /**
-     * Attack cycles counted, see unit.managed.AttackCycles.
+     * Counts of every {@link CycleColumn}, indexed by ordinal.
      */
-    int attackCycles;
+    @Getter(AccessLevel.NONE)
+    int[] cycleCounts;
 
     /**
-     * Frames between the two attack starts of every counted cycle, summed.
+     * A tally with every cycle count 0.
      */
-    int cycleFrames;
+    static AttackTally of(int attacksStarted, int lastAttackStartFrame, int damageDealt) {
+        return new AttackTally(attacksStarted, lastAttackStartFrame, damageDealt, new int[CycleColumn.values().length]);
+    }
 
     /**
-     * Frames with the weapon cooling down inside the reach of an enemy that can attack the unit.
+     * @param column a cycle column
+     * @return its count
      */
-    int cooldownFramesInThreat;
-
-    /**
-     * Hit points plus shields lost with the weapon cooling down.
-     */
-    int cooldownDamageTaken;
-
-    /**
-     * Frames of counted cycles with the weapon ready and no attack started.
-     */
-    int readyFrames;
+    int cycleCount(CycleColumn column) {
+        return cycleCounts[column.ordinal()];
+    }
 }
