@@ -3,7 +3,6 @@ package unit.squad.horizon;
 import bwapi.Position;
 import bwapi.UnitType;
 import unit.squad.AirFlock;
-import unit.squad.CombatSimulator;
 import util.TargetScorer;
 
 import java.util.List;
@@ -58,23 +57,6 @@ final class AirTurretPricing {
      * a candidate's cover has faded to nothing.
      */
     static final double TARGET_WINDOW = TARGET_RADIUS + TAPER;
-
-    /**
-     * Pixels added to a Turret's reach when judging whether it can hit a member: weapon range runs edge to edge, so
-     * centre to centre it reaches half the Turret's width and half the Mutalisk's further.
-     */
-    static final int EDGE_MARGIN = (UnitType.Terran_Missile_Turret.width() + UnitType.Zerg_Mutalisk.width()) / 2;
-
-    /**
-     * Most weight a Turret can carry and still be left out of a fighting flock's leave decision, see {@link #hold}:
-     * the weight {@link #EDGE_MARGIN} into the taper. Below it the flock centre is more than the Turret's reach plus
-     * {@link #FLOCK_EXTENT} plus {@link #ATTACKER_RANGE} plus {@link #EDGE_MARGIN} from the Turret, so a member at the
-     * flock's edge is outside its fire even hitting a target {@link #ATTACKER_RANGE} toward it, and every cover
-     * candidate is more than its reach plus {@link #ATTACKER_RANGE} plus {@link #EDGE_MARGIN} from it, so an attacker
-     * on one is outside its fire too. A straggler past the flock's edge is caught by {@link #holdable} reading each
-     * member's own position.
-     */
-    static final double HOLD_MAX_WEIGHT = 1.0 - EDGE_MARGIN / TAPER;
 
     private AirTurretPricing() {
     }
@@ -245,38 +227,16 @@ final class AirTurretPricing {
     }
 
     /**
-     * Whether a fighting flock may leave a Turret out of deciding to leave, see {@link #hold}: it weighs no more than
-     * {@link #HOLD_MAX_WEIGHT} and no member stands within its reach plus {@link #EDGE_MARGIN}.
-     *
-     * @param weight the Turret's weight
-     * @param turret where the Turret stands
-     * @param reach the Turret's air reach
-     * @param members where the flock's members stand
-     * @return true if the Turret can be left out
-     */
-    static boolean holdable(double weight, Position turret, int reach, List<Position> members) {
-        if (weight > HOLD_MAX_WEIGHT) return false;
-        for (Position member : members) {
-            if (member.getDistance(turret) <= reach + EDGE_MARGIN) return false;
-        }
-        return true;
-    }
-
-    /**
      * Weighs each sampled Turret by {@link #weight} and adds every one that weighs anything to the sample and the
      * snapshot, with the candidate that covers it most where one brings it under {@link #TAPER}.
      *
      * @param turrets the Turrets the simulator sampled for an air squad
      * @param targets the cover candidates read within {@link #TARGET_WINDOW}, see {@link #coverCandidate}
-     * @param members where the flock's members stand
      * @param sample the enemy sample to add to
      * @param snapshot the snapshot to record the priced Turrets and their cover on
-     * @return the anti-air strength added by Turrets the flock may leave out of deciding to leave, see
-     *     {@link #holdable}
      */
-    static double price(List<Turret> turrets, List<Target> targets, List<Position> members,
-                        HorizonCombatSimulator.EnemySample sample, HorizonCombatSimulator.DebugSnapshot snapshot) {
-        double holdableAntiAir = 0;
+    static void price(List<Turret> turrets, List<Target> targets, HorizonCombatSimulator.EnemySample sample,
+                      HorizonCombatSimulator.DebugSnapshot snapshot) {
         for (Turret turret : turrets) {
             Target cover = null;
             double coverGap = Double.POSITIVE_INFINITY;
@@ -297,41 +257,6 @@ final class AirTurretPricing {
             if (cover != null && coverGap < TAPER) {
                 snapshot.getAirCoverTargets().put(turret.position, cover.position);
             }
-            if (holdable(weight, turret.position, turret.reach, members)) {
-                holdableAntiAir += antiAir;
-            }
         }
-        return holdableAntiAir;
-    }
-
-    /**
-     * The verdict an air squad acts on once Turrets that cover neither it nor its target are held to deciding only
-     * whether it goes in, not whether it leaves. A squad in FIGHT holds against a RETREAT read whose anti-air,
-     * without the Turrets {@link #holdable} leaves out, its own air strength still clears the engage threshold
-     * against, or which measures nothing without them. Every other read stands: a RETREAT that a Turret weighing over
-     * {@link #HOLD_MAX_WEIGHT} or within reach of a member, or any other enemy, makes; and every read of a squad not
-     * in FIGHT, so such a Turret still keeps a retreating flock from turning back.
-     *
-     * <p>It is the band between where a flock enters and where it leaves: it goes in only once the whole read clears
-     * the threshold, and leaves only once the Turrets it fights near, or the enemy itself, turn the read.
-     *
-     * @param enabled whether {@link config.Config#airVerdictHold} is on
-     * @param inFight whether the squad's status is FIGHT
-     * @param raw the verdict for this frame's strengths
-     * @param friendlyAir our air strength
-     * @param enemyAntiAir the enemy's anti-air strength, Turrets included
-     * @param holdableAntiAir the part of it from Turrets the flock may leave out, see {@link #price}
-     * @param engageThreshold the engage threshold the read is judged against
-     * @return ENGAGE when the hold applies, otherwise the raw verdict
-     */
-    static CombatSimulator.CombatResult hold(boolean enabled, boolean inFight, CombatSimulator.CombatResult raw,
-                                             double friendlyAir, double enemyAntiAir, double holdableAntiAir,
-                                             double engageThreshold) {
-        if (!enabled || !inFight || raw != CombatSimulator.CombatResult.RETREAT || holdableAntiAir <= 0) return raw;
-        double covering = enemyAntiAir - holdableAntiAir;
-        if (covering > HorizonCombatSimulator.MIN_ENEMY_STRENGTH && friendlyAir / covering < engageThreshold) {
-            return raw;
-        }
-        return CombatSimulator.CombatResult.ENGAGE;
     }
 }
