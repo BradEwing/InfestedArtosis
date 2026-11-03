@@ -116,7 +116,9 @@ import java.util.stream.Collectors;
  * when the fight lock held a RETREAT read only because the band released it at the retreat threshold, and
  * COMMIT_WINDOW when only a turn-back commit held one (keyed on the end of the commit window), and BLIND_TURN_BACK
  * when a retreating ground squad's blind turn-back gate kept it in RETREAT on an ADVANCE that measured no enemy
- * (keyed on the end of the gate).
+ * (keyed on the end of the gate), and TURRET_REENTRY_BAND when a retreating air squad's Turret re-entry band turned
+ * an ENGAGE read into the RETREAT the row carries (keyed on the frame that run of turned reads began). One
+ * TURRET_REENTRY_BAND row is one refused re-entry run.
  *
  * <p>sim_retreat_threshold is the retreat threshold the sim judged the row's ratio against, and -1 on a row whose
  * decision never read a sim snapshot.
@@ -995,6 +997,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         if (lock == SquadLock.FIGHT_BAND) {
             return status == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.ENGAGE;
         }
+        if (lock == SquadLock.TURRET_REENTRY_BAND) {
+            return status == SquadStatus.RETREAT && result == CombatSimulator.CombatResult.RETREAT;
+        }
         return status == SquadStatus.FIGHT && result == CombatSimulator.CombatResult.RETREAT;
     }
 
@@ -1053,6 +1058,9 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             case FIGHT_BAND:
                 HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
                 return snapshot != null ? snapshot.getFightBandSinceFrame() : SquadDecision.NOT_EVALUATED;
+            case TURRET_REENTRY_BAND:
+                HorizonCombatSimulator.DebugSnapshot banded = lastSnapshot(squad);
+                return banded != null ? banded.getTurretReentryBandSinceFrame() : SquadDecision.NOT_EVALUATED;
             case COMMIT_WINDOW:
                 return squad.getTurnBackCommitUntilFrame();
             case BLIND_TURN_BACK:
