@@ -562,6 +562,9 @@ public class Debug {
 
             for (Map.Entry<Position, Integer> edge : snap.getAirEdgeOfFire().entrySet()) {
                 game.drawCircleMap(edge.getKey(), edge.getValue(), Color.Orange);
+                if (snap.getAirCoverTarget() != null) {
+                    game.drawLineMap(edge.getKey(), snap.getAirCoverTarget(), Color.Orange);
+                }
             }
 
             Position enemyCenter = snap.getEnemyCenter();

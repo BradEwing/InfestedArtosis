@@ -55,9 +55,9 @@ public final class Config {
      */
     public static boolean mutaCooldownKite = true;
     /**
-     * Whether an air squad's combat sim prices an enemy Missile Turret from the edge of its air fire, out to its reach
-     * plus the falloff, instead of only within the fixed engagement radius of the flock's centre. On unless
-     * IA_AIR_TURRET_EDGE_OF_FIRE is set to false.
+     * Whether an air squad's combat sim prices an enemy Missile Turret by what its air fire covers, the flock and the
+     * nearest enemy the flock would fight, instead of only within the fixed engagement radius of the flock's centre.
+     * On unless IA_AIR_TURRET_EDGE_OF_FIRE is set to false.
      */
     public static boolean airTurretEdgeOfFire = true;
     public boolean enabledAutoObserver = false;

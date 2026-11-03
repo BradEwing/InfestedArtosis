@@ -49,7 +49,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * evaluated outside its fight tick (a contain, runby or swarm read).
      */
     public static final int CONTACT_UNREAD = -1;
-    private static final double MAX_ENGAGEMENT_RADIUS = 320;
+    static final double MAX_ENGAGEMENT_RADIUS = 320;
     private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
 
@@ -129,6 +129,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
         retreatMemory.releaseIfExpired(currentFrame);
         List<Position> livingBunkers = new ArrayList<>();
         List<Position> rememberedInRadius = new ArrayList<>();
+        List<AirTurretPricing.Turret> airEdgeTurrets = new ArrayList<>();
+        Position nearestTarget = null;
+        double nearestTargetDistance = Double.POSITIVE_INFINITY;
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -162,12 +165,16 @@ public class HorizonCombatSimulator implements CombatSimulator {
             }
             boolean bunker = type == UnitType.Terran_Bunker;
             boolean airEdge = pricedAtAirEdgeOfFire(type, airSquad, Config.airTurretEdgeOfFire);
-            boolean edgeOfFire = !bunker && (airEdge || pricedAtEdgeOfFire(type, airSquad));
-            int reach = edgeOfFire ? edgeReach(type, airEdge, reachMemory.groundReach(type)) : 0;
+            boolean edgeOfFire = !bunker && pricedAtEdgeOfFire(type, airSquad);
+            int reach = edgeOfFire ? positionalReach(type, reachMemory.groundReach(type)) : 0;
             if (bunker) {
                 reach = BunkerPricing.reach(airSquad, reachMemory.groundReach(type));
             }
-            double radius = bunker || edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
+            if (airEdge) {
+                reach = AirTurretPricing.reach(type);
+            }
+            double radius = airEdge ? AirTurretPricing.sampleRadius(reach)
+                    : bunker || edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
             if (dist > radius) {
                 if (isThreatBeyondRadius(type, dist, radius)) {
                     snapshot.setThreatBeyondRadius(true);
@@ -192,9 +199,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
                     type.maxHitPoints(), type.maxShields());
             double distWeight = enemyDistanceWeight(type, dist, edgeOfFire, reach);
-            if (airEdge) {
-                snapshot.getAirEdgeOfFire().put(pos, reach);
-            }
             double heightMod = 1.0;
             if (!type.isFlyer() && isRanged(type) && ou.getLastKnownGroundHeight() > 0) {
                 heightMod = HEIGHT_BONUS;
@@ -202,6 +206,15 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
             double groundBase = weightedGroundStrength(type, friendlySizeProportions);
             double antiAirBase = weightedAntiAirStrength(type, friendlySizeProportions);
+            if (airEdge) {
+                airEdgeTurrets.add(new AirTurretPricing.Turret(type, pos, reach, dist,
+                        groundBase * hpWeight * heightMod, antiAirBase * hpWeight * heightMod, visible));
+                continue;
+            }
+            if (dist <= MAX_ENGAGEMENT_RADIUS && dist < nearestTargetDistance) {
+                nearestTarget = pos;
+                nearestTargetDistance = dist;
+            }
             if (bunker) {
                 BunkerPricing.Candidate candidate = bunkerCandidate(ou, pos, visible,
                         BunkerPricing.weight(pos, squadCenter, legs, reach), currentFrame,
@@ -228,6 +241,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
+        AirTurretPricing.price(airEdgeTurrets, nearestTarget, enemySample, snapshot);
         retreatMemory.retain(livingBunkers);
         priceBunkers(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters),
                 enemySample, snapshot, airSquad);
@@ -1108,9 +1122,9 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
     /**
      * Whether an enemy is priced from the edge of its air fire for an air squad: a Missile Turret, with the switch
-     * on. It is then sampled out to {@link #edgeOfFireRadius} of its air reach and weighed by {@link #distanceWeight}
-     * from that reach, so a flock that pulls back past the fixed engagement radius still counts the Turret covering
-     * the units it would turn back onto.
+     * on. It is then sampled out to {@link AirTurretPricing#sampleRadius} and weighed by what its fire covers, see
+     * {@link AirTurretPricing}, so a flock that pulls back past the fixed engagement radius still counts the Turret
+     * covering the units it would turn back onto.
      *
      * @param type enemy unit type
      * @param airSquad whether the squad is judged on its air arm
@@ -1119,21 +1133,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
      */
     static boolean pricedAtAirEdgeOfFire(UnitType type, boolean airSquad, boolean enabled) {
         return enabled && airSquad && type == UnitType.Terran_Missile_Turret;
-    }
-
-    /**
-     * The reach an enemy priced at its edge of fire is priced at: its air weapon's range for one priced at its edge
-     * of air fire (see {@link #pricedAtAirEdgeOfFire}), otherwise its positional reach (see {@link #positionalReach}),
-     * no more than {@link #MAX_POSITIONAL_REACH} either way.
-     *
-     * @param type enemy unit type
-     * @param airEdge whether the enemy is priced at its edge of air fire
-     * @param learnedGroundReach the type's ground reach learned over the game, see {@link EnemyReachMemory#groundReach}
-     * @return reach in pixels
-     */
-    static int edgeReach(UnitType type, boolean airEdge, int learnedGroundReach) {
-        if (!airEdge) return positionalReach(type, learnedGroundReach);
-        return Math.min(MAX_POSITIONAL_REACH, type.airWeapon().maxRange());
     }
 
     /**
@@ -1467,6 +1466,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
         private final List<Position> pricedBunkers = new ArrayList<>();
         private final Map<Position, Integer> airEdgeOfFire = new LinkedHashMap<>();
+        private Position airCoverTarget;
         private double friendlyTotal;
         private double enemyTotal;
         private double groundRatio;
