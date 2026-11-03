@@ -132,6 +132,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         List<AirTurretPricing.Turret> airEdgeTurrets = new ArrayList<>();
         List<AirTurretPricing.Target> coverTargets = new ArrayList<>();
         boolean coverScan = airSquad && Config.airTurretEdgeOfFire;
+        List<Position> fighters = coverScan ? fighterPositions(squad) : Collections.emptyList();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -180,7 +181,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
             }
             double radius = airEdge ? AirTurretPricing.sampleRadius(reach)
                     : bunker || edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
-            if (dist > radius) {
+            double flockDist = airEdge ? AirTurretPricing.flockDistance(fighters, pos, dist) : dist;
+            if (dist > radius && !(airEdge && AirTurretPricing.sampled(dist, flockDist, reach))) {
                 if (isThreatBeyondRadius(type, dist, radius)) {
                     snapshot.setThreatBeyondRadius(true);
                 }
@@ -212,7 +214,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double groundBase = weightedGroundStrength(type, friendlySizeProportions);
             double antiAirBase = weightedAntiAirStrength(type, friendlySizeProportions);
             if (airEdge) {
-                airEdgeTurrets.add(new AirTurretPricing.Turret(type, pos, reach, dist,
+                airEdgeTurrets.add(new AirTurretPricing.Turret(type, pos, reach, flockDist,
                         groundBase * hpWeight * heightMod, antiAirBase * hpWeight * heightMod, visible));
                 continue;
             }
@@ -242,8 +244,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
-        double holdableTurretAntiAir = AirTurretPricing.price(airEdgeTurrets, coverTargets,
-                memberPositions(squad, airEdgeTurrets.isEmpty()), enemySample, snapshot);
+        double holdableTurretAntiAir = AirTurretPricing.price(airEdgeTurrets, coverTargets, fighters, enemySample,
+                snapshot);
         retreatMemory.retain(livingBunkers);
         priceBunkers(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters),
                 enemySample, snapshot, airSquad);
@@ -1009,10 +1011,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * @param none whether no position is needed, so none is read
      * @return where each member stands, empty when none is needed
      */
-    private static List<Position> memberPositions(Squad squad, boolean none) {
+    private static List<Position> fighterPositions(Squad squad) {
         List<Position> positions = new ArrayList<>();
-        if (none) return positions;
         for (ManagedUnit mu : squad.getMembers()) {
+            if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
             positions.add(mu.getUnit().getPosition());
         }
         return positions;

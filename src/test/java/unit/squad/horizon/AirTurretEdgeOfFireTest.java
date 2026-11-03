@@ -55,6 +55,8 @@ class AirTurretEdgeOfFireTest {
     private static final int NEAR_FULL_TURRET_DISTANCE = 424;
     private static final int FAR_TURRET = 600;
     private static final int UNDER_FAR_TURRET = 300;
+    private static final int CENTRE_LAG = 300;
+    private static final int BEYOND_SAMPLE = 1000;
     private static final double AIR = 100;
     private static final UnitType[] OTHER_ENEMIES = {MARINE, UnitType.Terran_Goliath, UnitType.Terran_Bunker,
         UnitType.Zerg_Spore_Colony, UnitType.Protoss_Photon_Cannon, UnitType.Terran_Siege_Tank_Siege_Mode};
@@ -79,6 +81,7 @@ class AirTurretEdgeOfFireTest {
         private final ObservedUnitTracker tracker = new ObservedUnitTracker();
         private final AirSquad squad = new AirSquad();
         private final HorizonCombatSimulator sim = new HorizonCombatSimulator();
+        private final List<Unit> mutalisks = new ArrayList<>();
 
         Battle(int mutalisks) {
             units.setFrame(FRAME);
@@ -89,7 +92,13 @@ class AirTurretEdgeOfFireTest {
                 units.setExists(unit, true);
                 units.setPosition(unit, CENTRE.getX(), CENTRE.getY());
                 squad.addUnit(new Mutalisk(units.game(), unit, UnitRole.FIGHT, null));
+                this.mutalisks.add(unit);
             }
+        }
+
+        Battle move(int member, int dx, int dy) {
+            units.setPosition(mutalisks.get(member), CENTRE.getX() + dx, CENTRE.getY() + dy);
+            return this;
         }
 
         Battle enemy(UnitType type, int dx, int dy) {
@@ -273,6 +282,48 @@ class AirTurretEdgeOfFireTest {
         Battle marine = new Battle(FLOCK).enemy(MARINE, UNDER_FAR_TURRET, 0).enemy(TURRET, FAR_TURRET, 0);
         marine.evaluate();
         assertEquals(fullTurret(), turretStrength(marine), 1e-9);
+    }
+
+    @Test
+    void throughEvaluateATurretWeighsInFullWhileAMemberIsInReachWhereverTheSmoothedCentreLags() {
+        Config.airTurretEdgeOfFire = true;
+        int turretDistance = CENTRE_LAG + REACH - 20;
+        Battle lagged = new Battle(FLOCK).enemy(TURRET, turretDistance, 0);
+        assertEquals(CENTRE, lagged.squad.getCenter());
+        for (int i = 0; i < FLOCK; i++) {
+            lagged.move(i, CENTRE_LAG, 0);
+        }
+        lagged.evaluate();
+        assertEquals(CENTRE, lagged.snapshot().getSquadCenter());
+        assertTrue(AirTurretPricing.weight(turretDistance, Double.POSITIVE_INFINITY, REACH) < 1.0);
+        assertEquals(fullTurret(), turretStrength(lagged), 1e-9);
+    }
+
+    @Test
+    void throughEvaluateOneMemberInReachOfATurretPastTheSampleRadiusWeighsItInFull() {
+        Config.airTurretEdgeOfFire = true;
+        Battle straggler = new Battle(FLOCK).enemy(TURRET, BEYOND_SAMPLE, 0);
+        assertEquals(CENTRE, straggler.squad.getCenter());
+        straggler.move(0, BEYOND_SAMPLE - REACH + 10, 0);
+        straggler.evaluate();
+        assertTrue(BEYOND_SAMPLE > AirTurretPricing.sampleRadius(REACH));
+        assertEquals(fullTurret(), turretStrength(straggler), 1e-9);
+
+        Battle together = new Battle(FLOCK).enemy(TURRET, BEYOND_SAMPLE, 0);
+        together.evaluate();
+        assertEquals(0.0, turretStrength(together));
+    }
+
+    @Test
+    void theFlockDistanceIsTheNearestMemberOrTheCentreWithNoMember() {
+        Position turretPosition = new Position(CENTRE.getX() + FAR_TURRET, CENTRE.getY());
+        List<Position> members = new ArrayList<>();
+        assertEquals(FAR_TURRET, AirTurretPricing.flockDistance(members, turretPosition, FAR_TURRET));
+        members.add(CENTRE);
+        members.add(new Position(CENTRE.getX() + 400, CENTRE.getY()));
+        assertEquals(FAR_TURRET - 400, AirTurretPricing.flockDistance(members, turretPosition, FAR_TURRET), 1e-9);
+        assertTrue(AirTurretPricing.sampled(BEYOND_SAMPLE, FULL_FLOCK_DISTANCE, REACH));
+        assertFalse(AirTurretPricing.sampled(BEYOND_SAMPLE, FULL_FLOCK_DISTANCE + AirTurretPricing.TAPER, REACH));
     }
 
     @Test

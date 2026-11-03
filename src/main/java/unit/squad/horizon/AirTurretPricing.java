@@ -12,15 +12,16 @@ import java.util.List;
  * How much of each enemy Missile Turret an air squad faces, priced by what the Turret's fire covers rather than by
  * its distance from the flock centre alone.
  *
- * <p>A Turret weighs in full while a member at the flock could be hit by it or could be hitting a target inside its
- * reach, and while an enemy the flock would fight (see {@link #coverCandidate}) stands near the flock and where an
- * attacker hitting it could be inside that reach. Past both its weight falls linearly to nothing over {@link #TAPER}.
+ * <p>A Turret weighs in full while a member of the flock could be hit by it or could be hitting a target inside its
+ * reach, read from where each member stands rather than from the squad's smoothed centre (see {@link #flockDistance}),
+ * and while an enemy the flock would fight (see {@link #coverCandidate}) stands near the flock and where an attacker
+ * hitting it could be inside that reach. Past both its weight falls linearly to nothing over {@link #TAPER}.
  *
- * <p>The weight is continuous in the flock centre, the Turret and every candidate's position: each term is a sum of
- * clamped distances, a candidate's cover fades over {@link #TAPER} as it moves from {@link #TARGET_RADIUS} to
- * {@link #TARGET_WINDOW} from the centre, where candidates stop being read, and the simulator samples a Turret out to
- * {@link #sampleRadius}, where the weight is already nothing for any candidate. Only a candidate appearing or vanishing
- * (sight, freshness, death) changes the weight in one step.
+ * <p>The weight is continuous in the members, the flock centre, the Turret and every candidate's position: each term
+ * is a sum of clamped distances, a candidate's cover fades over {@link #TAPER} as it moves from {@link #TARGET_RADIUS}
+ * to {@link #TARGET_WINDOW} from the centre, where candidates stop being read, and the simulator samples a Turret
+ * while {@link #sampled}, out to where the weight is already nothing for any candidate. Only a candidate or a member
+ * appearing or vanishing (sight, freshness, death) changes the weight in one step.
  *
  * <p>Several Turrets are not summed by their distance from the flock alone: a Turret that covers neither the flock
  * nor what it would fight weighs little however many stand beside it, and every Turret that does cover the fight
@@ -29,8 +30,9 @@ import java.util.List;
 final class AirTurretPricing {
 
     /**
-     * Pixels from the flock centre within which a member taking the flock's orders stands, the radius inside which a
-     * regrouping member rejoins, {@link AirFlock#REGROUP_JOIN_RADIUS}.
+     * Pixels past a Turret's reach plus {@link #ATTACKER_RANGE} within which the member nearest it still weighs it in
+     * full: the radius inside which a regrouping member rejoins the flock, {@link AirFlock#REGROUP_JOIN_RADIUS}, the
+     * distance the flock's orders close on the Turret before the next read moves it.
      */
     static final int FLOCK_EXTENT = AirFlock.REGROUP_JOIN_RADIUS;
 
@@ -93,7 +95,7 @@ final class AirTurretPricing {
          * @param type the Turret's type
          * @param position where the Turret stands or was last seen
          * @param reach the Turret's air reach, see {@link #reach}
-         * @param flockDistance pixels from the flock centre to the Turret
+         * @param flockDistance pixels from the member nearest the Turret to it, see {@link #flockDistance}
          * @param ground the Turret's ground strength at full weight
          * @param antiAir the Turret's anti-air strength at full weight
          * @param visible whether the Turret is in sight
@@ -157,6 +159,37 @@ final class AirTurretPricing {
     }
 
     /**
+     * Pixels from the flock to a Turret: from the member nearest it, or from the flock centre when the squad has no
+     * member to read.
+     *
+     * @param members where the flock's members stand
+     * @param turret where the Turret stands
+     * @param centreDistance pixels from the flock centre to the Turret
+     * @return the distance in pixels
+     */
+    static double flockDistance(List<Position> members, Position turret, double centreDistance) {
+        if (members.isEmpty()) return centreDistance;
+        double nearest = Double.POSITIVE_INFINITY;
+        for (Position member : members) {
+            nearest = Math.min(nearest, member.getDistance(turret));
+        }
+        return nearest;
+    }
+
+    /**
+     * Whether a Turret is sampled: within {@link #sampleRadius} of the flock centre, or close enough to the member
+     * nearest it that the flock term of {@link #weight} gives it any weight.
+     *
+     * @param centreDistance pixels from the flock centre to the Turret
+     * @param flockDistance pixels from the member nearest the Turret to it, see {@link #flockDistance}
+     * @param reach the Turret's air reach
+     * @return true if the Turret is weighed
+     */
+    static boolean sampled(double centreDistance, double flockDistance, int reach) {
+        return centreDistance <= sampleRadius(reach) || flockDistance < reach + FLOCK_EXTENT + ATTACKER_RANGE + TAPER;
+    }
+
+    /**
      * How far from the flock centre a Turret is sampled: {@link #TARGET_RADIUS} plus the Turret's reach, plus
      * {@link #ATTACKER_RANGE}, plus {@link #TAPER}. A Turret this far out stands at least this radius less a from a
      * candidate a pixels from the centre, so the candidate's cover gap there is at least {@link #TAPER} for any a up
@@ -194,12 +227,12 @@ final class AirTurretPricing {
     }
 
     /**
-     * How much of a Turret bears on the flock's fight. It weighs in full while the flock centre is within its reach
-     * plus {@link #FLOCK_EXTENT} plus {@link #ATTACKER_RANGE}, where a member could be hit or be hitting a target
-     * inside the reach, or while the cover gap is nothing. Past the smaller of the two gaps its weight falls linearly
-     * to nothing over {@link #TAPER}.
+     * How much of a Turret bears on the flock's fight. It weighs in full while any member is within its reach plus
+     * {@link #FLOCK_EXTENT} plus {@link #ATTACKER_RANGE}, where a member could be hit or be hitting a target inside
+     * the reach, or while the cover gap is nothing. Past the smaller of the two gaps its weight falls linearly to
+     * nothing over {@link #TAPER}.
      *
-     * @param flockDistance pixels from the flock centre to the Turret
+     * @param flockDistance pixels from the member nearest the Turret to it, see {@link #flockDistance}
      * @param coverGap the Turret's cover gap, see {@link #coverGap}
      * @param reach the Turret's air reach
      * @return the weight, between 0 and 1
