@@ -28,7 +28,6 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static unit.squad.CombatSimulator.CombatResult.ENGAGE;
 import static unit.squad.CombatSimulator.CombatResult.RETREAT;
@@ -52,7 +51,10 @@ class AirTurretEdgeOfFireTest {
     private static final int STACKED_MARINES = 4;
     private static final int STACKED_MARINE_DISTANCE = 100;
     private static final int[] STACKED_TURRETS = {483, 485, 547, 649};
-    private static final int HELD_TURRET_DISTANCE = 520;
+    private static final int HELD_TURRET_DISTANCE = 560;
+    private static final int NEAR_FULL_TURRET_DISTANCE = 424;
+    private static final int FAR_TURRET = 600;
+    private static final int UNDER_FAR_TURRET = 300;
     private static final double AIR = 100;
     private static final UnitType[] OTHER_ENEMIES = {MARINE, UnitType.Terran_Goliath, UnitType.Terran_Bunker,
         UnitType.Zerg_Spore_Colony, UnitType.Protoss_Photon_Cannon, UnitType.Terran_Siege_Tank_Siege_Mode};
@@ -155,6 +157,25 @@ class AirTurretEdgeOfFireTest {
                 HorizonCombatSimulator.weightedAntiAirStrength(TURRET, MUTALISKS), true);
     }
 
+    private static AirTurretPricing.Target target(int dx) {
+        return new AirTurretPricing.Target(new Position(CENTRE.getX() + dx, CENTRE.getY()), Math.abs(dx));
+    }
+
+    private static double price(AirTurretPricing.Turret turret, List<AirTurretPricing.Target> targets,
+                                HorizonCombatSimulator.EnemySample sample) {
+        return AirTurretPricing.price(Collections.singletonList(turret), targets, Collections.singletonList(CENTRE),
+                sample, new HorizonCombatSimulator.DebugSnapshot());
+    }
+
+    private static double turretStrength(Battle battle) {
+        return battle.snapshot().getEnemyUnits().stream().filter(e -> e.getType() == TURRET)
+                .mapToDouble(HorizonCombatSimulator.UnitDebugEntry::getStrength).sum();
+    }
+
+    private static double fullTurret() {
+        return HorizonCombatSimulator.weightedAntiAirStrength(TURRET, MUTALISKS);
+    }
+
     private static CombatResult verdict(int mutalisks, HorizonCombatSimulator.EnemySample sample) {
         HorizonCombatSimulator.PricedEngagement priced = HorizonCombatSimulator.price(flock(mutalisks), sample);
         return HorizonCombatSimulator.selectResult(priced.getFriendlyGround(), priced.getFriendlyAir(),
@@ -171,13 +192,13 @@ class AirTurretEdgeOfFireTest {
         for (int distance : STACKED_TURRETS) {
             turrets.add(turret(distance));
         }
-        Position target = new Position(CENTRE.getX() - STACKED_MARINE_DISTANCE, CENTRE.getY());
         if (everyTurretInFull) {
             for (int i = 0; i < turrets.size(); i++) {
                 addEnemy(sample, TURRET, 1.0);
             }
         } else {
-            AirTurretPricing.price(turrets, target, sample, new HorizonCombatSimulator.DebugSnapshot());
+            AirTurretPricing.price(turrets, Collections.singletonList(target(-STACKED_MARINE_DISTANCE)),
+                    Collections.singletonList(CENTRE), sample, new HorizonCombatSimulator.DebugSnapshot());
         }
         return verdict(STACKED_FLOCK, sample);
     }
@@ -206,16 +227,82 @@ class AirTurretEdgeOfFireTest {
         HorizonCombatSimulator.UnitDebugEntry entry = battle.snapshot().getEnemyUnits().get(0);
         assertEquals(TURRET, entry.getType());
         assertEquals(HorizonCombatSimulator.weightedAntiAirStrength(TURRET, MUTALISKS), entry.getStrength(), 1e-9);
-        assertNull(battle.snapshot().getAirCoverTarget());
+        assertTrue(battle.snapshot().getAirCoverTargets().isEmpty());
     }
 
     @Test
-    void throughEvaluateTheNearestTargetIsRecordedForTheDebugDraw() {
+    void throughEvaluateTheCoveringTargetIsRecordedForTheDebugDraw() {
         Config.airTurretEdgeOfFire = true;
         Battle battle = new Battle(FLOCK).enemy(MARINE, MARINE_DISTANCE, 0).enemy(TURRET, PULLED_BACK, 0);
         battle.evaluate();
+        Position turretPosition = new Position(CENTRE.getX() + PULLED_BACK, CENTRE.getY());
         assertEquals(new Position(CENTRE.getX() + MARINE_DISTANCE, CENTRE.getY()),
-                battle.snapshot().getAirCoverTarget());
+                battle.snapshot().getAirCoverTargets().get(turretPosition));
+    }
+
+    @Test
+    void throughEvaluateAMarineMovingAcrossTheOldWindowEdgeMovesTheTurretWithoutAStep() {
+        Config.airTurretEdgeOfFire = true;
+        double step = 8 * fullTurret() / AirTurretPricing.TAPER + 1e-9;
+        double previous = -1;
+        for (int dx = 240; dx <= 680; dx += 8) {
+            Battle battle = new Battle(FLOCK).enemy(MARINE, dx, 0).enemy(TURRET, FAR_TURRET, 0);
+            battle.evaluate();
+            double strength = turretStrength(battle);
+            if (previous >= 0) {
+                assertTrue(Math.abs(strength - previous) <= step, "step with the Marine at " + dx);
+            }
+            previous = strength;
+        }
+    }
+
+    @Test
+    void throughEvaluateADepotNextToAFarTurretDoesNotMakeItCoverAndAMarineDoes() {
+        Config.airTurretEdgeOfFire = true;
+        Battle depot = new Battle(FLOCK).enemy(UnitType.Terran_Supply_Depot, UNDER_FAR_TURRET, 0)
+                .enemy(TURRET, FAR_TURRET, 0);
+        depot.evaluate();
+        double flockOnly = AirTurretPricing.weight(FAR_TURRET, Double.POSITIVE_INFINITY, REACH);
+        assertEquals(fullTurret() * flockOnly, turretStrength(depot), 1e-9);
+        assertTrue(flockOnly < 0.5);
+
+        Battle scv = new Battle(FLOCK).enemy(UnitType.Terran_SCV, UNDER_FAR_TURRET, 0).enemy(TURRET, FAR_TURRET, 0);
+        scv.evaluate();
+        assertEquals(fullTurret() * flockOnly, turretStrength(scv), 1e-9);
+
+        Battle marine = new Battle(FLOCK).enemy(MARINE, UNDER_FAR_TURRET, 0).enemy(TURRET, FAR_TURRET, 0);
+        marine.evaluate();
+        assertEquals(fullTurret(), turretStrength(marine), 1e-9);
+    }
+
+    @Test
+    void onlyAnArmedNonWorkerInSightOrFreshIsACoverCandidate() {
+        int fresh = 120;
+        assertTrue(AirTurretPricing.coverCandidate(MARINE, true, 0, fresh));
+        assertTrue(AirTurretPricing.coverCandidate(UnitType.Terran_Goliath, false, fresh, fresh));
+        assertTrue(AirTurretPricing.coverCandidate(UnitType.Terran_Bunker, true, 0, fresh));
+        assertFalse(AirTurretPricing.coverCandidate(MARINE, false, fresh + 1, fresh));
+        assertFalse(AirTurretPricing.coverCandidate(UnitType.Terran_SCV, true, 0, fresh));
+        assertFalse(AirTurretPricing.coverCandidate(UnitType.Terran_Supply_Depot, true, 0, fresh));
+        assertFalse(AirTurretPricing.coverCandidate(UnitType.Terran_Engineering_Bay, true, 0, fresh));
+        assertFalse(AirTurretPricing.coverCandidate(UnitType.Terran_Academy, true, 0, fresh));
+        assertFalse(AirTurretPricing.coverCandidate(TURRET, true, 0, fresh));
+    }
+
+    @Test
+    void theCoverGapIsTheBestCandidateAndFadesPastTheTargetRadius() {
+        Position turretPosition = new Position(CENTRE.getX() + FAR_TURRET, CENTRE.getY());
+        List<AirTurretPricing.Target> targets = new ArrayList<>();
+        targets.add(target(-100));
+        assertTrue(AirTurretPricing.coverGap(turretPosition, REACH, targets) >= AirTurretPricing.TAPER);
+        targets.add(target(UNDER_FAR_TURRET));
+        assertEquals(0.0, AirTurretPricing.coverGap(turretPosition, REACH, targets));
+        AirTurretPricing.Target outside = new AirTurretPricing.Target(turretPosition,
+                AirTurretPricing.TARGET_WINDOW);
+        assertEquals(AirTurretPricing.TAPER,
+                AirTurretPricing.coverGap(turretPosition, REACH, Collections.singletonList(outside)));
+        assertEquals(Double.POSITIVE_INFINITY,
+                AirTurretPricing.coverGap(turretPosition, REACH, Collections.emptyList()));
     }
 
     @Test
@@ -227,10 +314,8 @@ class AirTurretEdgeOfFireTest {
 
     @Test
     void aTurretCoveringTheFightTargetPricesInFullWhereverTheFlockStands() {
-        double coverReach = REACH + AirTurretPricing.ATTACKER_RANGE;
         for (double flockDistance : new double[]{100, 500, 700, 850}) {
-            assertEquals(1.0, AirTurretPricing.weight(flockDistance, coverReach, REACH));
-            assertEquals(1.0, AirTurretPricing.weight(flockDistance, 30, REACH));
+            assertEquals(1.0, AirTurretPricing.weight(flockDistance, 0, REACH));
         }
     }
 
@@ -239,9 +324,7 @@ class AirTurretEdgeOfFireTest {
         HorizonCombatSimulator.EnemySample sample = new HorizonCombatSimulator.EnemySample();
         addEnemy(sample, MARINE, 1.0);
         addEnemy(sample, MARINE, 1.0);
-        Position marines = new Position(CENTRE.getX() + 300, CENTRE.getY());
-        AirTurretPricing.price(Collections.singletonList(turret(600)), marines, sample,
-                new HorizonCombatSimulator.DebugSnapshot());
+        price(turret(FAR_TURRET), Collections.singletonList(target(UNDER_FAR_TURRET)), sample);
         assertEquals(RETREAT, verdict(FLOCK, sample));
     }
 
@@ -249,7 +332,8 @@ class AirTurretEdgeOfFireTest {
     void theWeightIsContinuousAndReachesNothingWhereTheSampleEnds() {
         double radius = AirTurretPricing.sampleRadius(REACH);
         double step = 1.0 / AirTurretPricing.TAPER + 1e-9;
-        for (double targetOffset : new double[]{0, 100, HorizonCombatSimulator.MAX_ENGAGEMENT_RADIUS}) {
+        for (double targetOffset : new double[]{0, 100, AirTurretPricing.TARGET_RADIUS,
+            AirTurretPricing.TARGET_WINDOW}) {
             double previous = weightWithTargetToward(0, targetOffset);
             for (double d = 1; d <= radius + 10; d++) {
                 double weight = weightWithTargetToward(d, targetOffset);
@@ -261,24 +345,24 @@ class AirTurretEdgeOfFireTest {
     }
 
     private static double weightWithTargetToward(double flockDistance, double targetOffset) {
-        double cover = Math.abs(flockDistance - targetOffset);
+        Position turretPosition = new Position(CENTRE.getX() + (int) flockDistance, CENTRE.getY());
+        double cover = AirTurretPricing.coverGap(turretPosition, REACH,
+                Collections.singletonList(target((int) targetOffset)));
         return AirTurretPricing.weight(flockDistance, cover, REACH);
     }
 
     @Test
     void aTurretAtTheSampleEdgeAddsNothingAndJustInsideAddsAlmostNothing() {
         double radius = AirTurretPricing.sampleRadius(REACH);
-        Position target = new Position(CENTRE.getX() + (int) HorizonCombatSimulator.MAX_ENGAGEMENT_RADIUS,
-                CENTRE.getY());
+        List<AirTurretPricing.Target> targets = Collections.singletonList(
+                target((int) HorizonCombatSimulator.MAX_ENGAGEMENT_RADIUS));
         HorizonCombatSimulator.EnemySample atEdge = new HorizonCombatSimulator.EnemySample();
-        AirTurretPricing.price(Collections.singletonList(turret(radius)), target, atEdge,
-                new HorizonCombatSimulator.DebugSnapshot());
+        price(turret(radius), targets, atEdge);
         assertEquals(0.0, atEdge.antiAirTotal());
 
         HorizonCombatSimulator.EnemySample inside = new HorizonCombatSimulator.EnemySample();
-        AirTurretPricing.price(Collections.singletonList(turret(radius - 1)), target, inside,
-                new HorizonCombatSimulator.DebugSnapshot());
-        double full = HorizonCombatSimulator.weightedAntiAirStrength(TURRET, MUTALISKS);
+        price(turret(radius - 1), targets, inside);
+        double full = fullTurret();
         assertTrue(inside.antiAirTotal() > 0 && inside.antiAirTotal() <= full / AirTurretPricing.TAPER + 1e-9);
     }
 
@@ -296,8 +380,7 @@ class AirTurretEdgeOfFireTest {
             addEnemy(sample, MARINE, 1.0);
             addEnemy(sample, MARINE, 1.0);
         }
-        AirTurretPricing.price(Collections.singletonList(turret(AirTurretPricing.sampleRadius(REACH))), CENTRE,
-                with, new HorizonCombatSimulator.DebugSnapshot());
+        price(turret(AirTurretPricing.sampleRadius(REACH)), Collections.singletonList(target(0)), with);
         assertEquals(ENGAGE, verdict(FLOCK, without));
         assertEquals(verdict(FLOCK, without), verdict(FLOCK, with));
         assertEquals(without.antiAirTotal(), with.antiAirTotal());
@@ -316,7 +399,8 @@ class AirTurretEdgeOfFireTest {
 
     private static Battle heldBattle(SquadStatus status) {
         Battle battle = new Battle(FLOCK).enemy(MARINE, -MARINE_DISTANCE, 0).enemy(MARINE, -MARINE_DISTANCE, 16)
-                .enemy(TURRET, HELD_TURRET_DISTANCE, -40).enemy(TURRET, HELD_TURRET_DISTANCE, 40);
+                .enemy(TURRET, HELD_TURRET_DISTANCE, -40).enemy(TURRET, HELD_TURRET_DISTANCE, 0)
+                .enemy(TURRET, HELD_TURRET_DISTANCE, 40);
         battle.squad.setStatus(status);
         return battle;
     }
@@ -352,6 +436,34 @@ class AirTurretEdgeOfFireTest {
         covered.squad.setStatus(SquadStatus.FIGHT);
         assertEquals(RETREAT, covered.evaluate());
         assertEquals(-1, covered.snapshot().getFightBandSinceFrame());
+    }
+
+    @Test
+    void throughEvaluateTheHoldDoesNotIgnoreATurretAtNearlyFullWeight() {
+        Config.airTurretEdgeOfFire = true;
+        Config.airVerdictHold = true;
+        Battle nearFull = new Battle(FLOCK).enemy(MARINE, -MARINE_DISTANCE, 0)
+                .enemy(TURRET, NEAR_FULL_TURRET_DISTANCE, -40).enemy(TURRET, NEAR_FULL_TURRET_DISTANCE, 40);
+        nearFull.squad.setStatus(SquadStatus.FIGHT);
+        assertEquals(RETREAT, nearFull.evaluate());
+        assertEquals(-1, nearFull.snapshot().getFightBandSinceFrame());
+    }
+
+    @Test
+    void aTurretAtNearlyFullWeightOrInReachOfAMemberIsNotHoldable() {
+        double nearFull = AirTurretPricing.weight(NEAR_FULL_TURRET_DISTANCE, Double.POSITIVE_INFINITY, REACH);
+        assertTrue(nearFull > 0.95 && nearFull < 1.0);
+        Position far = new Position(CENTRE.getX() + FAR_TURRET, CENTRE.getY());
+        List<Position> atCentre = Collections.singletonList(CENTRE);
+        assertFalse(AirTurretPricing.holdable(nearFull, far, REACH, atCentre));
+        assertTrue(AirTurretPricing.holdable(AirTurretPricing.HOLD_MAX_WEIGHT, far, REACH, atCentre));
+        List<Position> straggler = Collections.singletonList(
+                new Position(far.getX() - REACH - AirTurretPricing.EDGE_MARGIN, far.getY()));
+        assertFalse(AirTurretPricing.holdable(0.3, far, REACH, straggler));
+
+        assertEquals(0.0, price(turret(NEAR_FULL_TURRET_DISTANCE), Collections.emptyList(),
+                new HorizonCombatSimulator.EnemySample()));
+        assertTrue(price(turret(FAR_TURRET), Collections.emptyList(), new HorizonCombatSimulator.EnemySample()) > 0);
     }
 
     @Test
