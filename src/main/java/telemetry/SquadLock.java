@@ -6,14 +6,16 @@ package telemetry;
  *
  * <p>Named from the status the lock protects, matching Squad.startRetreatLock and
  * Squad.startFightLock. The three band entries name a ground squad held in FIGHT by the fight band
- * (FightBand) where the single engage cut would have let it go, and BLIND_TURN_BACK names a ground squad held in
+ * (FightBand) where the single engage cut would have let it go, FIGHT_BAND also an air squad held by the Turret
+ * hold, and BLIND_TURN_BACK names a ground squad held in
  * RETREAT where an ADVANCE that measured no enemy would have turned it back.
  */
 public enum SquadLock {
     RETREAT,
     FIGHT,
     /**
-     * The sim's band turned an engaged squad's RETREAT read inside the band into ENGAGE.
+     * The sim's band turned an engaged squad's RETREAT read inside the band into ENGAGE. For an air squad in FIGHT,
+     * the read was tipped only by Missile Turrets covering neither the flock nor its target, see Config.airVerdictHold.
      */
     FIGHT_BAND,
     /**

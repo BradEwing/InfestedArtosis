@@ -112,7 +112,8 @@ import java.util.stream.Collectors;
  * <p>LOCK_SUPPRESSED rows are deduplicated per suppression episode, keyed on the lock, its expiry
  * frame, the overridden verdict, and the branch that asked for it. suppressed_by names the lock: RETREAT and FIGHT
  * for the retreat and fight locks, FIGHT_BAND when the sim's fight band turned an engaged ground squad's RETREAT
- * read into ENGAGE (keyed on the frame that run of band-held reads began rather than an expiry), FIGHT_LOCK_BAND
+ * read into ENGAGE, or the Turret hold an air squad's in FIGHT (keyed on the frame that run of band-held reads
+ * began rather than an expiry), FIGHT_LOCK_BAND
  * when the fight lock held a RETREAT read only because the band released it at the retreat threshold, and
  * COMMIT_WINDOW when only a turn-back commit held one (keyed on the end of the commit window), and BLIND_TURN_BACK
  * when a retreating ground squad's blind turn-back gate kept it in RETREAT on an ADVANCE that measured no enemy

@@ -71,7 +71,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final Time BUILDING_SEEN_THRESHOLD = new Time(0, 45);
     private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
     private static final double DEFAULT_RETREAT_THRESHOLD = 0.7;
-    private static final double MIN_ENEMY_STRENGTH = 0.01;
+    static final double MIN_ENEMY_STRENGTH = 0.01;
     private static final double SPEED_UPGRADE_PENALTY = 0.75;
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
@@ -241,7 +241,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
-        AirTurretPricing.price(airEdgeTurrets, nearestTarget, enemySample, snapshot);
+        double taperedTurretAntiAir = AirTurretPricing.price(airEdgeTurrets, nearestTarget, enemySample, snapshot);
         retreatMemory.retain(livingBunkers);
         priceBunkers(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters),
                 enemySample, snapshot, airSquad);
@@ -327,6 +327,16 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
+
+        if (airSquad) {
+            DebugSnapshot previous = lastSnapshots.get(squad.getId());
+            CombatResult single = result;
+            result = AirTurretPricing.hold(Config.airVerdictHold, squad.getStatus() == SquadStatus.FIGHT, single,
+                    friendlyAirStr, enemyAntiAirStr, taperedTurretAntiAir, engageThresh);
+            snapshot.setFightBandSinceFrame(FightBand.heldSinceFrame(result != single,
+                    previous != null && currentFrame - previous.getCapturedFrame() <= MAX_SIM_GAP_FRAMES
+                            ? previous.getFightBandSinceFrame() : -1, currentFrame));
+        }
 
         if (!airSquad) {
             DebugSnapshot previous = lastSnapshots.get(squad.getId());

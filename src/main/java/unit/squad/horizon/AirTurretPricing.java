@@ -3,6 +3,7 @@ package unit.squad.horizon;
 import bwapi.Position;
 import bwapi.UnitType;
 import unit.squad.AirFlock;
+import unit.squad.CombatSimulator;
 
 import java.util.List;
 
@@ -128,11 +129,14 @@ final class AirTurretPricing {
      *               {@link HorizonCombatSimulator#MAX_ENGAGEMENT_RADIUS}, other than a Turret, or null with none
      * @param sample the enemy sample to add to
      * @param snapshot the snapshot to record the priced Turrets and the target on
+     * @return the anti-air strength added by Turrets weighing less than in full, the ones that cover neither the
+     *     flock nor the target
      */
-    static void price(List<Turret> turrets, Position target, HorizonCombatSimulator.EnemySample sample,
-                      HorizonCombatSimulator.DebugSnapshot snapshot) {
-        if (turrets.isEmpty()) return;
+    static double price(List<Turret> turrets, Position target, HorizonCombatSimulator.EnemySample sample,
+                        HorizonCombatSimulator.DebugSnapshot snapshot) {
+        if (turrets.isEmpty()) return 0;
         snapshot.setAirCoverTarget(target);
+        double tapered = 0;
         for (Turret turret : turrets) {
             double cover = target != null ? turret.position.getDistance(target) : Double.POSITIVE_INFINITY;
             double weight = weight(turret.flockDistance, cover, turret.reach);
@@ -142,6 +146,41 @@ final class AirTurretPricing {
             snapshot.getEnemyUnits().add(new HorizonCombatSimulator.UnitDebugEntry(turret.position, turret.type,
                     antiAir, false, !turret.visible));
             snapshot.getAirEdgeOfFire().put(turret.position, turret.reach);
+            if (weight < 1.0) {
+                tapered += antiAir;
+            }
         }
+        return tapered;
+    }
+
+    /**
+     * The verdict an air squad acts on once Turrets that cover neither it nor its target are held to deciding only
+     * whether it goes in, not whether it leaves. A squad in FIGHT holds against a RETREAT read whose anti-air,
+     * without those Turrets, its own air strength still clears the engage threshold against, or which measures
+     * nothing without them. Every other read stands: a RETREAT that a Turret covering the flock or its target, or
+     * any other enemy, makes; and every read of a squad not in FIGHT, so such a Turret still keeps a retreating flock
+     * from turning back.
+     *
+     * <p>It is the band between where a flock enters and where it leaves: it goes in only once the whole read clears
+     * the threshold, and leaves only once the Turrets it fights under, or the enemy itself, turn the read.
+     *
+     * @param enabled whether {@link config.Config#airVerdictHold} is on
+     * @param inFight whether the squad's status is FIGHT
+     * @param raw the verdict for this frame's strengths
+     * @param friendlyAir our air strength
+     * @param enemyAntiAir the enemy's anti-air strength, Turrets included
+     * @param taperedAntiAir the part of it from Turrets weighing less than in full, see {@link #price}
+     * @param engageThreshold the engage threshold the read is judged against
+     * @return ENGAGE when the hold applies, otherwise the raw verdict
+     */
+    static CombatSimulator.CombatResult hold(boolean enabled, boolean inFight, CombatSimulator.CombatResult raw,
+                                             double friendlyAir, double enemyAntiAir, double taperedAntiAir,
+                                             double engageThreshold) {
+        if (!enabled || !inFight || raw != CombatSimulator.CombatResult.RETREAT || taperedAntiAir <= 0) return raw;
+        double covering = enemyAntiAir - taperedAntiAir;
+        if (covering > HorizonCombatSimulator.MIN_ENEMY_STRENGTH && friendlyAir / covering < engageThreshold) {
+            return raw;
+        }
+        return CombatSimulator.CombatResult.ENGAGE;
     }
 }

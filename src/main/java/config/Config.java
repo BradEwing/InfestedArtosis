@@ -60,6 +60,12 @@ public final class Config {
      * On unless IA_AIR_TURRET_EDGE_OF_FIRE is set to false.
      */
     public static boolean airTurretEdgeOfFire = true;
+    /**
+     * Whether an air squad in FIGHT holds against a RETREAT read that only Missile Turrets covering neither the flock
+     * nor the enemy it would fight tip, see {@link #airTurretEdgeOfFire}. Such a Turret still keeps a squad out of
+     * RETREAT from turning back. On unless IA_AIR_VERDICT_HOLD is set to false.
+     */
+    public static boolean airVerdictHold = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -155,6 +161,7 @@ public final class Config {
         squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
         mutaCooldownKite = enabledUnlessFalse(setting(dotenv, "IA_MUTA_COOLDOWN_KITE"));
         airTurretEdgeOfFire = enabledUnlessFalse(setting(dotenv, "IA_AIR_TURRET_EDGE_OF_FIRE"));
+        airVerdictHold = enabledUnlessFalse(setting(dotenv, "IA_AIR_VERDICT_HOLD"));
     }
 
     /**

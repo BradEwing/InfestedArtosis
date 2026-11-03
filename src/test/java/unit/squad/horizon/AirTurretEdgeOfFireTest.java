@@ -18,6 +18,7 @@ import unit.managed.Mutalisk;
 import unit.managed.UnitRole;
 import unit.squad.AirSquad;
 import unit.squad.CombatSimulator.CombatResult;
+import unit.squad.SquadStatus;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -51,14 +52,18 @@ class AirTurretEdgeOfFireTest {
     private static final int STACKED_MARINES = 4;
     private static final int STACKED_MARINE_DISTANCE = 100;
     private static final int[] STACKED_TURRETS = {483, 485, 547, 649};
+    private static final int HELD_TURRET_DISTANCE = 520;
+    private static final double AIR = 100;
     private static final UnitType[] OTHER_ENEMIES = {MARINE, UnitType.Terran_Goliath, UnitType.Terran_Bunker,
         UnitType.Zerg_Spore_Colony, UnitType.Protoss_Photon_Cannon, UnitType.Terran_Siege_Tank_Siege_Mode};
 
     private final boolean edgeSetting = Config.airTurretEdgeOfFire;
+    private final boolean holdSetting = Config.airVerdictHold;
 
     @AfterEach
     void restoreSwitch() {
         Config.airTurretEdgeOfFire = edgeSetting;
+        Config.airVerdictHold = holdSetting;
     }
 
     /**
@@ -307,5 +312,68 @@ class AirTurretEdgeOfFireTest {
             assertFalse(HorizonCombatSimulator.pricedAtAirEdgeOfFire(type, true, true));
         }
         assertEquals(TURRET.airWeapon().maxRange(), REACH);
+    }
+
+    private static Battle heldBattle(SquadStatus status) {
+        Battle battle = new Battle(FLOCK).enemy(MARINE, -MARINE_DISTANCE, 0).enemy(MARINE, -MARINE_DISTANCE, 16)
+                .enemy(TURRET, HELD_TURRET_DISTANCE, -40).enemy(TURRET, HELD_TURRET_DISTANCE, 40);
+        battle.squad.setStatus(status);
+        return battle;
+    }
+
+    @Test
+    void throughEvaluateAFightingFlockHoldsAgainstARetreatOnlyUncoveringTurretsTip() {
+        Config.airTurretEdgeOfFire = true;
+        Config.airVerdictHold = false;
+        assertEquals(RETREAT, heldBattle(SquadStatus.FIGHT).evaluate());
+
+        Config.airVerdictHold = true;
+        Battle held = heldBattle(SquadStatus.FIGHT);
+        assertEquals(ENGAGE, held.evaluate());
+        assertEquals(FRAME, held.snapshot().getFightBandSinceFrame());
+        assertTrue(held.snapshot().getOverallRatio() < TERRAN_ENGAGE_THRESHOLD);
+    }
+
+    @Test
+    void throughEvaluateUncoveringTurretsStillKeepARetreatingFlockOut() {
+        Config.airTurretEdgeOfFire = true;
+        Config.airVerdictHold = true;
+        Battle retreating = heldBattle(SquadStatus.RETREAT);
+        assertEquals(RETREAT, retreating.evaluate());
+        assertEquals(-1, retreating.snapshot().getFightBandSinceFrame());
+    }
+
+    @Test
+    void throughEvaluateTheHoldReleasesOnceATurretCoversTheFlock() {
+        Config.airTurretEdgeOfFire = true;
+        Config.airVerdictHold = true;
+        Battle covered = new Battle(FLOCK).enemy(MARINE, MARINE_DISTANCE, 0).enemy(MARINE, MARINE_DISTANCE, 16)
+                .enemy(TURRET, PULLED_BACK, 0);
+        covered.squad.setStatus(SquadStatus.FIGHT);
+        assertEquals(RETREAT, covered.evaluate());
+        assertEquals(-1, covered.snapshot().getFightBandSinceFrame());
+    }
+
+    @Test
+    void theHoldTurnsARetreatInsideTheBandIntoEngage() {
+        assertEquals(ENGAGE, AirTurretPricing.hold(true, true, RETREAT, AIR, 90, 40, TERRAN_ENGAGE_THRESHOLD));
+        assertEquals(ENGAGE, AirTurretPricing.hold(true, true, RETREAT, AIR, 40, 40, TERRAN_ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void theHoldReleasesWhenTheCoveringReadLosesOrNoTurretIsTapered() {
+        assertEquals(RETREAT, AirTurretPricing.hold(true, true, RETREAT, AIR, 90, 10, TERRAN_ENGAGE_THRESHOLD));
+        assertEquals(RETREAT, AirTurretPricing.hold(true, true, RETREAT, AIR, 90, 0, TERRAN_ENGAGE_THRESHOLD));
+    }
+
+    @Test
+    void theHoldActsOnlyOnARetreatReadOfAFightingSquadWithTheSwitchOn() {
+        assertEquals(RETREAT, AirTurretPricing.hold(false, true, RETREAT, AIR, 90, 40, TERRAN_ENGAGE_THRESHOLD));
+        assertEquals(RETREAT, AirTurretPricing.hold(true, false, RETREAT, AIR, 90, 40, TERRAN_ENGAGE_THRESHOLD));
+        for (CombatResult raw : CombatResult.values()) {
+            if (raw != RETREAT) {
+                assertEquals(raw, AirTurretPricing.hold(true, true, raw, AIR, 90, 40, TERRAN_ENGAGE_THRESHOLD));
+            }
+        }
     }
 }
