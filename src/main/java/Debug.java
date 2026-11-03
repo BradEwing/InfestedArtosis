@@ -560,6 +560,10 @@ public class Debug {
                         String.format("%s %.1f", shortName, entry.getStrength()), Text.Green);
             }
 
+            for (Map.Entry<Position, Integer> edge : snap.getAirEdgeOfFire().entrySet()) {
+                game.drawCircleMap(edge.getKey(), edge.getValue(), Color.Orange);
+            }
+
             Position enemyCenter = snap.getEnemyCenter();
             for (UnitDebugEntry entry : snap.getEnemyUnits()) {
                 Color enemyColor = entry.isFogOfWar() ? Color.Orange : Color.Red;
