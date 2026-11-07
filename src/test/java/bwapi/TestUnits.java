@@ -3,7 +3,9 @@ package bwapi;
 import com.sun.jna.Memory;
 
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -15,16 +17,29 @@ import java.util.Map;
 public final class TestUnits {
 
     private static final int MAX_UNITS = 64;
+    private static final int MAX_PLAYERS = 12;
+    /**
+     * Bytes of the shared game data a test game is backed with: up to and including the frame count, which JBWAPI
+     * 2.2.0 reads at offset 3446096 of the game data.
+     */
+    private static final int GAME_DATA_BYTES = 3446096 + Integer.BYTES;
 
     private final Memory memory = new Memory((long) MAX_UNITS * ClientData.UnitData.SIZE);
     private final ClientData clientData = new ClientData();
+    private final Memory playerMemory = new Memory((long) MAX_PLAYERS * ClientData.PlayerData.SIZE);
+    private final ClientData playerClientData = new ClientData();
     private final Game game = new Game();
     private final Map<Unit, ClientData.UnitData> data = new HashMap<>();
     private final Unit[] units = new Unit[MAX_UNITS];
+    private final Player[] players = new Player[MAX_PLAYERS];
+    private final List<Unit> built = new ArrayList<>();
+    private Memory gameMemory;
     private int positionFrame = 0;
 
     public TestUnits() {
         memory.clear();
+        playerMemory.clear();
+        playerClientData.setBuffer(new WrappedBuffer(playerMemory, MAX_PLAYERS * ClientData.PlayerData.SIZE));
         clientData.setBuffer(new WrappedBuffer(memory, MAX_UNITS * ClientData.UnitData.SIZE));
         try {
             Field latcom = Game.class.getDeclaredField("latcom");
@@ -65,6 +80,7 @@ public final class TestUnits {
         Unit unit = new Unit(unitData, id, game);
         data.put(unit, unitData);
         units[id] = unit;
+        built.add(unit);
         return unit;
     }
 
@@ -112,6 +128,79 @@ public final class TestUnits {
      */
     public void setExists(Unit unit, boolean exists) {
         data.get(unit).setExists(exists);
+    }
+
+    /**
+     * Sets the frame the game reports. The first call backs the game with a buffer large enough to hold the frame
+     * count, which the game reads out of its shared game data.
+     */
+    public void setFrame(int frame) {
+        if (gameMemory == null) {
+            gameMemory = new Memory(GAME_DATA_BYTES);
+            gameMemory.clear();
+            try {
+                Field field = Game.class.getDeclaredField("clientData");
+                field.setAccessible(true);
+                ((ClientData) field.get(game)).setBuffer(new WrappedBuffer(gameMemory, GAME_DATA_BYTES));
+            } catch (ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+        game.botClientData().gameData().setFrameCount(frame);
+    }
+
+    /**
+     * Builds the player with the given id, with no upgrades or research, and makes it the game's own player when
+     * self holds. Every unit built afterwards is listed among the game's units.
+     */
+    public Player player(int id, boolean self) {
+        ClientData.PlayerData playerData = playerClientData.new PlayerData(id * ClientData.PlayerData.SIZE);
+        Player player = new Player(playerData, id, game);
+        players[id] = player;
+        try {
+            Field playerTable = Game.class.getDeclaredField("players");
+            playerTable.setAccessible(true);
+            playerTable.set(game, players);
+            Field allUnits = Game.class.getDeclaredField("allUnits");
+            allUnits.setAccessible(true);
+            allUnits.set(game, built);
+            if (self) {
+                Field selfField = Game.class.getDeclaredField("self");
+                selfField.setAccessible(true);
+                selfField.set(game, player);
+            }
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+        return player;
+    }
+
+    /**
+     * Gives the unit to a player, as the BWAPI server writes it.
+     */
+    public void setPlayer(Unit unit, Player player) {
+        data.get(unit).setPlayer(player.getID());
+    }
+
+    /**
+     * Sets whether the given player sees the unit, as the BWAPI server writes it.
+     */
+    public void setVisible(Unit unit, Player player, boolean visible) {
+        data.get(unit).setIsVisible(player.getID(), visible);
+    }
+
+    /**
+     * Sets the unit's hit points, as the BWAPI server writes them.
+     */
+    public void setHitPoints(Unit unit, int hitPoints) {
+        data.get(unit).setHitPoints(hitPoints);
+    }
+
+    /**
+     * Sets whether the unit is completed, as the BWAPI server writes it.
+     */
+    public void setCompleted(Unit unit, boolean completed) {
+        data.get(unit).setIsCompleted(completed);
     }
 
     /**

@@ -232,7 +232,15 @@ public final class TargetScorer {
                 && distance <= UnitType.Terran_Medic.seekRange();
     }
 
-    static boolean canAttackType(UnitType unitType, boolean targetIsFlying) {
+    /**
+     * Whether a unit type can attack a target in the given layer, counting a Bunker and a Carrier as armed. A
+     * candidate that is neither a worker nor an unarmed building and passes this earns {@link Reason#THREAT}.
+     *
+     * @param unitType the candidate's type
+     * @param targetIsFlying whether the attacker it is judged against flies
+     * @return true if the type can attack that layer
+     */
+    public static boolean canAttackType(UnitType unitType, boolean targetIsFlying) {
         if (unitType == UnitType.Terran_Bunker) return true;
         if (unitType == UnitType.Protoss_Carrier) return true;
         WeaponType weapon = targetIsFlying ? unitType.airWeapon() : unitType.groundWeapon();

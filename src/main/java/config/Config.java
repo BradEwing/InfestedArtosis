@@ -54,6 +54,19 @@ public final class Config {
      * On unless IA_MUTA_COOLDOWN_KITE is set to false.
      */
     public static boolean mutaCooldownKite = true;
+    /**
+     * Whether an air squad's combat sim prices an enemy Missile Turret by what its air fire covers, the flock and the
+     * nearest enemy the flock would fight, instead of only within the fixed engagement radius of the flock's centre.
+     * On unless IA_AIR_TURRET_EDGE_OF_FIRE is set to false.
+     */
+    public static boolean airTurretEdgeOfFire = true;
+    /**
+     * Whether an air squad that left FIGHT on a combat sim RETREAT, or left a harass, goes back in for a while after
+     * only on a read that clears the engage threshold against the enemy strength it left, see
+     * unit.squad.Squad#startReentryHold. Independent of {@link #airTurretEdgeOfFire}. On unless IA_AIR_REENTRY_HOLD is
+     * set to false.
+     */
+    public static boolean airReentryHold = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -148,6 +161,8 @@ public final class Config {
         fightHysteresis = enabledUnlessFalse(setting(dotenv, "IA_FIGHT_HYSTERESIS"));
         squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
         mutaCooldownKite = enabledUnlessFalse(setting(dotenv, "IA_MUTA_COOLDOWN_KITE"));
+        airTurretEdgeOfFire = enabledUnlessFalse(setting(dotenv, "IA_AIR_TURRET_EDGE_OF_FIRE"));
+        airReentryHold = enabledUnlessFalse(setting(dotenv, "IA_AIR_REENTRY_HOLD"));
     }
 
     /**

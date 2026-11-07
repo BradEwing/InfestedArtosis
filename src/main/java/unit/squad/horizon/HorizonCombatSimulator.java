@@ -28,6 +28,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -48,7 +49,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
      * evaluated outside its fight tick (a contain, runby or swarm read).
      */
     public static final int CONTACT_UNREAD = -1;
-    private static final double MAX_ENGAGEMENT_RADIUS = 320;
+    static final double MAX_ENGAGEMENT_RADIUS = 320;
     private static final double NEARBY_THREAT_RADIUS = 512;
     private static final double APPROACH_BUFFER = 64;
 
@@ -128,6 +129,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
         retreatMemory.releaseIfExpired(currentFrame);
         List<Position> livingBunkers = new ArrayList<>();
         List<Position> rememberedInRadius = new ArrayList<>();
+        List<AirTurretPricing.Turret> airEdgeTurrets = new ArrayList<>();
+        List<AirTurretPricing.Target> coverTargets = new ArrayList<>();
+        boolean coverScan = airSquad && Config.airTurretEdgeOfFire;
+        List<Position> fighters = coverScan ? fighterPositions(squad) : Collections.emptyList();
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -159,14 +164,25 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (type == UnitType.Terran_Siege_Tank_Siege_Mode) {
                 nearestSiegedTank = SiegeBandHysteresis.nearer(nearestSiegedTank, dist);
             }
+            if (coverScan && dist <= AirTurretPricing.TARGET_WINDOW && !(type.isBuilding() && !ou.isCompleted())
+                    && AirTurretPricing.coverCandidate(type, visible,
+                    currentFrame - ou.getLastObservedFrame().getFrames(), RECENTLY_SEEN_THRESHOLD.getFrames())) {
+                coverTargets.add(new AirTurretPricing.Target(pos, dist));
+            }
             boolean bunker = type == UnitType.Terran_Bunker;
+            boolean airEdge = pricedAtAirEdgeOfFire(type, airSquad, Config.airTurretEdgeOfFire);
             boolean edgeOfFire = !bunker && pricedAtEdgeOfFire(type, airSquad);
             int reach = edgeOfFire ? positionalReach(type, reachMemory.groundReach(type)) : 0;
             if (bunker) {
                 reach = BunkerPricing.reach(airSquad, reachMemory.groundReach(type));
             }
-            double radius = bunker || edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
-            if (dist > radius) {
+            if (airEdge) {
+                reach = AirTurretPricing.reach(type);
+            }
+            double radius = airEdge ? AirTurretPricing.sampleRadius(reach)
+                    : bunker || edgeOfFire ? edgeOfFireRadius(reach) : engagementRadius(type);
+            double flockDist = airEdge ? AirTurretPricing.flockDistance(fighters, pos, dist) : dist;
+            if (dist > radius && !(airEdge && AirTurretPricing.sampled(dist, flockDist, reach))) {
                 if (isThreatBeyondRadius(type, dist, radius)) {
                     snapshot.setThreatBeyondRadius(true);
                 }
@@ -197,6 +213,11 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
             double groundBase = weightedGroundStrength(type, friendlySizeProportions);
             double antiAirBase = weightedAntiAirStrength(type, friendlySizeProportions);
+            if (airEdge) {
+                airEdgeTurrets.add(new AirTurretPricing.Turret(type, pos, reach, flockDist,
+                        groundBase * hpWeight * heightMod, antiAirBase * hpWeight * heightMod, visible));
+                continue;
+            }
             if (bunker) {
                 BunkerPricing.Candidate candidate = bunkerCandidate(ou, pos, visible,
                         BunkerPricing.weight(pos, squadCenter, legs, reach), currentFrame,
@@ -223,6 +244,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
+        AirTurretPricing.price(airEdgeTurrets, coverTargets, enemySample, snapshot);
         retreatMemory.retain(livingBunkers);
         priceBunkers(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters),
                 enemySample, snapshot, airSquad);
@@ -308,6 +330,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
+
+        if (airSquad) {
+            DebugSnapshot previous = lastSnapshots.get(squad.getId());
+            double heldStrength = Config.airReentryHold && squad.getStatus() == SquadStatus.RETREAT
+                    ? squad.reentryHeldStrength(currentFrame, squadCenter, enemyAntiAirStr) : enemyAntiAirStr;
+            CombatResult single = result;
+            result = reenter(single, friendlyAirStr, heldStrength, engageThresh);
+            snapshot.setReentryHoldStrength(heldStrength > enemyAntiAirStr ? heldStrength : -1);
+            snapshot.setReentryHoldSinceFrame(FightBand.heldSinceFrame(result != single,
+                    previous != null && currentFrame - previous.getCapturedFrame() <= MAX_SIM_GAP_FRAMES
+                            ? previous.getReentryHoldSinceFrame() : -1, currentFrame));
+        }
 
         if (!airSquad) {
             DebugSnapshot previous = lastSnapshots.get(squad.getId());
@@ -405,6 +439,24 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (band == SIEGE_BAND_HELD) heldFrames += elapsed;
             lastFrame = frame;
         }
+    }
+
+    /**
+     * The verdict a retreating air squad acts on under its re-entry hold. An ENGAGE read, or an ADVANCE read that
+     * measured no enemy where the squad left one, stands only when our air strength clears the engage threshold
+     * against the held enemy strength, see Squad#reentryHeldStrength; otherwise the squad keeps retreating. A RETREAT
+     * read stands. Our strength is the read's own, so reinforcements that clear the held strength go back in.
+     *
+     * @param raw the verdict for this frame's strengths
+     * @param friendlyAir our air strength
+     * @param heldStrength the enemy strength the hold judges the read against, the measured strength without a hold
+     * @param engageThreshold the engage threshold the read is judged against
+     * @return RETREAT when the hold refuses the read, otherwise the raw verdict
+     */
+    static CombatResult reenter(CombatResult raw, double friendlyAir, double heldStrength, double engageThreshold) {
+        if (raw == CombatResult.RETREAT || heldStrength <= MIN_ENEMY_STRENGTH) return raw;
+        if (friendlyAir / heldStrength < engageThreshold) return CombatResult.RETREAT;
+        return raw;
     }
 
     /**
@@ -973,6 +1025,20 @@ public class HorizonCombatSimulator implements CombatSimulator {
         return 1.0 + armorBonus * 0.06;
     }
 
+    /**
+     * @param squad the squad evaluated
+     * @param none whether no position is needed, so none is read
+     * @return where each member stands, empty when none is needed
+     */
+    private static List<Position> fighterPositions(Squad squad) {
+        List<Position> positions = new ArrayList<>();
+        for (ManagedUnit mu : squad.getMembers()) {
+            if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
+            positions.add(mu.getUnit().getPosition());
+        }
+        return positions;
+    }
+
     private boolean enemyHasNearbyDetection(ObservedUnitTracker tracker, Position center, int currentFrame) {
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             if (!ou.getUnitType().isDetector()) continue;
@@ -1078,7 +1144,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private boolean coversThreat;
     }
 
-    private double engagementRadius(UnitType type) {
+    static double engagementRadius(UnitType type) {
         if (!isPositionalUnit(type)) return MAX_ENGAGEMENT_RADIUS;
         int groundRange = type.groundWeapon() != null && type.groundWeapon() != WeaponType.None
                 ? type.groundWeapon().maxRange() : 0;
@@ -1090,7 +1156,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
     /**
      * Whether an enemy is priced from the edge of its fire rather than from where it stands: a positional enemy,
      * one that fires from where it stands, with a ground weapon, evaluated for a ground squad. An air squad keeps
-     * the fixed engagement radius.
+     * the fixed engagement radius, except for a Missile Turret, see {@link #pricedAtAirEdgeOfFire}.
      *
      * @param type enemy unit type
      * @param airSquad whether the squad is judged on its air arm
@@ -1099,6 +1165,21 @@ public class HorizonCombatSimulator implements CombatSimulator {
     static boolean pricedAtEdgeOfFire(UnitType type, boolean airSquad) {
         if (airSquad || !isPositionalUnit(type)) return false;
         return EnemyReachMemory.baseGroundRange(type) > 0;
+    }
+
+    /**
+     * Whether an enemy is priced from the edge of its air fire for an air squad: a Missile Turret, with the switch
+     * on. It is then sampled out to {@link AirTurretPricing#sampleRadius} and weighed by what its fire covers, see
+     * {@link AirTurretPricing}, so a flock that pulls back past the fixed engagement radius still counts the Turret
+     * covering the units it would turn back onto.
+     *
+     * @param type enemy unit type
+     * @param airSquad whether the squad is judged on its air arm
+     * @param enabled whether {@link Config#airTurretEdgeOfFire} is on
+     * @return true for a Missile Turret against an air squad with the switch on
+     */
+    static boolean pricedAtAirEdgeOfFire(UnitType type, boolean airSquad, boolean enabled) {
+        return enabled && airSquad && type == UnitType.Terran_Missile_Turret;
     }
 
     /**
@@ -1431,6 +1512,8 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private final List<UnitDebugEntry> friendlyUnits = new ArrayList<>();
         private final List<UnitDebugEntry> enemyUnits = new ArrayList<>();
         private final List<Position> pricedBunkers = new ArrayList<>();
+        private final Map<Position, Integer> airEdgeOfFire = new LinkedHashMap<>();
+        private final Map<Position, Position> airCoverTargets = new LinkedHashMap<>();
         private double friendlyTotal;
         private double enemyTotal;
         private double groundRatio;
@@ -1449,6 +1532,16 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private int siegeBandFrames = -1;
         private int siegeBandHeldFrames = -1;
         private int fightBandSinceFrame = -1;
+        /**
+         * The frame the current run of an air squad's reads its re-entry hold turned into RETREAT began, see
+         * {@link #reenter}, or -1 when this read was not turned.
+         */
+        private int reentryHoldSinceFrame = -1;
+        /**
+         * The enemy strength an air squad's re-entry hold judged this read against when it was above the strength the
+         * read measured, see Squad#reentryHeldStrength, or -1 when the hold did not raise it.
+         */
+        private double reentryHoldStrength = -1;
         private double holdThreshold = -1;
         private int contact = CONTACT_UNREAD;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
