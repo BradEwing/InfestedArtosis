@@ -1,25 +1,14 @@
 package unit.squad.horizon;
 
-import bwapi.Player;
 import bwapi.Position;
 import bwapi.Race;
-import bwapi.TestUnits;
-import bwapi.Unit;
 import bwapi.UnitSizeType;
 import bwapi.UnitType;
 import config.Config;
-import info.GameState;
-import info.TechProgression;
-import info.tracking.DarkSwarmTracker;
-import info.tracking.ObservedUnitTracker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
-import unit.managed.Mutalisk;
-import unit.managed.UnitRole;
-import unit.squad.AirSquad;
 import unit.squad.CombatSimulator.CombatResult;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -41,8 +30,8 @@ class AirTurretEdgeOfFireTest {
             + AirTurretPricing.ATTACKER_RANGE;
     private static final Map<UnitSizeType, Double> MUTALISKS = Collections.singletonMap(UnitSizeType.Small, 1.0);
     private static final double TERRAN_ENGAGE_THRESHOLD = HorizonCombatSimulator.engageThreshold(Race.Terran);
-    private static final Position CENTRE = new Position(1000, 1000);
-    private static final int FRAME = 10000;
+    private static final Position CENTRE = AirBattle.CENTRE;
+    private static final int FRAME = AirBattle.FRAME;
     private static final int FLOCK = 4;
     private static final int MARINE_DISTANCE = 200;
     private static final int PULLED_BACK = 400;
@@ -62,83 +51,6 @@ class AirTurretEdgeOfFireTest {
     @AfterEach
     void restoreSwitch() {
         Config.airTurretEdgeOfFire = edgeSetting;
-    }
-
-    /**
-     * An air squad of Mutalisks and the enemy around it, built from real JBWAPI units and evaluated through the
-     * simulator's own entry point.
-     */
-    private static final class Battle {
-        private final TestUnits units = new TestUnits();
-        private final Player self = units.player(0, true);
-        private final Player enemy = units.player(1, false);
-        private final ObservedUnitTracker tracker = new ObservedUnitTracker();
-        private final AirSquad squad = new AirSquad();
-        private final HorizonCombatSimulator sim = new HorizonCombatSimulator();
-        private final List<Unit> mutalisks = new ArrayList<>();
-
-        Battle(int mutalisks) {
-            units.setFrame(FRAME);
-            for (int i = 0; i < mutalisks; i++) {
-                Unit unit = units.unit(MUTALISK);
-                units.setPlayer(unit, self);
-                units.setHitPoints(unit, MUTALISK.maxHitPoints());
-                units.setExists(unit, true);
-                units.setPosition(unit, CENTRE.getX(), CENTRE.getY());
-                squad.addUnit(new Mutalisk(units.game(), unit, UnitRole.FIGHT, null));
-                this.mutalisks.add(unit);
-            }
-        }
-
-        Battle move(int member, int dx, int dy) {
-            units.setPosition(mutalisks.get(member), CENTRE.getX() + dx, CENTRE.getY() + dy);
-            return this;
-        }
-
-        Battle enemy(UnitType type, int dx, int dy) {
-            Unit unit = units.unit(type);
-            units.setPlayer(unit, enemy);
-            units.setHitPoints(unit, type.maxHitPoints());
-            units.setExists(unit, true);
-            units.setCompleted(unit, true);
-            units.setVisible(unit, self, true);
-            units.setPosition(unit, CENTRE.getX() + dx, CENTRE.getY() + dy);
-            tracker.onUnitShow(unit, FRAME, false);
-            return this;
-        }
-
-        CombatResult evaluate() {
-            return sim.evaluate(squad, Collections.emptyMap(), gameState());
-        }
-
-        HorizonCombatSimulator.DebugSnapshot snapshot() {
-            return sim.getLastSnapshots().get(squad.getId());
-        }
-
-        private GameState gameState() {
-            try {
-                Class<?> unsafeClass = Class.forName("sun.misc.Unsafe");
-                Field theUnsafe = unsafeClass.getDeclaredField("theUnsafe");
-                theUnsafe.setAccessible(true);
-                GameState state = (GameState) unsafeClass.getMethod("allocateInstance", Class.class)
-                        .invoke(theUnsafe.get(null), GameState.class);
-                set(state, "game", units.game());
-                set(state, "self", self);
-                set(state, "opponentRace", Race.Terran);
-                set(state, "techProgression", new TechProgression());
-                set(state, "observedUnitTracker", tracker);
-                set(state, "darkSwarmTracker", new DarkSwarmTracker());
-                return state;
-            } catch (ReflectiveOperationException e) {
-                throw new IllegalStateException(e);
-            }
-        }
-
-        private static void set(GameState state, String name, Object value) throws ReflectiveOperationException {
-            Field field = GameState.class.getDeclaredField(name);
-            field.setAccessible(true);
-            field.set(state, value);
-        }
     }
 
     private static HorizonCombatSimulator.FriendlyForce flock(int size) {
@@ -170,7 +82,7 @@ class AirTurretEdgeOfFireTest {
                 new HorizonCombatSimulator.DebugSnapshot());
     }
 
-    private static double turretStrength(Battle battle) {
+    private static double turretStrength(AirBattle battle) {
         return battle.snapshot().getEnemyUnits().stream().filter(e -> e.getType() == TURRET)
                 .mapToDouble(HorizonCombatSimulator.UnitDebugEntry::getStrength).sum();
     }
@@ -209,13 +121,13 @@ class AirTurretEdgeOfFireTest {
     @Test
     void throughEvaluateAVisibleTurretPulledBackFromReadsRetreatOnAndEngageOff() {
         Config.airTurretEdgeOfFire = true;
-        Battle on = new Battle(FLOCK).enemy(MARINE, MARINE_DISTANCE, 0).enemy(MARINE, MARINE_DISTANCE, 16)
+        AirBattle on = new AirBattle(FLOCK).enemy(MARINE, MARINE_DISTANCE, 0).enemy(MARINE, MARINE_DISTANCE, 16)
                 .enemy(TURRET, PULLED_BACK, 0);
         assertEquals(RETREAT, on.evaluate());
         assertEquals(1, on.snapshot().getAirEdgeOfFire().size());
 
         Config.airTurretEdgeOfFire = false;
-        Battle off = new Battle(FLOCK).enemy(MARINE, MARINE_DISTANCE, 0).enemy(MARINE, MARINE_DISTANCE, 16)
+        AirBattle off = new AirBattle(FLOCK).enemy(MARINE, MARINE_DISTANCE, 0).enemy(MARINE, MARINE_DISTANCE, 16)
                 .enemy(TURRET, PULLED_BACK, 0);
         assertEquals(ENGAGE, off.evaluate());
         assertTrue(off.snapshot().getAirEdgeOfFire().isEmpty());
@@ -225,7 +137,7 @@ class AirTurretEdgeOfFireTest {
     @Test
     void throughEvaluateTheSwitchOffKeepsATurretInsideTheFixedRadiusInFull() {
         Config.airTurretEdgeOfFire = false;
-        Battle battle = new Battle(FLOCK).enemy(TURRET, 300, 0);
+        AirBattle battle = new AirBattle(FLOCK).enemy(TURRET, 300, 0);
         battle.evaluate();
         HorizonCombatSimulator.UnitDebugEntry entry = battle.snapshot().getEnemyUnits().get(0);
         assertEquals(TURRET, entry.getType());
@@ -236,7 +148,7 @@ class AirTurretEdgeOfFireTest {
     @Test
     void throughEvaluateTheCoveringTargetIsRecordedForTheDebugDraw() {
         Config.airTurretEdgeOfFire = true;
-        Battle battle = new Battle(FLOCK).enemy(MARINE, MARINE_DISTANCE, 0).enemy(TURRET, PULLED_BACK, 0);
+        AirBattle battle = new AirBattle(FLOCK).enemy(MARINE, MARINE_DISTANCE, 0).enemy(TURRET, PULLED_BACK, 0);
         battle.evaluate();
         Position turretPosition = new Position(CENTRE.getX() + PULLED_BACK, CENTRE.getY());
         assertEquals(new Position(CENTRE.getX() + MARINE_DISTANCE, CENTRE.getY()),
@@ -249,7 +161,7 @@ class AirTurretEdgeOfFireTest {
         double step = 8 * fullTurret() / AirTurretPricing.TAPER + 1e-9;
         double previous = -1;
         for (int dx = 240; dx <= 680; dx += 8) {
-            Battle battle = new Battle(FLOCK).enemy(MARINE, dx, 0).enemy(TURRET, FAR_TURRET, 0);
+            AirBattle battle = new AirBattle(FLOCK).enemy(MARINE, dx, 0).enemy(TURRET, FAR_TURRET, 0);
             battle.evaluate();
             double strength = turretStrength(battle);
             if (previous >= 0) {
@@ -262,18 +174,18 @@ class AirTurretEdgeOfFireTest {
     @Test
     void throughEvaluateADepotNextToAFarTurretDoesNotMakeItCoverAndAMarineDoes() {
         Config.airTurretEdgeOfFire = true;
-        Battle depot = new Battle(FLOCK).enemy(UnitType.Terran_Supply_Depot, UNDER_FAR_TURRET, 0)
+        AirBattle depot = new AirBattle(FLOCK).enemy(UnitType.Terran_Supply_Depot, UNDER_FAR_TURRET, 0)
                 .enemy(TURRET, FAR_TURRET, 0);
         depot.evaluate();
         double flockOnly = AirTurretPricing.weight(FAR_TURRET, Double.POSITIVE_INFINITY, REACH);
         assertEquals(fullTurret() * flockOnly, turretStrength(depot), 1e-9);
         assertTrue(flockOnly < 0.5);
 
-        Battle scv = new Battle(FLOCK).enemy(UnitType.Terran_SCV, UNDER_FAR_TURRET, 0).enemy(TURRET, FAR_TURRET, 0);
+        AirBattle scv = new AirBattle(FLOCK).enemy(UnitType.Terran_SCV, UNDER_FAR_TURRET, 0).enemy(TURRET, FAR_TURRET, 0);
         scv.evaluate();
         assertEquals(fullTurret() * flockOnly, turretStrength(scv), 1e-9);
 
-        Battle marine = new Battle(FLOCK).enemy(MARINE, UNDER_FAR_TURRET, 0).enemy(TURRET, FAR_TURRET, 0);
+        AirBattle marine = new AirBattle(FLOCK).enemy(MARINE, UNDER_FAR_TURRET, 0).enemy(TURRET, FAR_TURRET, 0);
         marine.evaluate();
         assertEquals(fullTurret(), turretStrength(marine), 1e-9);
     }
@@ -282,7 +194,7 @@ class AirTurretEdgeOfFireTest {
     void throughEvaluateATurretWeighsInFullWhileAMemberIsInReachWhereverTheSmoothedCentreLags() {
         Config.airTurretEdgeOfFire = true;
         int turretDistance = CENTRE_LAG + REACH - 20;
-        Battle lagged = new Battle(FLOCK).enemy(TURRET, turretDistance, 0);
+        AirBattle lagged = new AirBattle(FLOCK).enemy(TURRET, turretDistance, 0);
         assertEquals(CENTRE, lagged.squad.getCenter());
         for (int i = 0; i < FLOCK; i++) {
             lagged.move(i, CENTRE_LAG, 0);
@@ -296,14 +208,14 @@ class AirTurretEdgeOfFireTest {
     @Test
     void throughEvaluateOneMemberInReachOfATurretPastTheSampleRadiusWeighsItInFull() {
         Config.airTurretEdgeOfFire = true;
-        Battle straggler = new Battle(FLOCK).enemy(TURRET, BEYOND_SAMPLE, 0);
+        AirBattle straggler = new AirBattle(FLOCK).enemy(TURRET, BEYOND_SAMPLE, 0);
         assertEquals(CENTRE, straggler.squad.getCenter());
         straggler.move(0, BEYOND_SAMPLE - REACH + 10, 0);
         straggler.evaluate();
         assertTrue(BEYOND_SAMPLE > AirTurretPricing.sampleRadius(REACH));
         assertEquals(fullTurret(), turretStrength(straggler), 1e-9);
 
-        Battle together = new Battle(FLOCK).enemy(TURRET, BEYOND_SAMPLE, 0);
+        AirBattle together = new AirBattle(FLOCK).enemy(TURRET, BEYOND_SAMPLE, 0);
         together.evaluate();
         assertEquals(0.0, turretStrength(together));
     }

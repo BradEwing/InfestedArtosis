@@ -124,6 +124,30 @@ public class Squad implements Comparable<Squad> {
     public static final int CONTACT_MEMORY_FRAMES = 24;
 
     protected int blindTurnBackGateUntilFrame = 0;
+
+    /**
+     * Frames after an air squad leaves FIGHT on a combat sim RETREAT, or leaves a harass, during which the enemy
+     * strength it left is held in full, see {@link #startReentryHold}: twice the air retreat lock, past which nine in
+     * ten flock re-entries on the Turret exits have already come.
+     */
+    public static final int REENTRY_HOLD_FULL_FRAMES = 72;
+
+    /**
+     * Frames after the exit by which the held enemy strength has decayed linearly to the current one, see
+     * {@link #reentryHeldStrength}: the hold ends with no step.
+     */
+    public static final int REENTRY_HOLD_FRAMES = 192;
+
+    /**
+     * Pixels the squad's centre may stand from where it left before a read is judged fresh, see
+     * {@link #reentryHeldStrength}: past nineteen in twenty of the centre's drift between an exit and a re-entry into
+     * the same fight.
+     */
+    public static final int REENTRY_HOLD_RELEASE_DISTANCE = 448;
+
+    protected int reentryHoldFrame = -1;
+    private double reentryHoldStrength = 0;
+    private Position reentryHoldAnchor;
     protected int lastContactFrame = -1;
     protected int contactScanFrame = -1;
 
@@ -310,7 +334,9 @@ public class Squad implements Comparable<Squad> {
      * <p>The Bunkers the sources retreated from stay remembered, see {@link BunkerRetreatMemory#absorb}: a merged
      * squad holds off the union of them, and a split keeps them on both halves.
      *
-     * <p>The held siege band RETREAT folds to the latest one any source holds, see {@link HeldRetreat}.
+     * <p>The held siege band RETREAT folds to the latest one any source holds, see {@link HeldRetreat}. A merged
+     * squad in RETREAT keeps the re-entry hold of the source that left its fight last, see {@link #startReentryHold};
+     * any other merged status drops it.
      *
      * @param sources squads being merged into this one
      */
@@ -365,6 +391,11 @@ public class Squad implements Comparable<Squad> {
             this.turnBackCommitUntilFrame = Math.max(this.turnBackCommitUntilFrame, source.turnBackCommitUntilFrame);
             this.blindTurnBackGateUntilFrame = Math.max(this.blindTurnBackGateUntilFrame,
                     source.blindTurnBackGateUntilFrame);
+            if (source.reentryHoldFrame > this.reentryHoldFrame) {
+                this.reentryHoldFrame = source.reentryHoldFrame;
+                this.reentryHoldStrength = source.reentryHoldStrength;
+                this.reentryHoldAnchor = source.reentryHoldAnchor;
+            }
             this.lastContactFrame = Math.max(this.lastContactFrame, source.lastContactFrame);
             if (!source.attritionRetreatLock) {
                 this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
@@ -381,6 +412,7 @@ public class Squad implements Comparable<Squad> {
         this.status = mergedStatus;
         if (mergedStatus != SquadStatus.RETREAT) {
             this.blindTurnBackGateUntilFrame = 0;
+            clearReentryHold();
         }
         this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
         this.containmentArc = mergedStatus == SquadStatus.CONTAIN ? inheritedArc : null;
@@ -598,7 +630,7 @@ public class Squad implements Comparable<Squad> {
 
     /**
      * Sets the squad's status. Any status other than RETREAT ends the blind turn-back gate, so a later retreat that
-     * no measured read opened is not held by the gate of an earlier one.
+     * no measured read opened is not held by the gate of an earlier one, and ends the re-entry hold.
      *
      * @param status new status
      */
@@ -606,7 +638,69 @@ public class Squad implements Comparable<Squad> {
         this.status = status;
         if (status != SquadStatus.RETREAT) {
             clearBlindTurnBackGate();
+            clearReentryHold();
         }
+    }
+
+    /**
+     * Opens the re-entry hold of an air squad leaving FIGHT on a combat sim RETREAT, or leaving a harass: while the
+     * squad stays in RETREAT, the simulator judges a read that would send it back in against the enemy strength it
+     * left, decayed toward the current strength, see {@link #reentryHeldStrength}. Any status other than RETREAT ends
+     * the hold, and only leaving FIGHT or HARASS opens one, so a squad is held at most {@link #REENTRY_HOLD_FRAMES}
+     * after it last left.
+     *
+     * @param currentFrame frame the squad leaves
+     * @param enemyStrength the enemy strength the leaving read measured, priced as the simulator priced it
+     * @param anchor the centre the leaving read was taken from
+     */
+    public void startReentryHold(int currentFrame, double enemyStrength, Position anchor) {
+        reentryHoldFrame = currentFrame;
+        reentryHoldStrength = enemyStrength;
+        reentryHoldAnchor = anchor;
+    }
+
+    /**
+     * The enemy strength the re-entry hold judges a read against: the held strength in full for
+     * {@link #REENTRY_HOLD_FULL_FRAMES} after the exit, then decaying linearly to the current strength by
+     * {@link #REENTRY_HOLD_FRAMES}, and never less than the current strength. A read taken more than
+     * {@link #REENTRY_HOLD_RELEASE_DISTANCE} from where the squad left, or with no hold open, is judged against the
+     * current strength alone.
+     *
+     * @param currentFrame frame of the read
+     * @param anchor the centre the read is taken from
+     * @param current the enemy strength the read measured
+     * @return the enemy strength to judge the read against
+     */
+    public double reentryHeldStrength(int currentFrame, Position anchor, double current) {
+        double weight = reentryHoldWeight(currentFrame, anchor);
+        if (weight <= 0 || reentryHoldStrength <= current) return current;
+        return current + (reentryHoldStrength - current) * weight;
+    }
+
+    /**
+     * How much of the gap between the held and the current enemy strength the hold still keeps, see
+     * {@link #reentryHeldStrength}.
+     *
+     * @param currentFrame frame of the read
+     * @param anchor the centre the read is taken from
+     * @return 1 in full, falling linearly to 0 at the hold's end; 0 with no hold or away from where the squad left
+     */
+    double reentryHoldWeight(int currentFrame, Position anchor) {
+        if (reentryHoldAnchor == null || anchor == null || reentryHoldFrame < 0) return 0;
+        if (anchor.getDistance(reentryHoldAnchor) > REENTRY_HOLD_RELEASE_DISTANCE) return 0;
+        int age = currentFrame - reentryHoldFrame;
+        if (age < 0 || age >= REENTRY_HOLD_FRAMES) return 0;
+        if (age < REENTRY_HOLD_FULL_FRAMES) return 1;
+        return (double) (REENTRY_HOLD_FRAMES - age) / (REENTRY_HOLD_FRAMES - REENTRY_HOLD_FULL_FRAMES);
+    }
+
+    /**
+     * Ends the re-entry hold, as a squad that leaves RETREAT no longer has a way back in to hold.
+     */
+    public void clearReentryHold() {
+        reentryHoldFrame = -1;
+        reentryHoldStrength = 0;
+        reentryHoldAnchor = null;
     }
 
     /**

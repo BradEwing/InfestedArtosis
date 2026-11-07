@@ -331,6 +331,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
 
+        if (airSquad) {
+            DebugSnapshot previous = lastSnapshots.get(squad.getId());
+            double heldStrength = Config.airReentryHold && squad.getStatus() == SquadStatus.RETREAT
+                    ? squad.reentryHeldStrength(currentFrame, squadCenter, enemyAntiAirStr) : enemyAntiAirStr;
+            CombatResult single = result;
+            result = reenter(single, friendlyAirStr, heldStrength, engageThresh);
+            snapshot.setReentryHoldStrength(heldStrength > enemyAntiAirStr ? heldStrength : -1);
+            snapshot.setReentryHoldSinceFrame(FightBand.heldSinceFrame(result != single,
+                    previous != null && currentFrame - previous.getCapturedFrame() <= MAX_SIM_GAP_FRAMES
+                            ? previous.getReentryHoldSinceFrame() : -1, currentFrame));
+        }
+
         if (!airSquad) {
             DebugSnapshot previous = lastSnapshots.get(squad.getId());
             boolean committed = squad.isFightLocked(currentFrame) || squad.isTurnBackCommitted(currentFrame);
@@ -427,6 +439,24 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (band == SIEGE_BAND_HELD) heldFrames += elapsed;
             lastFrame = frame;
         }
+    }
+
+    /**
+     * The verdict a retreating air squad acts on under its re-entry hold. An ENGAGE read, or an ADVANCE read that
+     * measured no enemy where the squad left one, stands only when our air strength clears the engage threshold
+     * against the held enemy strength, see Squad#reentryHeldStrength; otherwise the squad keeps retreating. A RETREAT
+     * read stands. Our strength is the read's own, so reinforcements that clear the held strength go back in.
+     *
+     * @param raw the verdict for this frame's strengths
+     * @param friendlyAir our air strength
+     * @param heldStrength the enemy strength the hold judges the read against, the measured strength without a hold
+     * @param engageThreshold the engage threshold the read is judged against
+     * @return RETREAT when the hold refuses the read, otherwise the raw verdict
+     */
+    static CombatResult reenter(CombatResult raw, double friendlyAir, double heldStrength, double engageThreshold) {
+        if (raw == CombatResult.RETREAT || heldStrength <= MIN_ENEMY_STRENGTH) return raw;
+        if (friendlyAir / heldStrength < engageThreshold) return CombatResult.RETREAT;
+        return raw;
     }
 
     /**
@@ -1502,6 +1532,16 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private int siegeBandFrames = -1;
         private int siegeBandHeldFrames = -1;
         private int fightBandSinceFrame = -1;
+        /**
+         * The frame the current run of an air squad's reads its re-entry hold turned into RETREAT began, see
+         * {@link #reenter}, or -1 when this read was not turned.
+         */
+        private int reentryHoldSinceFrame = -1;
+        /**
+         * The enemy strength an air squad's re-entry hold judged this read against when it was above the strength the
+         * read measured, see Squad#reentryHeldStrength, or -1 when the hold did not raise it.
+         */
+        private double reentryHoldStrength = -1;
         private double holdThreshold = -1;
         private int contact = CONTACT_UNREAD;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;

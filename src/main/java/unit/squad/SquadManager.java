@@ -2043,10 +2043,25 @@ public class SquadManager {
         squad.setHarassState(null);
         squad.setHarassExitFrame(now);
         squad.setStatus(SquadStatus.RETREAT);
+        noteHarassExit(squad, now);
         SquadDecisions.pathTaken(squad, DecisionPath.HARASS_EXIT);
         assignRetreatTargets(squad, squad.getMembers());
         airHarass.leaveTogether(squad, now);
         squad.startRetreatLock(now);
+    }
+
+    /**
+     * Opens the re-entry hold of an air squad leaving a harass on the enemy strength the combat sim measures where it
+     * leaves, see {@link #openReentryHold}, so the harass exit engage obeys it like a fight exit does. The sim runs for
+     * it only with {@link Config#airReentryHold} on.
+     *
+     * @param squad squad leaving HARASS, already in RETREAT
+     * @param now current frame
+     */
+    private void noteHarassExit(Squad squad, int now) {
+        if (!Config.airReentryHold || !squad.isAirSquad()) return;
+        squad.getCombatSimulator().evaluate(squad, getAdjacentSquads(squad, REINFORCEMENT_RADIUS), gameState);
+        openReentryHold(squad, lastSnapshot(squad), now);
     }
 
     private List<Position> containPoints() {
@@ -2633,6 +2648,13 @@ public class SquadManager {
      * retreating within {@link Squad#BLIND_TURN_BACK_GATE_FRAMES} of a measured RETREAT read turns back only on a
      * measured ENGAGE, not on an ADVANCE that measured no enemy (see {@link #holdsBlindTurnBack}).
      *
+     * <p>An air squad that leaves FIGHT on a sim RETREAT opens its re-entry hold (see {@link #noteFightExit}): while
+     * it retreats the sim turns a read that would send it back in, and that does not clear the engage threshold
+     * against the enemy strength it left, into RETREAT. The harass exit opens the same hold, so a harass exit engage
+     * obeys it too. A read the hold turned arms no retreat lock, so the squad's harass entry and a read it wins against
+     * the held strength are still checked on the next frames, and is logged only outside the retreat lock, which
+     * refuses the read on its own.
+     *
      * @param squad fight squad to tick
      */
     private void simulateFightSquad(Squad squad) {
@@ -2704,6 +2726,7 @@ public class SquadManager {
         if (snapshot != null && snapshot.getFightBandSinceFrame() >= 0) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT_BAND);
         }
+        boolean reentryHeld = snapshot != null && snapshot.getReentryHoldSinceFrame() >= 0;
 
         DecisionPath turnPath = retreatTurnPath(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
                 ratio, engageThreshold);
@@ -2802,9 +2825,14 @@ public class SquadManager {
                     squad.getBunkerRetreatMemory().recordRetreat(snapshot.getPricedBunkers(), squad.getMembers(), now);
                 }
                 if (!enteredContain) {
+                    noteFightExit(squad, snapshot, now);
                     squad.setStatus(SquadStatus.RETREAT);
                     assignRetreatTargets(squad, managedFighters);
-                    squad.startRetreatLock(now);
+                    if (reentryHeld) {
+                        SquadDecisions.lockSuppressed(squad, SquadLock.REENTRY_HOLD);
+                    } else {
+                        squad.startRetreatLock(now);
+                    }
                     noteRetreatRead(squad, band, result, enemyMeasured, now);
                 }
                 break;
@@ -2838,6 +2866,33 @@ public class SquadManager {
         if (!band || squad.getStatus() != SquadStatus.RETREAT) return;
         squad.startTurnBackCommit(now);
         squad.clearBlindTurnBackGate();
+    }
+
+    /**
+     * Opens the re-entry hold of an air squad leaving FIGHT on this frame's sim RETREAT, see
+     * {@link #openReentryHold}. A squad already out of FIGHT opens none.
+     *
+     * @param squad squad acting on a RETREAT read, before its status changes
+     * @param snapshot this frame's sim snapshot, or null
+     * @param now current frame
+     */
+    static void noteFightExit(Squad squad, HorizonCombatSimulator.DebugSnapshot snapshot, int now) {
+        if (squad.getStatus() != SquadStatus.FIGHT) return;
+        openReentryHold(squad, snapshot, now);
+    }
+
+    /**
+     * Opens an air squad's re-entry hold on the enemy strength the given read measured and the centre it was taken
+     * from, see {@link Squad#startReentryHold}. A ground squad, a read without a snapshot or without a measured enemy,
+     * or {@link Config#airReentryHold} off opens none.
+     *
+     * @param squad squad leaving FIGHT or HARASS
+     * @param snapshot the sim snapshot of the leaving read, or null
+     * @param now current frame
+     */
+    static void openReentryHold(Squad squad, HorizonCombatSimulator.DebugSnapshot snapshot, int now) {
+        if (!Config.airReentryHold || !squad.isAirSquad() || snapshot == null || !snapshot.isEnemyMeasured()) return;
+        squad.startReentryHold(now, snapshot.getEnemyTotal(), snapshot.getSquadCenter());
     }
 
     /**

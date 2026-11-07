@@ -6,8 +6,9 @@ package telemetry;
  *
  * <p>Named from the status the lock protects, matching Squad.startRetreatLock and
  * Squad.startFightLock. The three band entries name a ground squad held in FIGHT by the fight band
- * (FightBand) where the single engage cut would have let it go, and BLIND_TURN_BACK names a ground squad held in
- * RETREAT where an ADVANCE that measured no enemy would have turned it back.
+ * (FightBand) where the single engage cut would have let it go, BLIND_TURN_BACK names a ground squad held in
+ * RETREAT where an ADVANCE that measured no enemy would have turned it back, and REENTRY_HOLD an air squad held in
+ * RETREAT by the enemy strength it left.
  */
 public enum SquadLock {
     RETREAT,
@@ -29,6 +30,11 @@ public enum SquadLock {
      * the gate its last measured RETREAT read opened.
      */
     BLIND_TURN_BACK,
+    /**
+     * A retreating air squad's re-entry hold turned an ENGAGE or ADVANCE read into RETREAT outside its retreat lock:
+     * the squad would not clear the engage threshold against the enemy strength it left, see Squad.startReentryHold.
+     */
+    REENTRY_HOLD,
     /**
      * A neighbouring ground squad's fight lock held a RETREAT read of a FIGHT squad that nothing of its own held.
      */
