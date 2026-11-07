@@ -29,7 +29,7 @@ public final class AirFlock {
     /** Tuning value: pixels from the anchor beyond which a member stops taking orders and regroups. */
     static final int REGROUP_RADIUS = 192;
     /** Tuning value: pixels from the anchor within which a regrouping member rejoins the flock's orders. */
-    static final int REGROUP_JOIN_RADIUS = 96;
+    public static final int REGROUP_JOIN_RADIUS = 96;
     /** Tuning value: pixels around each member within which an enemy pushes the flock's retreat point. */
     static final int RETREAT_SCAN_RADIUS = 256;
     /** Tuning value: pixels past the flock's leading member to the flock's retreat point. */

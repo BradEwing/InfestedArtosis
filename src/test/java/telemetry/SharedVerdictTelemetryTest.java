@@ -12,12 +12,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class SharedVerdictTelemetryTest {
 
     @Test
-    void theNeighbourCellsAreTheLastColumnsAndEmptyOnEveryOtherRow() {
+    void theNeighbourCellsPrecedeTheReentryHoldColumnAndAreEmptyOnEveryOtherRow() {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
         assertEquals(Arrays.asList("partner_squad_id", "partner_distance", "opposed_reason", "shared_verdict_basis"),
-                Arrays.asList(columns).subList(columns.length - 4, columns.length));
+                Arrays.asList(columns).subList(columns.length - 5, columns.length - 1));
         assertEquals(Arrays.asList("NONE", "-1", "NONE", "NONE"), SquadDecisionLogger.neighbourCells(context));
     }
 

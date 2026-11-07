@@ -31,6 +31,25 @@ class FightBandTelemetryTest {
     }
 
     @Test
+    void aReentryHoldOverridesTheReadOfARetreatingSquadWithTheRetreatItCarries() {
+        assertTrue(SquadDecisionLogger.overridesVerdict(SquadStatus.RETREAT, SquadLock.REENTRY_HOLD, RETREAT));
+        assertFalse(SquadDecisionLogger.overridesVerdict(SquadStatus.RETREAT, SquadLock.REENTRY_HOLD, ENGAGE));
+        assertFalse(SquadDecisionLogger.overridesVerdict(SquadStatus.FIGHT, SquadLock.REENTRY_HOLD, RETREAT));
+    }
+
+    @Test
+    void theHeldStrengthIsTheLastColumnAndUnevaluatedWithoutAHold() {
+        String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
+        SquadDecision context = new SquadDecision();
+
+        assertEquals("sim_reentry_hold_strength", columns[columns.length - 1]);
+        assertEquals(Collections.singletonList(Csv.format(SquadDecision.NOT_EVALUATED)),
+                SquadDecisionLogger.reentryHoldCells(context));
+        context.setReentryHoldStrength(120.5);
+        assertEquals(Collections.singletonList(Csv.format(120.5)), SquadDecisionLogger.reentryHoldCells(context));
+    }
+
+    @Test
     void aBlindTurnBackHoldOverridesTheAdvanceOfARetreatingSquad() {
         assertTrue(SquadDecisionLogger.overridesVerdict(SquadStatus.RETREAT, SquadLock.BLIND_TURN_BACK, ADVANCE));
         assertFalse(SquadDecisionLogger.overridesVerdict(SquadStatus.RETREAT, SquadLock.BLIND_TURN_BACK, RETREAT));
@@ -42,8 +61,8 @@ class FightBandTelemetryTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("sim_hold_threshold", columns[columns.length - 6]);
-        assertEquals("band_contact", columns[columns.length - 5]);
+        assertEquals("sim_hold_threshold", columns[columns.length - 7]);
+        assertEquals("band_contact", columns[columns.length - 6]);
         assertEquals(Arrays.asList(Csv.format(SquadDecision.NOT_EVALUATED), String.valueOf(SquadDecision.NOT_EVALUATED)),
                 SquadDecisionLogger.holdCells(context));
         context.setHoldThreshold(1.0);
@@ -56,7 +75,7 @@ class FightBandTelemetryTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("sim_retreat_threshold", columns[columns.length - 7]);
+        assertEquals("sim_retreat_threshold", columns[columns.length - 8]);
         assertEquals(Collections.singletonList(Csv.format(SquadDecision.NOT_EVALUATED)),
                 SquadDecisionLogger.retreatThresholdCells(context));
         context.setRetreatThreshold(0.7);
