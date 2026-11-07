@@ -3,13 +3,9 @@ package unit.squad.horizon;
 import bwapi.Position;
 import bwapi.UnitType;
 import unit.squad.AirFlock;
-import unit.squad.CombatSimulator;
 import util.TargetScorer;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 /**
  * How much of each enemy Missile Turret an air squad faces, priced by what the Turret's fire covers rather than by
@@ -29,10 +25,6 @@ import java.util.Set;
  * <p>Several Turrets are not summed by their distance from the flock alone: a Turret that covers neither the flock
  * nor what it would fight weighs little however many stand beside it, and every Turret that does cover the fight
  * counts in full.
- *
- * <p>The taper is a price, not a band: a flock that backs off past a Turret it left a fight under would read it
- * lighter and turn straight back in. {@link #reenter} is the band's other half: a squad that left FIGHT goes back in,
- * for a while, only on a read it wins with the Turrets it left priced in full.
  */
 final class AirTurretPricing {
 
@@ -242,12 +234,9 @@ final class AirTurretPricing {
      * @param targets the cover candidates read within {@link #TARGET_WINDOW}, see {@link #coverCandidate}
      * @param sample the enemy sample to add to
      * @param snapshot the snapshot to record the priced Turrets and their cover on
-     * @return for each Turret priced at a weight under full, where it stands and the anti-air its taper left out
      */
-    static Map<Position, Double> price(List<Turret> turrets, List<Target> targets,
-                                       HorizonCombatSimulator.EnemySample sample,
-                                       HorizonCombatSimulator.DebugSnapshot snapshot) {
-        Map<Position, Double> tapered = new LinkedHashMap<>();
+    static void price(List<Turret> turrets, List<Target> targets, HorizonCombatSimulator.EnemySample sample,
+                      HorizonCombatSimulator.DebugSnapshot snapshot) {
         for (Turret turret : turrets) {
             Target cover = null;
             double coverGap = Double.POSITIVE_INFINITY;
@@ -268,49 +257,6 @@ final class AirTurretPricing {
             if (cover != null && coverGap < TAPER) {
                 snapshot.getAirCoverTargets().put(turret.position, cover.position);
             }
-            if (weight < 1.0) {
-                tapered.merge(turret.position, turret.antiAir - antiAir, Double::sum);
-            }
         }
-        return tapered;
-    }
-
-    /**
-     * The anti-air a squad's re-entry band adds back: what the taper left out of each Turret the band holds.
-     *
-     * @param tapered what the taper left out of each Turret priced under full weight, see {@link #price}
-     * @param band where each Turret the band holds stands
-     * @return the anti-air to add, 0 when no held Turret is tapered
-     */
-    static double bandShortfall(Map<Position, Double> tapered, Set<Position> band) {
-        double shortfall = 0;
-        for (Map.Entry<Position, Double> entry : tapered.entrySet()) {
-            if (band.contains(entry.getKey())) {
-                shortfall += entry.getValue();
-            }
-        }
-        return shortfall;
-    }
-
-    /**
-     * The verdict a retreating air squad acts on inside its re-entry band. An ENGAGE read stands only when our air
-     * strength still clears the engage threshold against the enemy's anti-air with the band's tapered Turrets priced
-     * at full weight, see {@link #bandShortfall}; otherwise the squad keeps retreating. Every other read, and every
-     * read outside the band, stands. A Turret the flock has drawn far enough from that it weighs nothing adds nothing
-     * back, so the flock still turns in on a target away from the Turrets it left.
-     *
-     * @param applies whether the band is on for the squad: both switches on, status RETREAT, the band open
-     * @param raw the verdict for this frame's strengths
-     * @param friendlyAir our air strength
-     * @param enemyAntiAir the enemy's anti-air strength as priced
-     * @param shortfall the anti-air the band adds back, see {@link #bandShortfall}
-     * @param engageThreshold the engage threshold the read is judged against
-     * @return RETREAT when the band refuses the ENGAGE, otherwise the raw verdict
-     */
-    static CombatSimulator.CombatResult reenter(boolean applies, CombatSimulator.CombatResult raw, double friendlyAir,
-                                                double enemyAntiAir, double shortfall, double engageThreshold) {
-        if (!applies || raw != CombatSimulator.CombatResult.ENGAGE || shortfall <= 0) return raw;
-        if (friendlyAir / (enemyAntiAir + shortfall) < engageThreshold) return CombatSimulator.CombatResult.RETREAT;
-        return raw;
     }
 }

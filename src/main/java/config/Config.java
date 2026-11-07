@@ -60,13 +60,6 @@ public final class Config {
      * On unless IA_AIR_TURRET_EDGE_OF_FIRE is set to false.
      */
     public static boolean airTurretEdgeOfFire = true;
-    /**
-     * Whether an air squad that left FIGHT on a combat sim RETREAT goes back in, for a while after, only on a read it
-     * would still win with the Missile Turrets that RETREAT read sampled priced at full weight instead of tapered, see
-     * {@link #airTurretEdgeOfFire}. Inert while that switch is off. On unless IA_AIR_TURRET_REENTRY_BAND is set to
-     * false.
-     */
-    public static boolean airTurretReentryBand = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -162,7 +155,6 @@ public final class Config {
         squadSharedVerdict = enabledUnlessFalse(setting(dotenv, "IA_SQUAD_SHARED_VERDICT"));
         mutaCooldownKite = enabledUnlessFalse(setting(dotenv, "IA_MUTA_COOLDOWN_KITE"));
         airTurretEdgeOfFire = enabledUnlessFalse(setting(dotenv, "IA_AIR_TURRET_EDGE_OF_FIRE"));
-        airTurretReentryBand = enabledUnlessFalse(setting(dotenv, "IA_AIR_TURRET_REENTRY_BAND"));
     }
 
     /**

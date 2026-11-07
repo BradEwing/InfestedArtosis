@@ -2633,11 +2633,6 @@ public class SquadManager {
      * retreating within {@link Squad#BLIND_TURN_BACK_GATE_FRAMES} of a measured RETREAT read turns back only on a
      * measured ENGAGE, not on an ADVANCE that measured no enemy (see {@link #holdsBlindTurnBack}).
      *
-     * <p>An air squad that leaves FIGHT on a sim RETREAT opens its Turret re-entry band (see {@link #noteFightExit}):
-     * while it retreats the sim turns an ENGAGE it would lose with the Turrets that RETREAT sampled at full weight into
-     * RETREAT. A read the band turned arms no retreat lock, so the squad's harass entry and a read it wins at full
-     * weight are still checked on the next frames.
-     *
      * @param squad fight squad to tick
      */
     private void simulateFightSquad(Squad squad) {
@@ -2708,10 +2703,6 @@ public class SquadManager {
                 : requestPath(noVisionMarch, result));
         if (snapshot != null && snapshot.getFightBandSinceFrame() >= 0) {
             SquadDecisions.lockSuppressed(squad, SquadLock.FIGHT_BAND);
-        }
-        boolean reentryBandHeld = snapshot != null && snapshot.getTurretReentryBandSinceFrame() >= 0;
-        if (reentryBandHeld) {
-            SquadDecisions.lockSuppressed(squad, SquadLock.TURRET_REENTRY_BAND);
         }
 
         DecisionPath turnPath = retreatTurnPath(squad.getStatus(), squad.getRetreatRoute(), result, enemyMeasured,
@@ -2811,12 +2802,9 @@ public class SquadManager {
                     squad.getBunkerRetreatMemory().recordRetreat(snapshot.getPricedBunkers(), squad.getMembers(), now);
                 }
                 if (!enteredContain) {
-                    noteFightExit(squad, snapshot, now);
                     squad.setStatus(SquadStatus.RETREAT);
                     assignRetreatTargets(squad, managedFighters);
-                    if (!reentryBandHeld) {
-                        squad.startRetreatLock(now);
-                    }
+                    squad.startRetreatLock(now);
                     noteRetreatRead(squad, band, result, enemyMeasured, now);
                 }
                 break;
@@ -2850,20 +2838,6 @@ public class SquadManager {
         if (!band || squad.getStatus() != SquadStatus.RETREAT) return;
         squad.startTurnBackCommit(now);
         squad.clearBlindTurnBackGate();
-    }
-
-    /**
-     * Opens the Turret re-entry band of an air squad leaving FIGHT on this frame's sim RETREAT, holding the Turrets
-     * the read sampled, see {@link Squad#startTurretReentryBand}. A squad already out of FIGHT, a ground squad, or a
-     * read without a snapshot opens none.
-     *
-     * @param squad squad acting on a RETREAT read, before its status changes
-     * @param snapshot this frame's sim snapshot, or null
-     * @param now current frame
-     */
-    static void noteFightExit(Squad squad, HorizonCombatSimulator.DebugSnapshot snapshot, int now) {
-        if (!squad.isAirSquad() || squad.getStatus() != SquadStatus.FIGHT || snapshot == null) return;
-        squad.startTurretReentryBand(now, snapshot.getAirEdgeOfFire().keySet());
     }
 
     /**

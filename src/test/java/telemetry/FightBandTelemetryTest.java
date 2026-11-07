@@ -38,13 +38,6 @@ class FightBandTelemetryTest {
     }
 
     @Test
-    void aTurretReentryBandOverridesTheEngageOfARetreatingSquadWithTheRetreatItCarries() {
-        assertTrue(SquadDecisionLogger.overridesVerdict(SquadStatus.RETREAT, SquadLock.TURRET_REENTRY_BAND, RETREAT));
-        assertFalse(SquadDecisionLogger.overridesVerdict(SquadStatus.RETREAT, SquadLock.TURRET_REENTRY_BAND, ENGAGE));
-        assertFalse(SquadDecisionLogger.overridesVerdict(SquadStatus.FIGHT, SquadLock.TURRET_REENTRY_BAND, RETREAT));
-    }
-
-    @Test
     void theHoldThresholdAndContactPrecedeTheNeighbourColumnsAndAreUnevaluatedWithoutASnapshot() {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();

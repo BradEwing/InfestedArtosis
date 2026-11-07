@@ -244,8 +244,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
             snapshot.getEnemyUnits().add(new UnitDebugEntry(pos, type, displayStr, false, !visible));
         }
 
-        Map<Position, Double> taperedTurrets = AirTurretPricing.price(airEdgeTurrets, coverTargets, enemySample,
-                snapshot);
+        AirTurretPricing.price(airEdgeTurrets, coverTargets, enemySample, snapshot);
         retreatMemory.retain(livingBunkers);
         priceBunkers(bunkers, BunkerPricing.garrisonPool(tracker.getLivingObservedUnits(), pricedLooseShooters),
                 enemySample, snapshot, airSquad);
@@ -331,19 +330,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         CombatResult result = selectResult(friendlyGroundStr, friendlyAirStr, enemyGroundStr,
                 enemyAntiAirStr, enemyEngagedStr, airSquad, engageThresh);
-
-        if (airSquad) {
-            DebugSnapshot previous = lastSnapshots.get(squad.getId());
-            boolean banded = Config.airTurretEdgeOfFire && Config.airTurretReentryBand
-                    && squad.getStatus() == SquadStatus.RETREAT;
-            CombatResult single = result;
-            result = AirTurretPricing.reenter(banded, single, friendlyAirStr, enemyAntiAirStr,
-                    banded ? AirTurretPricing.bandShortfall(taperedTurrets, squad.turretReentryBand(currentFrame)) : 0,
-                    engageThresh);
-            snapshot.setTurretReentryBandSinceFrame(FightBand.heldSinceFrame(result != single,
-                    previous != null && currentFrame - previous.getCapturedFrame() <= MAX_SIM_GAP_FRAMES
-                            ? previous.getTurretReentryBandSinceFrame() : -1, currentFrame));
-        }
 
         if (!airSquad) {
             DebugSnapshot previous = lastSnapshots.get(squad.getId());
@@ -1516,11 +1502,6 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private int siegeBandFrames = -1;
         private int siegeBandHeldFrames = -1;
         private int fightBandSinceFrame = -1;
-        /**
-         * The frame the current run of an air squad's ENGAGE reads its Turret re-entry band turned into RETREAT began,
-         * see {@link AirTurretPricing#reenter}, or -1 when this read was not turned.
-         */
-        private int turretReentryBandSinceFrame = -1;
         private double holdThreshold = -1;
         private int contact = CONTACT_UNREAD;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;

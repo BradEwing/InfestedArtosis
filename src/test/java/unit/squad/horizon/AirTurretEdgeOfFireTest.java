@@ -18,8 +18,6 @@ import unit.managed.Mutalisk;
 import unit.managed.UnitRole;
 import unit.squad.AirSquad;
 import unit.squad.CombatSimulator.CombatResult;
-import unit.squad.Squad;
-import unit.squad.SquadStatus;
 
 import java.lang.reflect.Field;
 import java.util.ArrayList;
@@ -56,18 +54,14 @@ class AirTurretEdgeOfFireTest {
     private static final int UNDER_FAR_TURRET = 300;
     private static final int CENTRE_LAG = 300;
     private static final int BEYOND_SAMPLE = 1000;
-    private static final int UNWEIGHED_TURRET = 850;
-    private static final int LEFT_FIGHT = FRAME - 10;
     private static final UnitType[] OTHER_ENEMIES = {MARINE, UnitType.Terran_Goliath, UnitType.Terran_Bunker,
         UnitType.Zerg_Spore_Colony, UnitType.Protoss_Photon_Cannon, UnitType.Terran_Siege_Tank_Siege_Mode};
 
     private final boolean edgeSetting = Config.airTurretEdgeOfFire;
-    private final boolean bandSetting = Config.airTurretReentryBand;
 
     @AfterEach
     void restoreSwitch() {
         Config.airTurretEdgeOfFire = edgeSetting;
-        Config.airTurretReentryBand = bandSetting;
     }
 
     /**
@@ -435,126 +429,6 @@ class AirTurretEdgeOfFireTest {
         assertEquals(ENGAGE, verdict(FLOCK, without));
         assertEquals(verdict(FLOCK, without), verdict(FLOCK, with));
         assertEquals(without.antiAirTotal(), with.antiAirTotal());
-    }
-
-    private static Position turretAt(int distance) {
-        return new Position(CENTRE.getX() + distance, CENTRE.getY());
-    }
-
-    private static Battle retreating(int mutalisks, int turretDistance) {
-        Battle battle = new Battle(mutalisks).enemy(MARINE, -MARINE_DISTANCE, 0).enemy(MARINE, -MARINE_DISTANCE, 16)
-                .enemy(TURRET, turretDistance, 0);
-        battle.squad.setStatus(SquadStatus.RETREAT);
-        return battle;
-    }
-
-    private static Battle banded(int mutalisks, int turretDistance, int leftFight, int bandedTurret) {
-        Battle battle = retreating(mutalisks, turretDistance);
-        battle.squad.startTurretReentryBand(leftFight, Collections.singleton(turretAt(bandedTurret)));
-        return battle;
-    }
-
-    private static void bothSwitches(boolean edge, boolean band) {
-        Config.airTurretEdgeOfFire = edge;
-        Config.airTurretReentryBand = band;
-    }
-
-    @Test
-    void throughEvaluateTheBandRefusesAReentryThatWinsOnlyWithTheTurretTapered() {
-        bothSwitches(true, true);
-        double weight = AirTurretPricing.weight(FAR_TURRET, Double.POSITIVE_INFINITY, REACH);
-        assertTrue(weight > 0 && weight < 1);
-        assertEquals(ENGAGE, retreating(FLOCK, FAR_TURRET).evaluate());
-
-        Battle battle = banded(FLOCK, FAR_TURRET, LEFT_FIGHT, FAR_TURRET);
-        assertEquals(RETREAT, battle.evaluate());
-        assertEquals(FRAME, battle.snapshot().getTurretReentryBandSinceFrame());
-        assertTrue(battle.snapshot().getOverallRatio() >= TERRAN_ENGAGE_THRESHOLD);
-    }
-
-    @Test
-    void throughEvaluateTheBandLetsASquadThatWinsAtFullTurretWeightBackIn() {
-        bothSwitches(true, true);
-        Battle battle = banded(STACKED_FLOCK, FAR_TURRET, LEFT_FIGHT, FAR_TURRET);
-        assertEquals(ENGAGE, battle.evaluate());
-        assertEquals(-1, battle.snapshot().getTurretReentryBandSinceFrame());
-    }
-
-    @Test
-    void throughEvaluateTheBandEndsAfterItsFramesAndHoldsOnlyTheTurretsTheSquadLeft() {
-        bothSwitches(true, true);
-        assertEquals(RETREAT, banded(FLOCK, FAR_TURRET, FRAME - Squad.TURRET_REENTRY_BAND_FRAMES + 1, FAR_TURRET)
-                .evaluate());
-        assertEquals(ENGAGE, banded(FLOCK, FAR_TURRET, FRAME - Squad.TURRET_REENTRY_BAND_FRAMES, FAR_TURRET)
-                .evaluate());
-        assertEquals(ENGAGE, banded(FLOCK, FAR_TURRET, LEFT_FIGHT, FAR_TURRET + 32).evaluate());
-    }
-
-    @Test
-    void theBandEndsWhenTheSquadLeavesRetreat() {
-        Battle battle = banded(FLOCK, FAR_TURRET, LEFT_FIGHT, FAR_TURRET);
-        assertEquals(1, battle.squad.turretReentryBand(FRAME).size());
-        battle.squad.setStatus(SquadStatus.RETREAT);
-        assertEquals(1, battle.squad.turretReentryBand(FRAME).size());
-        battle.squad.setStatus(SquadStatus.FIGHT);
-        assertTrue(battle.squad.turretReentryBand(FRAME).isEmpty());
-        assertTrue(battle.squad.turretReentryBand(LEFT_FIGHT + Squad.TURRET_REENTRY_BAND_FRAMES).isEmpty());
-    }
-
-    @Test
-    void throughEvaluateTheBandDoesNotBlockATargetAwayFromTheTurretTheSquadLeft() {
-        bothSwitches(true, true);
-        assertEquals(0.0, AirTurretPricing.weight(UNWEIGHED_TURRET, Double.POSITIVE_INFINITY, REACH));
-        Battle battle = banded(FLOCK, UNWEIGHED_TURRET, LEFT_FIGHT, UNWEIGHED_TURRET);
-        assertEquals(ENGAGE, battle.evaluate());
-        assertEquals(-1, battle.snapshot().getTurretReentryBandSinceFrame());
-    }
-
-    @Test
-    void throughEvaluateTheBandActsOnlyOnARetreatingSquadWithBothSwitchesOn() {
-        bothSwitches(false, true);
-        Battle pricingOff = banded(FLOCK, FAR_TURRET, LEFT_FIGHT, FAR_TURRET);
-        assertEquals(ENGAGE, pricingOff.evaluate());
-        assertTrue(pricingOff.snapshot().getAirEdgeOfFire().isEmpty());
-        assertEquals(-1, pricingOff.snapshot().getTurretReentryBandSinceFrame());
-
-        bothSwitches(true, false);
-        assertEquals(ENGAGE, banded(FLOCK, FAR_TURRET, LEFT_FIGHT, FAR_TURRET).evaluate());
-
-        bothSwitches(false, false);
-        Battle main = banded(FLOCK, FAR_TURRET, LEFT_FIGHT, FAR_TURRET);
-        assertEquals(ENGAGE, main.evaluate());
-        assertTrue(main.snapshot().getEnemyUnits().stream().noneMatch(e -> e.getType() == TURRET));
-    }
-
-    @Test
-    void theBandAddsBackOnlyWhatTheTaperLeftOutOfItsOwnTurrets() {
-        HorizonCombatSimulator.EnemySample sample = new HorizonCombatSimulator.EnemySample();
-        List<AirTurretPricing.Turret> turrets = new ArrayList<>();
-        turrets.add(turret(FAR_TURRET));
-        turrets.add(turret(PULLED_BACK));
-        Map<Position, Double> tapered = AirTurretPricing.price(turrets, Collections.emptyList(), sample,
-                new HorizonCombatSimulator.DebugSnapshot());
-        double weight = AirTurretPricing.weight(FAR_TURRET, Double.POSITIVE_INFINITY, REACH);
-        assertEquals(1, tapered.size());
-        assertEquals(fullTurret() * (1 - weight), tapered.get(turretAt(FAR_TURRET)), 1e-9);
-        assertEquals(0.0, AirTurretPricing.bandShortfall(tapered, Collections.singleton(turretAt(PULLED_BACK))));
-        assertEquals(fullTurret() * (1 - weight),
-                AirTurretPricing.bandShortfall(tapered, Collections.singleton(turretAt(FAR_TURRET))), 1e-9);
-    }
-
-    @Test
-    void theBandTurnsOnlyAnEngageItWouldLoseAtFullWeight() {
-        double air = 100;
-        assertEquals(RETREAT, AirTurretPricing.reenter(true, ENGAGE, air, 50, 40, TERRAN_ENGAGE_THRESHOLD));
-        assertEquals(ENGAGE, AirTurretPricing.reenter(true, ENGAGE, air, 20, 5, TERRAN_ENGAGE_THRESHOLD));
-        assertEquals(ENGAGE, AirTurretPricing.reenter(true, ENGAGE, air, 50, 0, TERRAN_ENGAGE_THRESHOLD));
-        assertEquals(ENGAGE, AirTurretPricing.reenter(false, ENGAGE, air, 50, 40, TERRAN_ENGAGE_THRESHOLD));
-        for (CombatResult raw : CombatResult.values()) {
-            if (raw != ENGAGE) {
-                assertEquals(raw, AirTurretPricing.reenter(true, raw, air, 50, 40, TERRAN_ENGAGE_THRESHOLD));
-            }
-        }
     }
 
     @Test

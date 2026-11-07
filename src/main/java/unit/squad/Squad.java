@@ -124,16 +124,6 @@ public class Squad implements Comparable<Squad> {
     public static final int CONTACT_MEMORY_FRAMES = 24;
 
     protected int blindTurnBackGateUntilFrame = 0;
-
-    /**
-     * Frames after an air squad leaves FIGHT on a combat sim RETREAT during which the Missile Turrets that read
-     * sampled hold its way back in at full weight, see {@link #startTurretReentryBand}: ten seconds, longer than a
-     * flock takes to back off past those Turrets and turn in again on the read their taper lowers.
-     */
-    public static final int TURRET_REENTRY_BAND_FRAMES = 240;
-
-    protected int turretReentryBandUntilFrame = 0;
-    private final Set<Position> turretReentryBandTurrets = new HashSet<>();
     protected int lastContactFrame = -1;
     protected int contactScanFrame = -1;
 
@@ -320,9 +310,7 @@ public class Squad implements Comparable<Squad> {
      * <p>The Bunkers the sources retreated from stay remembered, see {@link BunkerRetreatMemory#absorb}: a merged
      * squad holds off the union of them, and a split keeps them on both halves.
      *
-     * <p>The held siege band RETREAT folds to the latest one any source holds, see {@link HeldRetreat}. A merged
-     * squad in RETREAT holds the Turrets of every source's re-entry band until the latest of their ends, see
-     * {@link #startTurretReentryBand}; any other merged status drops them.
+     * <p>The held siege band RETREAT folds to the latest one any source holds, see {@link HeldRetreat}.
      *
      * @param sources squads being merged into this one
      */
@@ -377,9 +365,6 @@ public class Squad implements Comparable<Squad> {
             this.turnBackCommitUntilFrame = Math.max(this.turnBackCommitUntilFrame, source.turnBackCommitUntilFrame);
             this.blindTurnBackGateUntilFrame = Math.max(this.blindTurnBackGateUntilFrame,
                     source.blindTurnBackGateUntilFrame);
-            this.turretReentryBandUntilFrame = Math.max(this.turretReentryBandUntilFrame,
-                    source.turretReentryBandUntilFrame);
-            this.turretReentryBandTurrets.addAll(source.turretReentryBandTurrets);
             this.lastContactFrame = Math.max(this.lastContactFrame, source.lastContactFrame);
             if (!source.attritionRetreatLock) {
                 this.retreatLockedUntilFrame = Math.max(this.retreatLockedUntilFrame, source.retreatLockedUntilFrame);
@@ -396,7 +381,6 @@ public class Squad implements Comparable<Squad> {
         this.status = mergedStatus;
         if (mergedStatus != SquadStatus.RETREAT) {
             this.blindTurnBackGateUntilFrame = 0;
-            clearTurretReentryBand();
         }
         this.containStartFrame = mergedStatus == SquadStatus.CONTAIN ? earliestContainStart : 0;
         this.containmentArc = mergedStatus == SquadStatus.CONTAIN ? inheritedArc : null;
@@ -622,42 +606,7 @@ public class Squad implements Comparable<Squad> {
         this.status = status;
         if (status != SquadStatus.RETREAT) {
             clearBlindTurnBackGate();
-            clearTurretReentryBand();
         }
-    }
-
-    /**
-     * Opens the Turret re-entry band of an air squad leaving FIGHT on a combat sim RETREAT: for
-     * {@link #TURRET_REENTRY_BAND_FRAMES} from this frame, while the squad stays in RETREAT, the simulator prices the
-     * given Turrets at full weight when it judges whether the squad goes back in. Any status other than RETREAT ends
-     * the band.
-     *
-     * @param currentFrame frame the squad leaves FIGHT
-     * @param turrets where each Missile Turret the leaving read sampled stands
-     */
-    public void startTurretReentryBand(int currentFrame, Collection<Position> turrets) {
-        turretReentryBandUntilFrame = currentFrame + TURRET_REENTRY_BAND_FRAMES;
-        turretReentryBandTurrets.clear();
-        turretReentryBandTurrets.addAll(turrets);
-    }
-
-    /**
-     * The Turrets the squad's re-entry band holds at full weight, see {@link #startTurretReentryBand}.
-     *
-     * @param currentFrame frame of the evaluation
-     * @return where each held Turret stands, empty once the band has ended
-     */
-    public Set<Position> turretReentryBand(int currentFrame) {
-        if (currentFrame >= turretReentryBandUntilFrame) return Collections.emptySet();
-        return Collections.unmodifiableSet(turretReentryBandTurrets);
-    }
-
-    /**
-     * Ends the Turret re-entry band, as a squad that leaves RETREAT no longer has a way back in to hold.
-     */
-    public void clearTurretReentryBand() {
-        turretReentryBandUntilFrame = 0;
-        turretReentryBandTurrets.clear();
     }
 
     /**
