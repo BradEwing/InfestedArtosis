@@ -136,14 +136,20 @@ public class Squad implements Comparable<Squad> {
      * Frames after the exit by which the held enemy strength has decayed linearly to the current one, see
      * {@link #reentryHeldStrength}: the hold ends with no step.
      */
-    public static final int REENTRY_HOLD_FRAMES = 192;
+    public static final int REENTRY_HOLD_END_FRAMES = 192;
 
     /**
-     * Pixels the squad's centre may stand from where it left before a read is judged fresh, see
-     * {@link #reentryHeldStrength}: past nineteen in twenty of the centre's drift between an exit and a re-entry into
-     * the same fight.
+     * Pixels the squad's centre may stand from where it left with the hold kept in full, see
+     * {@link #reentryHeldStrength}: past nineteen in twenty of the distances a retreating flock's centre covers in
+     * {@link #REENTRY_HOLD_FULL_FRAMES}, and past a straight retreat at Mutalisk speed for as long.
      */
-    public static final int REENTRY_HOLD_RELEASE_DISTANCE = 448;
+    public static final int REENTRY_HOLD_FULL_DISTANCE = 512;
+
+    /**
+     * Pixels from where the squad left at which the hold has faded linearly to nothing, see
+     * {@link #reentryHeldStrength}: a read taken this far away is judged fresh, with no step on the way.
+     */
+    public static final int REENTRY_HOLD_END_DISTANCE = 1024;
 
     protected int reentryHoldFrame = -1;
     private double reentryHoldStrength = 0;
@@ -646,7 +652,7 @@ public class Squad implements Comparable<Squad> {
      * Opens the re-entry hold of an air squad leaving FIGHT on a combat sim RETREAT, or leaving a harass: while the
      * squad stays in RETREAT, the simulator judges a read that would send it back in against the enemy strength it
      * left, decayed toward the current strength, see {@link #reentryHeldStrength}. Any status other than RETREAT ends
-     * the hold, and only leaving FIGHT or HARASS opens one, so a squad is held at most {@link #REENTRY_HOLD_FRAMES}
+     * the hold, and only leaving FIGHT or HARASS opens one, so a squad is held at most {@link #REENTRY_HOLD_END_FRAMES}
      * after it last left.
      *
      * @param currentFrame frame the squad leaves
@@ -662,9 +668,10 @@ public class Squad implements Comparable<Squad> {
     /**
      * The enemy strength the re-entry hold judges a read against: the held strength in full for
      * {@link #REENTRY_HOLD_FULL_FRAMES} after the exit, then decaying linearly to the current strength by
-     * {@link #REENTRY_HOLD_FRAMES}, and never less than the current strength. A read taken more than
-     * {@link #REENTRY_HOLD_RELEASE_DISTANCE} from where the squad left, or with no hold open, is judged against the
-     * current strength alone.
+     * {@link #REENTRY_HOLD_END_FRAMES}, and never less than the current strength. The hold also fades with distance:
+     * in full within {@link #REENTRY_HOLD_FULL_DISTANCE} of where the squad left, linearly to nothing at
+     * {@link #REENTRY_HOLD_END_DISTANCE}, so a flock backing off never steps out of it. A read with no hold open is
+     * judged against the current strength alone.
      *
      * @param currentFrame frame of the read
      * @param anchor the centre the read is taken from
@@ -683,15 +690,27 @@ public class Squad implements Comparable<Squad> {
      *
      * @param currentFrame frame of the read
      * @param anchor the centre the read is taken from
-     * @return 1 in full, falling linearly to 0 at the hold's end; 0 with no hold or away from where the squad left
+     * @return the time weight times the distance weight, each 1 in full and falling linearly to 0 at its end; 0 with
+     *     no hold
      */
     double reentryHoldWeight(int currentFrame, Position anchor) {
         if (reentryHoldAnchor == null || anchor == null || reentryHoldFrame < 0) return 0;
-        if (anchor.getDistance(reentryHoldAnchor) > REENTRY_HOLD_RELEASE_DISTANCE) return 0;
-        int age = currentFrame - reentryHoldFrame;
-        if (age < 0 || age >= REENTRY_HOLD_FRAMES) return 0;
-        if (age < REENTRY_HOLD_FULL_FRAMES) return 1;
-        return (double) (REENTRY_HOLD_FRAMES - age) / (REENTRY_HOLD_FRAMES - REENTRY_HOLD_FULL_FRAMES);
+        return fade(currentFrame - reentryHoldFrame, REENTRY_HOLD_FULL_FRAMES, REENTRY_HOLD_END_FRAMES)
+                * fade(anchor.getDistance(reentryHoldAnchor), REENTRY_HOLD_FULL_DISTANCE, REENTRY_HOLD_END_DISTANCE);
+    }
+
+    /**
+     * A weight that is 1 up to {@code full}, falls linearly to 0 at {@code end}, and is 0 past it or below 0.
+     *
+     * @param value the age or distance to weigh
+     * @param full where the weight starts to fall
+     * @param end where it reaches 0
+     * @return the weight
+     */
+    static double fade(double value, double full, double end) {
+        if (value < 0 || value >= end) return 0;
+        if (value <= full) return 1;
+        return (end - value) / (end - full);
     }
 
     /**

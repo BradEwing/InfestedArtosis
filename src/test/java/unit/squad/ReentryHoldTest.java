@@ -1,6 +1,7 @@
 package unit.squad;
 
 import bwapi.Position;
+import bwapi.UnitType;
 import config.Config;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -9,6 +10,7 @@ import unit.squad.horizon.HorizonCombatSimulator;
 import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ReentryHoldTest {
 
@@ -25,8 +27,10 @@ class ReentryHoldTest {
         Config.airReentryHold = holdSetting;
     }
 
-    private static HorizonCombatSimulator.DebugSnapshot read(double enemyStrength, Position centre, boolean measured) {
+    private static HorizonCombatSimulator.DebugSnapshot read(double enemyStrength, Position centre, boolean measured,
+                                                             int frame) {
         HorizonCombatSimulator.DebugSnapshot snapshot = new HorizonCombatSimulator.DebugSnapshot();
+        snapshot.setCapturedFrame(frame);
         snapshot.setEnemyTotal(enemyStrength);
         snapshot.setSquadCenter(centre);
         snapshot.setEnemyMeasured(measured);
@@ -35,7 +39,7 @@ class ReentryHoldTest {
 
     private static Squad leaving(Squad squad, int frame, double enemyStrength, Position centre) {
         squad.setStatus(SquadStatus.FIGHT);
-        SquadManager.noteFightExit(squad, read(enemyStrength, centre, true), frame);
+        SquadManager.noteFightExit(squad, read(enemyStrength, centre, true, frame), frame);
         squad.setStatus(SquadStatus.RETREAT);
         return squad;
     }
@@ -48,7 +52,7 @@ class ReentryHoldTest {
     void theExitStrengthIsHeldInFullThenDecaysLinearlyToTheCurrentStrengthByTheEnd() {
         Squad squad = leaving(new AirSquad(), LEFT, EXIT, ANCHOR);
         int full = Squad.REENTRY_HOLD_FULL_FRAMES;
-        int end = Squad.REENTRY_HOLD_FRAMES;
+        int end = Squad.REENTRY_HOLD_END_FRAMES;
 
         assertEquals(EXIT, held(squad, 0));
         assertEquals(EXIT, held(squad, full - 1));
@@ -65,16 +69,62 @@ class ReentryHoldTest {
         assertEquals(EXIT * 2, squad.reentryHeldStrength(LEFT, ANCHOR, EXIT * 2));
     }
 
-    @Test
-    void aReadTakenFarFromWhereTheSquadLeftIsJudgedFresh() {
-        Squad squad = leaving(new AirSquad(), LEFT, EXIT, ANCHOR);
-        int release = Squad.REENTRY_HOLD_RELEASE_DISTANCE;
-        Position edge = new Position(ANCHOR.getX() + release, ANCHOR.getY());
-        Position past = new Position(ANCHOR.getX() + release + 1, ANCHOR.getY());
+    private static Position away(double distance) {
+        return new Position(ANCHOR.getX() + (int) Math.round(distance), ANCHOR.getY());
+    }
 
-        assertEquals(EXIT, squad.reentryHeldStrength(LEFT, edge, CURRENT));
-        assertEquals(CURRENT, squad.reentryHeldStrength(LEFT, past, CURRENT));
+    @Test
+    void theHoldFadesLinearlyWithDistanceFromWhereTheSquadLeftAndIsJudgedFreshPastTheEnd() {
+        Squad squad = leaving(new AirSquad(), LEFT, EXIT, ANCHOR);
+        int full = Squad.REENTRY_HOLD_FULL_DISTANCE;
+        int end = Squad.REENTRY_HOLD_END_DISTANCE;
+
+        assertEquals(EXIT, squad.reentryHeldStrength(LEFT, away(full), CURRENT));
+        assertEquals((EXIT + CURRENT) / 2, squad.reentryHeldStrength(LEFT, away((full + end) / 2.0), CURRENT), 1e-9);
+        assertEquals(CURRENT, squad.reentryHeldStrength(LEFT, away(end), CURRENT));
+        assertEquals(CURRENT, squad.reentryHeldStrength(LEFT, away(end * 3), CURRENT));
         assertEquals(CURRENT, squad.reentryHeldStrength(LEFT, null, CURRENT));
+    }
+
+    @Test
+    void theWeightHasNoStepAcrossEitherDistanceEdgeOrEitherTimeEdge() {
+        Squad squad = leaving(new AirSquad(), LEFT, EXIT, ANCHOR);
+        double step = 1.0 / (Squad.REENTRY_HOLD_END_DISTANCE - Squad.REENTRY_HOLD_FULL_DISTANCE);
+        for (int edge : new int[] {Squad.REENTRY_HOLD_FULL_DISTANCE, Squad.REENTRY_HOLD_END_DISTANCE}) {
+            double before = squad.reentryHoldWeight(LEFT, away(edge - 1));
+            double after = squad.reentryHoldWeight(LEFT, away(edge + 1));
+            assertTrue(before - after <= 2 * step + 1e-9, "distance " + edge);
+        }
+        double tick = 1.0 / (Squad.REENTRY_HOLD_END_FRAMES - Squad.REENTRY_HOLD_FULL_FRAMES);
+        for (int edge : new int[] {Squad.REENTRY_HOLD_FULL_FRAMES, Squad.REENTRY_HOLD_END_FRAMES}) {
+            double before = squad.reentryHoldWeight(LEFT + edge - 1, ANCHOR);
+            double after = squad.reentryHoldWeight(LEFT + edge + 1, ANCHOR);
+            assertTrue(before - after <= 2 * tick + 1e-9, "age " + edge);
+        }
+    }
+
+    @Test
+    void aFlockRetreatingStraightAwayAtMutaliskSpeedIsStillHeldInFullAtSeventyFrames() {
+        Squad squad = leaving(new AirSquad(), LEFT, EXIT, ANCHOR);
+        int age = 70;
+        double travelled = UnitType.Zerg_Mutalisk.topSpeed() * age;
+        assertTrue(travelled > 448);
+        assertEquals(1.0, squad.reentryHoldWeight(LEFT + age, away(travelled)));
+        assertEquals(EXIT, squad.reentryHeldStrength(LEFT + age, away(travelled), CURRENT));
+    }
+
+    @Test
+    void aSnapshotNotCapturedOnTheExitFrameOpensNoHold() {
+        Squad stale = new AirSquad();
+        stale.setStatus(SquadStatus.FIGHT);
+        SquadManager.noteFightExit(stale, read(EXIT, ANCHOR, true, LEFT - 1), LEFT);
+        stale.setStatus(SquadStatus.RETREAT);
+        assertEquals(CURRENT, held(stale, 0));
+
+        Squad harass = new AirSquad();
+        harass.setStatus(SquadStatus.RETREAT);
+        SquadManager.openReentryHold(harass, read(EXIT, ANCHOR, true, LEFT - 1), LEFT);
+        assertEquals(CURRENT, held(harass, 0));
     }
 
     @Test
@@ -93,7 +143,7 @@ class ReentryHoldTest {
 
         Squad retreating = new AirSquad();
         retreating.setStatus(SquadStatus.RETREAT);
-        SquadManager.noteFightExit(retreating, read(EXIT, ANCHOR, true), LEFT);
+        SquadManager.noteFightExit(retreating, read(EXIT, ANCHOR, true, LEFT), LEFT);
         assertEquals(CURRENT, held(retreating, 0));
 
         Squad unread = new AirSquad();
@@ -104,7 +154,7 @@ class ReentryHoldTest {
 
         Squad unmeasured = new AirSquad();
         unmeasured.setStatus(SquadStatus.FIGHT);
-        SquadManager.noteFightExit(unmeasured, read(EXIT, ANCHOR, false), LEFT);
+        SquadManager.noteFightExit(unmeasured, read(EXIT, ANCHOR, false, LEFT), LEFT);
         unmeasured.setStatus(SquadStatus.RETREAT);
         assertEquals(CURRENT, held(unmeasured, 0));
 
@@ -117,7 +167,7 @@ class ReentryHoldTest {
         Squad squad = new AirSquad();
         squad.setStatus(SquadStatus.HARASS);
         squad.setStatus(SquadStatus.RETREAT);
-        SquadManager.openReentryHold(squad, read(EXIT, ANCHOR, true), LEFT);
+        SquadManager.openReentryHold(squad, read(EXIT, ANCHOR, true, LEFT), LEFT);
         assertEquals(EXIT, held(squad, 0));
     }
 

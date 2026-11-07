@@ -101,20 +101,33 @@ class AirReentryHoldTest {
         switches(true, true);
         double exit = exitStrength();
         assertEquals(RETREAT, held(marines(FLOCK), Squad.REENTRY_HOLD_FULL_FRAMES, exit, CENTRE).evaluate());
-        AirBattle ended = held(marines(FLOCK), Squad.REENTRY_HOLD_FRAMES, exit, CENTRE);
+        AirBattle ended = held(marines(FLOCK), Squad.REENTRY_HOLD_END_FRAMES, exit, CENTRE);
         assertEquals(ENGAGE, ended.evaluate());
         assertEquals(-1, ended.snapshot().getReentryHoldStrength());
     }
 
+    private static Position behind(double distance) {
+        return new Position(CENTRE.getX() - (int) Math.round(distance), CENTRE.getY());
+    }
+
     @Test
-    void aReadAwayFromWhereTheSquadLeftIsJudgedFresh() {
+    void aReadAtTheEndDistanceFromWhereTheSquadLeftIsJudgedFresh() {
         switches(true, true);
         double exit = exitStrength();
-        int release = Squad.REENTRY_HOLD_RELEASE_DISTANCE;
-        Position edge = new Position(CENTRE.getX() + release, CENTRE.getY());
-        Position past = new Position(CENTRE.getX() + release + 1, CENTRE.getY());
-        assertEquals(RETREAT, held(marines(FLOCK), 10, exit, edge).evaluate());
-        assertEquals(ENGAGE, held(marines(FLOCK), 10, exit, past).evaluate());
+        assertEquals(RETREAT, held(marines(FLOCK), 10, exit, behind(Squad.REENTRY_HOLD_FULL_DISTANCE)).evaluate());
+        AirBattle far = held(marines(FLOCK), 10, exit, behind(Squad.REENTRY_HOLD_END_DISTANCE));
+        assertEquals(ENGAGE, far.evaluate());
+        assertEquals(-1, far.snapshot().getReentryHoldStrength());
+    }
+
+    @Test
+    void aFlockThatRetreatedStraightAwayAtMutaliskSpeedForSeventyFramesIsStillHeld() {
+        switches(true, true);
+        double exit = exitStrength();
+        int age = 70;
+        AirBattle battle = held(marines(FLOCK), age, exit, behind(UnitType.Zerg_Mutalisk.topSpeed() * age));
+        assertEquals(RETREAT, battle.evaluate());
+        assertEquals(exit, battle.snapshot().getReentryHoldStrength(), 1e-9);
     }
 
     @Test

@@ -2883,15 +2883,16 @@ public class SquadManager {
 
     /**
      * Opens an air squad's re-entry hold on the enemy strength the given read measured and the centre it was taken
-     * from, see {@link Squad#startReentryHold}. A ground squad, a read without a snapshot or without a measured enemy,
-     * or {@link Config#airReentryHold} off opens none.
+     * from, see {@link Squad#startReentryHold}. A ground squad, a read without a snapshot, a snapshot not captured on
+     * this frame, a read without a measured enemy, or {@link Config#airReentryHold} off opens none.
      *
      * @param squad squad leaving FIGHT or HARASS
      * @param snapshot the sim snapshot of the leaving read, or null
      * @param now current frame
      */
     static void openReentryHold(Squad squad, HorizonCombatSimulator.DebugSnapshot snapshot, int now) {
-        if (!Config.airReentryHold || !squad.isAirSquad() || snapshot == null || !snapshot.isEnemyMeasured()) return;
+        if (!Config.airReentryHold || !squad.isAirSquad() || snapshot == null || snapshot.getCapturedFrame() != now
+                || !snapshot.isEnemyMeasured()) return;
         squad.startReentryHold(now, snapshot.getEnemyTotal(), snapshot.getSquadCenter());
     }
 
