@@ -5,6 +5,7 @@ import bwapi.UnitType;
 import config.Config;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import unit.squad.CombatSimulator.CombatResult;
 
 import java.util.Arrays;
 import java.util.Collections;
@@ -103,14 +104,15 @@ class SiegeMinRangeTest {
     }
 
     @Test
-    void aTankWithEveryZerglingInsideItsMinimumRangePricesAtNothing() {
+    void aTankWithEveryZerglingInsideItsMinimumRangePricesNearNothing() {
         Config.siegeMinRange = true;
         GroundBattle battle = surrounded().enemy(SIEGED, 0, 0);
         battle.evaluate();
 
         HorizonCombatSimulator.DebugSnapshot snapshot = battle.snapshot();
-        assertEquals(0.0, tankStrength(snapshot, 0, 0), EPSILON);
-        assertEquals(0.0, snapshot.getSiegeStrengthPriced(), EPSILON);
+        assertEquals(HorizonCombatSimulator.SIEGE_POCKET_FLOOR, tankStrength(snapshot, 0, 0), EPSILON);
+        assertEquals(HorizonCombatSimulator.SIEGE_POCKET_FLOOR, snapshot.getSiegeStrengthPriced(), EPSILON);
+        assertTrue(snapshot.getSiegeStrengthMain() > 100 * HorizonCombatSimulator.SIEGE_POCKET_FLOOR);
         assertTrue(snapshot.getSiegeStrengthMain() > 0);
         assertEquals(1.0, snapshot.getSiegeMinRangeShare(), EPSILON);
         assertEquals(0.0, snapshot.getSiegeCoveredShare(), EPSILON);
@@ -129,8 +131,9 @@ class SiegeMinRangeTest {
 
         assertTrue(full > 0);
         assertEquals(full, tankStrength(on.snapshot(), 200, 0), EPSILON);
-        assertEquals(0.0, tankStrength(on.snapshot(), 0, 0), EPSILON);
-        assertEquals(full, on.snapshot().getSiegeStrengthPriced(), EPSILON);
+        assertEquals(HorizonCombatSimulator.SIEGE_POCKET_FLOOR, tankStrength(on.snapshot(), 0, 0), EPSILON);
+        assertEquals(full + HorizonCombatSimulator.SIEGE_POCKET_FLOOR, on.snapshot().getSiegeStrengthPriced(),
+                EPSILON);
         assertEquals(1.0, on.snapshot().getSiegeMinRangeShare(), EPSILON);
         assertEquals(1.0, on.snapshot().getSiegeCoveredShare(), EPSILON);
         assertEquals(0.0, on.snapshot().getSiegeHitShares().get(new Position(GroundBattle.CENTRE.getX(),
@@ -181,6 +184,40 @@ class SiegeMinRangeTest {
         assertEquals(0.5, snapshot.getSiegeMinRangeShare(), EPSILON);
         assertEquals(0.5, snapshot.getSiegeCoveredShare(), EPSILON);
         assertEquals(0.5 * snapshot.getSiegeStrengthMain(), snapshot.getSiegeStrengthPriced(), EPSILON);
+    }
+
+    @Test
+    void aLoneTankWithEveryZerglingInsideItsMinimumRangeIsStillAMeasuredEnemy() {
+        Config.siegeMinRange = true;
+        GroundBattle battle = surrounded().enemy(SIEGED, 0, 0);
+        CombatResult result = battle.evaluate();
+
+        HorizonCombatSimulator.DebugSnapshot snapshot = battle.snapshot();
+        assertTrue(snapshot.isEnemyMeasured());
+        assertEquals(CombatResult.ENGAGE, result);
+        assertEquals(0, snapshot.getEnemyUnscoredSupply());
+    }
+
+    @Test
+    void withTheSwitchOffALoneTankAtTheZerglingsFeetIsMeasuredAsOnMain() {
+        Config.siegeMinRange = false;
+        GroundBattle battle = surrounded().enemy(SIEGED, 0, 0);
+        battle.evaluate();
+
+        HorizonCombatSimulator.DebugSnapshot snapshot = battle.snapshot();
+        assertTrue(snapshot.isEnemyMeasured());
+        assertEquals(0, snapshot.getEnemyUnscoredSupply());
+    }
+
+    @Test
+    void thePocketFloorNeverRaisesATankAboveItsUnpricedStrengthAndIsInertOff() {
+        double floor = HorizonCombatSimulator.SIEGE_POCKET_FLOOR;
+
+        assertEquals(floor, HorizonCombatSimulator.pocketFloor(true, 0, 5), EPSILON);
+        assertEquals(0.004, HorizonCombatSimulator.pocketFloor(true, 0, 0.004), EPSILON);
+        assertEquals(0.0, HorizonCombatSimulator.pocketFloor(true, 0, 0), EPSILON);
+        assertEquals(2.5, HorizonCombatSimulator.pocketFloor(true, 2.5, 5), EPSILON);
+        assertEquals(0.0, HorizonCombatSimulator.pocketFloor(false, 0, 5), EPSILON);
     }
 
     @Test

@@ -72,6 +72,12 @@ public class HorizonCombatSimulator implements CombatSimulator {
     private static final double DEFAULT_ENGAGE_THRESHOLD = 1.0;
     private static final double DEFAULT_RETREAT_THRESHOLD = 0.7;
     private static final double MIN_ENEMY_STRENGTH = 0.01;
+    /**
+     * Least ground strength a sampled sieged tank keeps once its hit share prices it down, see {@link #pocketFloor}:
+     * twice {@link #MIN_ENEMY_STRENGTH}, so a lone tank with every one of our ground units inside its minimum range
+     * still reads as a measured enemy. A floor chosen against that threshold, not a game fact.
+     */
+    static final double SIEGE_POCKET_FLOOR = 2 * MIN_ENEMY_STRENGTH;
     private static final double SPEED_UPGRADE_PENALTY = 0.75;
     private static final int BUNKER_TRUST_FRAMES = 48;
     private static final int BUNKER_DECAY_FRAMES = 72;
@@ -255,14 +261,18 @@ public class HorizonCombatSimulator implements CombatSimulator {
                 antiAirBase /= WORKER_STRENGTH_DIVISOR;
             }
 
-            double unswarmedGroundStr = groundBase * hpWeight * distWeight * heightMod;
-            double groundEnemyStr = unswarmedGroundStr * SwarmCover.groundMultiplier(type, swarmCover);
+            boolean pocketed = sieged && Config.siegeMinRange;
+            double swarmMultiplier = SwarmCover.groundMultiplier(type, swarmCover);
+            double unswarmedMain = groundBase * hpWeight * edgeWeight * heightMod;
+            double unswarmedGroundStr = pocketFloor(pocketed, groundBase * hpWeight * distWeight * heightMod,
+                    unswarmedMain);
+            double groundEnemyStr = pocketFloor(pocketed, unswarmedGroundStr * swarmMultiplier,
+                    unswarmedMain * swarmMultiplier);
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
             enemySample.add(type, groundEnemyStr, aaEnemyStr, Math.max(unswarmedGroundStr, aaEnemyStr));
             if (sieged) {
                 sampledTanks.add(new SiegeMinRange.Tank(pos, reach, hitShare));
-                siegeStrengthMain += groundBase * hpWeight * edgeWeight * heightMod
-                        * SwarmCover.groundMultiplier(type, swarmCover);
+                siegeStrengthMain += unswarmedMain * swarmMultiplier;
                 siegeStrengthPriced += groundEnemyStr;
             }
             if (!visible && BunkerPricing.SHOOTERS.contains(type)) {
@@ -392,6 +402,22 @@ public class HorizonCombatSimulator implements CombatSimulator {
         lastSnapshots.put(squad.getId(), snapshot);
 
         return result;
+    }
+
+    /**
+     * The ground strength a sieged tank priced down by its hit share keeps, see {@link SiegeMinRange#hitShare}: at
+     * least {@link #SIEGE_POCKET_FLOOR}, and never more than its strength without the hit share. A tank whose minimum
+     * range holds all of our ground strength so stays a measured, scored enemy, read as a fight the squad wins rather
+     * than as no enemy at all, and a tank that would weigh nothing without the hit share still weighs nothing.
+     *
+     * @param pocketed whether the strength was priced down by a sieged tank's hit share
+     * @param priced the strength after the hit share
+     * @param main the strength without the hit share
+     * @return the strength to price
+     */
+    static double pocketFloor(boolean pocketed, double priced, double main) {
+        if (!pocketed) return priced;
+        return Math.max(priced, Math.min(main, SIEGE_POCKET_FLOOR));
     }
 
     /**
