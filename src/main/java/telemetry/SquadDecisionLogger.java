@@ -170,7 +170,8 @@ public class SquadDecisionLogger implements SquadDecisionSink {
             + "bunker_hold_release,siege_band,siege_band_frames,siege_band_held_frames,"
             + "sim_retreat_threshold,sim_hold_threshold,band_contact,"
             + "partner_squad_id,partner_distance,opposed_reason,shared_verdict_basis,"
-            + "sim_reentry_hold_strength";
+            + "sim_reentry_hold_strength,"
+            + "sim_siege_min_range_share,sim_siege_covered_share,sim_siege_strength_main,sim_siege_strength_priced";
 
     static final String SWARM_FILE = "telemetry_dark_swarms.csv";
 
@@ -977,6 +978,10 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         decision.setSiegeBand(snapshot.getSiegeBand());
         decision.setSiegeBandFrames(snapshot.getSiegeBandFrames());
         decision.setSiegeBandHeldFrames(snapshot.getSiegeBandHeldFrames());
+        decision.setSiegeMinRangeShare(snapshot.getSiegeMinRangeShare());
+        decision.setSiegeCoveredShare(snapshot.getSiegeCoveredShare());
+        decision.setSiegeStrengthMain(snapshot.getSiegeStrengthMain());
+        decision.setSiegeStrengthPriced(snapshot.getSiegeStrengthPriced());
     }
 
     /**
@@ -1124,6 +1129,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(holdCells(context));
         fields.addAll(neighbourCells(context));
         fields.addAll(reentryHoldCells(context));
+        fields.addAll(siegeMinRangeCells(context));
         return String.join(",", fields);
     }
 
@@ -1201,6 +1207,7 @@ public class SquadDecisionLogger implements SquadDecisionSink {
         fields.addAll(holdCells(context));
         fields.addAll(neighbourCells(context));
         fields.addAll(reentryHoldCells(context));
+        fields.addAll(siegeMinRangeCells(context));
         return String.join(",", fields);
     }
 
@@ -1489,6 +1496,22 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      */
     static List<String> reentryHoldCells(SquadDecision context) {
         return Collections.singletonList(Csv.format(context.getReentryHoldStrength()));
+    }
+
+    /**
+     * Builds the sim_siege_min_range_share, sim_siege_covered_share, sim_siege_strength_main and
+     * sim_siege_strength_priced cells of a ground read that sampled a sieged tank: the share of our weighted ground
+     * strength inside some sampled tank's minimum range, the share between some sampled tank's minimum range and its
+     * reach, and the sampled tanks' summed ground strength without and with the minimum range correction, see
+     * unit.squad.horizon.SiegeMinRange. They are written whether config.Config#siegeMinRange is on or off, and the two
+     * strengths are equal while it is off. All four are -1 on a row whose read sampled no sieged tank.
+     *
+     * @param context the decision the row is built from
+     * @return the four siege minimum range cells
+     */
+    static List<String> siegeMinRangeCells(SquadDecision context) {
+        return Arrays.asList(Csv.format(context.getSiegeMinRangeShare()), Csv.format(context.getSiegeCoveredShare()),
+                Csv.format(context.getSiegeStrengthMain()), Csv.format(context.getSiegeStrengthPriced()));
     }
 
     private static String halfSupplyOrSentinel(int halfUnits) {

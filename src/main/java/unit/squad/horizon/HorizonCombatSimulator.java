@@ -133,6 +133,26 @@ public class HorizonCombatSimulator implements CombatSimulator {
         List<AirTurretPricing.Target> coverTargets = new ArrayList<>();
         boolean coverScan = airSquad && Config.airTurretEdgeOfFire;
         List<Position> fighters = coverScan ? fighterPositions(squad) : Collections.emptyList();
+        FriendlyForce friendlyForce = new FriendlyForce();
+        for (ManagedUnit mu : squad.getMembers()) {
+            if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
+            friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
+                    friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression), false);
+        }
+        if (adjacentSquads != null) {
+            for (Map.Entry<Squad, Double> entry : adjacentSquads.entrySet()) {
+                double weight = distanceWeight(entry.getValue());
+                for (ManagedUnit mu : entry.getKey().getMembers()) {
+                    if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
+                    friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
+                            friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression) * weight, true);
+                }
+            }
+        }
+        List<SiegeMinRange.Member> groundMembers = airSquad ? Collections.emptyList() : friendlyForce.groundMembers();
+        List<SiegeMinRange.Tank> sampledTanks = new ArrayList<>();
+        double siegeStrengthMain = 0;
+        double siegeStrengthPriced = 0;
         for (ObservedUnit ou : tracker.getLivingObservedUnits()) {
             UnitType type = ou.getUnitType();
             boolean visible = ou.getUnit().isVisible();
@@ -205,7 +225,10 @@ public class HorizonCombatSimulator implements CombatSimulator {
             if (type.isBuilding() && !ou.isCompleted()) continue;
             double hpWeight = hpWeighting(ou.getLastKnownHitPoints(), ou.getLastKnownShields(),
                     type.maxHitPoints(), type.maxShields());
-            double distWeight = enemyDistanceWeight(type, dist, edgeOfFire, reach);
+            double edgeWeight = enemyDistanceWeight(type, dist, edgeOfFire, reach);
+            boolean sieged = edgeOfFire && type == SiegeMinRange.SIEGED;
+            double hitShare = sieged ? SiegeMinRange.hitShare(groundMembers, pos) : 1.0;
+            double distWeight = Config.siegeMinRange ? edgeWeight * hitShare : edgeWeight;
             double heightMod = 1.0;
             if (!type.isFlyer() && isRanged(type) && ou.getLastKnownGroundHeight() > 0) {
                 heightMod = HEIGHT_BONUS;
@@ -236,6 +259,12 @@ public class HorizonCombatSimulator implements CombatSimulator {
             double groundEnemyStr = unswarmedGroundStr * SwarmCover.groundMultiplier(type, swarmCover);
             double aaEnemyStr = antiAirBase * hpWeight * distWeight * heightMod;
             enemySample.add(type, groundEnemyStr, aaEnemyStr, Math.max(unswarmedGroundStr, aaEnemyStr));
+            if (sieged) {
+                sampledTanks.add(new SiegeMinRange.Tank(pos, reach, hitShare));
+                siegeStrengthMain += groundBase * hpWeight * edgeWeight * heightMod
+                        * SwarmCover.groundMultiplier(type, swarmCover);
+                siegeStrengthPriced += groundEnemyStr;
+            }
             if (!visible && BunkerPricing.SHOOTERS.contains(type)) {
                 pricedLooseShooters++;
             }
@@ -255,23 +284,7 @@ public class HorizonCombatSimulator implements CombatSimulator {
 
         creditMedicSupport(snapshot, enemySample, airSquad);
         snapshot.setEnemyUnscoredSupply(enemySample.unscoredSupply());
-
-        FriendlyForce friendlyForce = new FriendlyForce();
-        for (ManagedUnit mu : squad.getMembers()) {
-            if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-            friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
-                    friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression), false);
-        }
-        if (adjacentSquads != null) {
-            for (Map.Entry<Squad, Double> entry : adjacentSquads.entrySet()) {
-                double weight = distanceWeight(entry.getValue());
-                for (ManagedUnit mu : entry.getKey().getMembers()) {
-                    if (mu.getUnitType() == UnitType.Zerg_Overlord) continue;
-                    friendlyForce.add(mu.getUnitType(), mu.getUnit().getPosition(),
-                            friendlyWeight(mu, squadCenter, enemyHasDetection, techProgression) * weight, true);
-                }
-            }
-        }
+        recordSiegeMinRange(snapshot, groundMembers, sampledTanks, siegeStrengthMain, siegeStrengthPriced);
 
         PricedEngagement priced = price(friendlyForce, enemySample);
         snapshot.getFriendlyUnits().addAll(priced.getFriendlyEntries());
@@ -379,6 +392,41 @@ public class HorizonCombatSimulator implements CombatSimulator {
         lastSnapshots.put(squad.getId(), snapshot);
 
         return result;
+    }
+
+    /**
+     * The minimum range of a sieged Siege Tank's ground weapon, see {@link SiegeMinRange#MIN_RANGE}.
+     *
+     * @return the minimum range in pixels
+     */
+    public static int siegeMinRange() {
+        return SiegeMinRange.MIN_RANGE;
+    }
+
+    /**
+     * Records a ground read's sieged tanks on the snapshot: each tank's hit share, see {@link SiegeMinRange#hitShare},
+     * the shares of our weighted ground strength inside some tank's minimum range and under some tank's fire, see
+     * {@link SiegeMinRange#shares}, and the tanks' summed ground strength before and after the hit share is applied.
+     * The priced strength equals the unpriced one while {@link Config#siegeMinRange} is off. A read with no sieged tank
+     * sampled leaves every value at -1.
+     *
+     * @param snapshot the read's snapshot
+     * @param members our ground units
+     * @param tanks the sieged tanks sampled
+     * @param strengthMain the tanks' summed ground strength without the hit share
+     * @param strengthPriced the tanks' summed ground strength as priced
+     */
+    static void recordSiegeMinRange(DebugSnapshot snapshot, List<SiegeMinRange.Member> members,
+                                    List<SiegeMinRange.Tank> tanks, double strengthMain, double strengthPriced) {
+        if (tanks.isEmpty()) return;
+        SiegeMinRange.Shares shares = SiegeMinRange.shares(members, tanks);
+        snapshot.setSiegeMinRangeShare(shares.getInside());
+        snapshot.setSiegeCoveredShare(shares.getCovered());
+        snapshot.setSiegeStrengthMain(strengthMain);
+        snapshot.setSiegeStrengthPriced(strengthPriced);
+        for (SiegeMinRange.Tank tank : tanks) {
+            snapshot.getSiegeHitShares().put(tank.getPosition(), tank.getHitShare());
+        }
     }
 
     /**
@@ -797,6 +845,22 @@ public class HorizonCombatSimulator implements CombatSimulator {
             } else {
                 groundStanding += standing;
             }
+        }
+
+        /**
+         * Our units standing on the ground with a known position, each weighed by its strength in its stronger domain
+         * times its weight, the measure {@link #getGroundStanding} sums.
+         *
+         * @return the ground units, members of adjacent squads included
+         */
+        List<SiegeMinRange.Member> groundMembers() {
+            List<SiegeMinRange.Member> members = new ArrayList<>();
+            for (FriendlyUnit unit : units) {
+                if (unit.type.isFlyer() || unit.position == null) continue;
+                members.add(new SiegeMinRange.Member(unit.type, unit.position,
+                        UnitStrength.strongerDomain(unit.type) * unit.weight));
+            }
+            return members;
         }
     }
 
@@ -1546,5 +1610,29 @@ public class HorizonCombatSimulator implements CombatSimulator {
         private int contact = CONTACT_UNREAD;
         private double enemyAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
         private double ourAirShare = UnitStrength.UNMEASURED_AIR_SHARE;
+        /**
+         * Each sampled sieged tank's position and the share of our weighted ground strength outside its minimum range,
+         * see {@link SiegeMinRange#hitShare}. Empty on an air read or one with no sieged tank sampled.
+         */
+        private final Map<Position, Double> siegeHitShares = new LinkedHashMap<>();
+        /**
+         * Share of our weighted ground strength inside some sampled sieged tank's minimum range, -1 when no sieged
+         * tank was sampled.
+         */
+        private double siegeMinRangeShare = -1;
+        /**
+         * Share of our weighted ground strength between some sampled sieged tank's minimum range and its reach, -1
+         * when no sieged tank was sampled.
+         */
+        private double siegeCoveredShare = -1;
+        /**
+         * The sampled sieged tanks' summed ground strength without the minimum range correction, -1 when none was
+         * sampled.
+         */
+        private double siegeStrengthMain = -1;
+        /**
+         * The sampled sieged tanks' summed ground strength as priced, -1 when none was sampled.
+         */
+        private double siegeStrengthPriced = -1;
     }
 }

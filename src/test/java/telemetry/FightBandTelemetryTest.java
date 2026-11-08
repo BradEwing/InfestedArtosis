@@ -38,11 +38,11 @@ class FightBandTelemetryTest {
     }
 
     @Test
-    void theHeldStrengthIsTheLastColumnAndUnevaluatedWithoutAHold() {
+    void theHeldStrengthPrecedesTheSiegeMinRangeColumnsAndIsUnevaluatedWithoutAHold() {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("sim_reentry_hold_strength", columns[columns.length - 1]);
+        assertEquals("sim_reentry_hold_strength", columns[columns.length - 5]);
         assertEquals(Collections.singletonList(Csv.format(SquadDecision.NOT_EVALUATED)),
                 SquadDecisionLogger.reentryHoldCells(context));
         context.setReentryHoldStrength(120.5);
@@ -61,8 +61,8 @@ class FightBandTelemetryTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("sim_hold_threshold", columns[columns.length - 7]);
-        assertEquals("band_contact", columns[columns.length - 6]);
+        assertEquals("sim_hold_threshold", columns[columns.length - 11]);
+        assertEquals("band_contact", columns[columns.length - 10]);
         assertEquals(Arrays.asList(Csv.format(SquadDecision.NOT_EVALUATED), String.valueOf(SquadDecision.NOT_EVALUATED)),
                 SquadDecisionLogger.holdCells(context));
         context.setHoldThreshold(1.0);
@@ -75,7 +75,7 @@ class FightBandTelemetryTest {
         String[] columns = SquadDecisionLogger.HEADER.split(",", -1);
         SquadDecision context = new SquadDecision();
 
-        assertEquals("sim_retreat_threshold", columns[columns.length - 8]);
+        assertEquals("sim_retreat_threshold", columns[columns.length - 12]);
         assertEquals(Collections.singletonList(Csv.format(SquadDecision.NOT_EVALUATED)),
                 SquadDecisionLogger.retreatThresholdCells(context));
         context.setRetreatThreshold(0.7);
