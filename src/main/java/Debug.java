@@ -568,6 +568,12 @@ public class Debug {
                 }
             }
 
+            for (Map.Entry<Position, Double> tank : snap.getSiegeHitShares().entrySet()) {
+                game.drawCircleMap(tank.getKey(), HorizonCombatSimulator.siegeMinRange(), Color.Yellow);
+                game.drawTextMap(tank.getKey().getX() - 16, tank.getKey().getY() + 8,
+                        String.format("hit %.2f", tank.getValue()), Text.Yellow);
+            }
+
             Position enemyCenter = snap.getEnemyCenter();
             for (UnitDebugEntry entry : snap.getEnemyUnits()) {
                 Color enemyColor = entry.isFogOfWar() ? Color.Orange : Color.Red;

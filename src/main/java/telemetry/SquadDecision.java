@@ -76,6 +76,10 @@ final class SquadDecision {
     private int siegeBand = NOT_EVALUATED;
     private int siegeBandFrames = NOT_EVALUATED;
     private int siegeBandHeldFrames = NOT_EVALUATED;
+    private double siegeMinRangeShare = NOT_EVALUATED;
+    private double siegeCoveredShare = NOT_EVALUATED;
+    private double siegeStrengthMain = NOT_EVALUATED;
+    private double siegeStrengthPriced = NOT_EVALUATED;
     private SwarmLock.Release swarmRelease = SwarmLock.Release.NONE;
     private CommitmentRelease commitmentRelease = CommitmentRelease.NONE;
     private BunkerHoldRelease bunkerHoldRelease = BunkerHoldRelease.NONE;

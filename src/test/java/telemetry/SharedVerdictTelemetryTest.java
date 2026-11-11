@@ -17,7 +17,7 @@ class SharedVerdictTelemetryTest {
         SquadDecision context = new SquadDecision();
 
         assertEquals(Arrays.asList("partner_squad_id", "partner_distance", "opposed_reason", "shared_verdict_basis"),
-                Arrays.asList(columns).subList(columns.length - 5, columns.length - 1));
+                Arrays.asList(columns).subList(columns.length - 9, columns.length - 5));
         assertEquals(Arrays.asList("NONE", "-1", "NONE", "NONE"), SquadDecisionLogger.neighbourCells(context));
     }
 

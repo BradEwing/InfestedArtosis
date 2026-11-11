@@ -67,6 +67,12 @@ public final class Config {
      * set to false.
      */
     public static boolean airReentryHold = true;
+    /**
+     * Whether a ground squad's combat sim prices each sieged Siege Tank by the share of our weighted ground strength
+     * outside its minimum range, see unit.squad.horizon.SiegeMinRange, instead of in full wherever our units stand. On
+     * unless IA_SIEGE_MIN_RANGE is set to false.
+     */
+    public static boolean siegeMinRange = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -163,6 +169,7 @@ public final class Config {
         mutaCooldownKite = enabledUnlessFalse(setting(dotenv, "IA_MUTA_COOLDOWN_KITE"));
         airTurretEdgeOfFire = enabledUnlessFalse(setting(dotenv, "IA_AIR_TURRET_EDGE_OF_FIRE"));
         airReentryHold = enabledUnlessFalse(setting(dotenv, "IA_AIR_REENTRY_HOLD"));
+        siegeMinRange = enabledUnlessFalse(setting(dotenv, "IA_SIEGE_MIN_RANGE"));
     }
 
     /**

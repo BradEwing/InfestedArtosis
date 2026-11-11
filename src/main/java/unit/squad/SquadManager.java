@@ -639,16 +639,22 @@ public class SquadManager {
     }
 
     /**
+     * The sieged tanks the sim priced. With {@link Config#siegeMinRange} on, every sieged tank the ground read sampled
+     * counts, see DebugSnapshot#getSiegeHitShares, so a tank our units stand inside the minimum range of is still
+     * priced; any other sieged tank counts when its strength is above zero.
+     *
      * @param snapshot the sim's snapshot, or null
-     * @return positions of the sieged tanks the snapshot priced with a strength above zero
+     * @return positions of the sieged tanks the snapshot priced
      */
-    private static List<Position> pricedSiegedTanks(HorizonCombatSimulator.DebugSnapshot snapshot) {
+    static List<Position> pricedSiegedTanks(HorizonCombatSimulator.DebugSnapshot snapshot) {
         if (snapshot == null) {
             return Collections.emptyList();
         }
         List<Position> priced = new ArrayList<>();
         for (HorizonCombatSimulator.UnitDebugEntry entry : snapshot.getEnemyUnits()) {
-            if (entry.getType() == UnitType.Terran_Siege_Tank_Siege_Mode && entry.getStrength() > 0) {
+            if (entry.getType() != UnitType.Terran_Siege_Tank_Siege_Mode) continue;
+            boolean sampled = Config.siegeMinRange && snapshot.getSiegeHitShares().containsKey(entry.getPosition());
+            if (sampled || entry.getStrength() > 0) {
                 priced.add(entry.getPosition());
             }
         }
