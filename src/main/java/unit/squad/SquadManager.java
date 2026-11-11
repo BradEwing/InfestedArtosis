@@ -26,6 +26,7 @@ import lombok.Getter;
 import org.bk.ass.sim.Agent;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import strategy.buildorder.BuildOrder;
 import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.FixedFireTelemetry;
@@ -35,7 +36,6 @@ import telemetry.FlockTelemetry;
 import telemetry.RallyReason;
 import telemetry.RallyRelease;
 import telemetry.RetreatRoute;
-import strategy.buildorder.BuildOrder;
 import telemetry.RunbyTelemetry;
 import telemetry.RunbyTick;
 import telemetry.SquadDecisionLogger;
@@ -1638,6 +1638,10 @@ public class SquadManager {
 
     private static final String STANDOFF_RETREAT = "RETREAT";
 
+    private static final String STANDOFF_ENGAGED = "ENGAGED";
+
+    private static final String STANDOFF_CONTAIN = "CONTAIN";
+
     private static final int STANDOFF_SNAPSHOT_FRESH_FRAMES = 96;
 
     /** Pixels a Reaver's Scarab or a Carrier's Interceptors reach, which the weapon table does not give. */
@@ -1744,7 +1748,7 @@ public class SquadManager {
         }
     }
 
-    private void closeStandoff(Squad squad, String reason, int now) {
+    static void closeStandoff(Squad squad, String reason, int now) {
         Standoff.Episode episode = squad.getStandoff();
         if (!episode.isActive()) {
             return;
@@ -1752,6 +1756,39 @@ public class SquadManager {
         StagingTelemetry.standoffExit(now, reason, new StagingRow(squad.getId(), Config.staging, squad.getSupply(),
                 squad.size(), -1, -1, -1, episode.framesStaged(now), "NONE", -1));
         episode.release(now);
+    }
+
+    /**
+     * Whether a squad was held at its standoff point this frame, see {@link #holdsAtStandoff}. Always false with
+     * {@link Config#staging} off, where nothing is held.
+     *
+     * @param squad fight squad
+     * @param now current frame
+     * @return true when the squad gathers at its standoff point this frame
+     */
+    private static boolean heldAtStandoff(Squad squad, int now) {
+        Standoff.Episode episode = squad.getStandoff();
+        return Config.staging && episode.isActive() && episode.getTouchedFrame() == now;
+    }
+
+    private static void leaveStandoff(Squad squad, String reason, int now) {
+        leaveStandoff(Config.staging, squad, reason, now);
+    }
+
+    /**
+     * Closes a squad's open standoff because a path other than the standoff reading sent it at the enemy or away from
+     * it: a shared-verdict turn, a neighbour's fight lock, or a contain it joins. With the switch off the episode is
+     * left for the standoff reading to close, so the off arm's episodes are not cut short by paths it never held for.
+     *
+     * @param staging {@link Config#staging}
+     * @param squad fight squad
+     * @param reason the exit reason written to the staging row
+     * @param now current frame
+     */
+    static void leaveStandoff(boolean staging, Squad squad, String reason, int now) {
+        if (staging) {
+            closeStandoff(squad, reason, now);
+        }
     }
 
     private int enemyReach(UnitType type) {
@@ -2083,7 +2120,9 @@ public class SquadManager {
     private void shareVerdicts(int now) {
         SharedVerdict.Exclusion skipped = verdictSkipped(Config.squadSharedVerdict,
                 !gameState.getActiveStormPositions().isEmpty());
-        SharedOutcome outcome = shareVerdicts(skipped, new ArrayList<>(fightSquads), simulatedThisFrame,
+        List<Squad> considered = SharedVerdict.withoutHeld(new ArrayList<>(fightSquads),
+                squad -> heldAtStandoff(squad, now));
+        SharedOutcome outcome = shareVerdicts(skipped, considered, simulatedThisFrame,
                 leavingThisFrame, SquadManager::withinSupportRadius, now, this::turnToFight, this::turnToRetreat);
         for (SharedVerdict.Turn turn : outcome.turns) {
             SquadDecisions.sharedVerdict(turn.squad, turn.from, turn.to, turn.basis.name(), turn.decider,
@@ -2099,11 +2138,13 @@ public class SquadManager {
     }
 
     private void turnToFight(Squad squad) {
+        leaveStandoff(squad, STANDOFF_ENGAGED, game.getFrameCount());
         assignFightTargets(squad, squad.getMembers(), true);
         SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_FIGHT);
     }
 
     private void turnToRetreat(Squad squad) {
+        leaveStandoff(squad, STANDOFF_RETREAT, game.getFrameCount());
         assignRetreatTargets(squad, squad.getMembers(), !retreatingAtFrameStart.contains(squad));
         SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_RETREAT);
     }
@@ -3001,6 +3042,9 @@ public class SquadManager {
         boolean commitHolds = turnBackCommitHolds(band && squad.isTurnBackCommitted(now), result, enemyMeasured,
                 ratio, retreatThreshold);
         if (fightHeld(squad, now, lockHolds || commitHolds)) {
+            if (neighbourFightLocked) {
+                leaveStandoff(squad, STANDOFF_ENGAGED, now);
+            }
             SquadDecisions.lockSuppressed(squad, neighbourHoldLock(neighbourFightLocked,
                     fightHeld(squad, now, commitHolds), fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
@@ -5659,6 +5703,7 @@ public class SquadManager {
         }
         SquadDecisions.rallied(squad, RallyReason.JOIN_CONTAIN);
         SquadDecisions.pathTaken(squad, DecisionPath.RALLY);
+        leaveStandoff(squad, STANDOFF_CONTAIN, game.getFrameCount());
         squad.setStatus(SquadStatus.RALLY);
         for (ManagedUnit managedUnit : squad.getMembers()) {
             managedUnit.setRallyPoint(arc.closestPosition(managedUnit.getPosition()));
