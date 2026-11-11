@@ -334,6 +334,9 @@ public class UnitManager {
         }
 
         squadManager.onUnitDestroy(unit);
+        if (unitType == UnitType.Zerg_Overlord && managedUnitLookup.containsKey(unit)) {
+            squadManager.recordOverlordDeath(managedUnitLookup.get(unit));
+        }
         removeManagedUnit(unit);
     }
 
