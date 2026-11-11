@@ -16,6 +16,12 @@ public enum RallyReason {
     BELOW_MOVE_OUT,
 
     /**
+     * A ground squad at or over its move out threshold was kept at the rally point because its supply is below the
+     * minimum a ground squad launches alone with, and no friendly army's rear or contain was there to join.
+     */
+    BELOW_MIN_MASS,
+
+    /**
      * A ground squad of Defilers only, whichever branch rallied it. SquadManager has a branch that
      * rallies such a squad rather than simulating a fight, and the ground move out threshold carries
      * no Defiler term, so one below it is rallied by the ordinary branch instead. Either way the

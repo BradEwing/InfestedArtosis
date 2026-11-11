@@ -103,10 +103,20 @@ class Engagement {
      */
     void noteUnit(int frame, int unitId, UnitType unitType, int hitPoints, String role, String squadId,
                   AttackTally attacks) {
+        noteUnit(frame, unitId, unitType, hitPoints, role, squadId, attacks, StandoffCohort.NONE);
+    }
+
+    /**
+     * @param attacks the unit's attack counters as of this sample
+     * @param cohort the standoff launch cohort the unit belongs to, read when it arrives
+     */
+    void noteUnit(int frame, int unitId, UnitType unitType, int hitPoints, String role, String squadId,
+                  AttackTally attacks, StandoffCohort cohort) {
         squadIds.add(squadId);
         EngagementUnit unit = units.get(unitId);
         if (unit == null) {
-            units.put(unitId, new EngagementUnit(unitId, unitType, frame, hitPoints, role, squadId, attacks));
+            units.put(unitId, new EngagementUnit(unitId, unitType, frame, hitPoints, role, squadId, attacks,
+                    cohort));
             return;
         }
         unit.observe(frame, hitPoints, attacks);
@@ -285,6 +295,8 @@ class Engagement {
             for (CycleColumn column : CycleColumn.values()) {
                 fields.add(String.valueOf(unit.cycleCountInEngagement(column)));
             }
+            fields.add(String.valueOf(unit.getCohortAtArrival().getEpisodeId()));
+            fields.add(unit.getCohortAtArrival().isJoiner() ? "1" : "0");
             rows.add(String.join(",", fields));
         }
         return rows;

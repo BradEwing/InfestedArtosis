@@ -18,12 +18,12 @@ public final class StagingTelemetry {
         sink = null;
     }
 
-    public static void standoffEnter(int frame, StagingRow row) {
+    public static void standoffEnter(int frame, String reason, StagingRow row) {
         StagingSink current = sink;
         if (current == null) {
             return;
         }
-        current.onStandoffEnter(frame, row);
+        current.onStandoffEnter(frame, reason, row);
     }
 
     public static void standoffExit(int frame, String reason, StagingRow row) {
@@ -40,5 +40,29 @@ public final class StagingTelemetry {
             return;
         }
         current.onReinforcement(frame, row);
+    }
+
+    public static void reinforcementOutcome(int frame, String outcome, StagingRow row) {
+        StagingSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onReinforcementOutcome(frame, outcome, row);
+    }
+
+    public static void launch(int frame, String reason, StagingRow row) {
+        StagingSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onLaunch(frame, reason, row);
+    }
+
+    public static void launchHeld(int frame, String reason, StagingRow row) {
+        StagingSink current = sink;
+        if (current == null) {
+            return;
+        }
+        current.onLaunchHeld(frame, reason, row);
     }
 }

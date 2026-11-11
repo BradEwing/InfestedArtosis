@@ -15,6 +15,10 @@ import lombok.Getter;
  * The damage dealt is read the same way, from the unit's own tally of the damage its weapon fire was priced at, which
  * does not depend on the attack count. The attack cycle columns are read the same way from the unit's own
  * unit.managed.AttackCycles, as their change between arrival and exit; they stay 0 unless combat telemetry is on.
+ *
+ * <p>The standoff episode and joiner flag are read at arrival: the standoff episode the unit stood in at
+ * STANDOFF_ENTER or joined afterwards, -1 for none, and whether it joined after STANDOFF_ENTER. Units of one episode
+ * that are not joiners are one launch cohort, which squad_at_arrival cannot name since a merge renames the squad.
  */
 @Getter
 class EngagementUnit {
@@ -28,6 +32,7 @@ class EngagementUnit {
     private final int attacksAtArrival;
     private final int damageAtArrival;
     private final AttackTally tallyAtArrival;
+    private final StandoffCohort cohortAtArrival;
     private AttackTally tallyAtExit;
 
     private int exitFrame;
@@ -42,6 +47,12 @@ class EngagementUnit {
 
     EngagementUnit(int unitId, UnitType unitType, int arrivalFrame, int hitPoints, String roleAtArrival,
                    String squadAtArrival, AttackTally attacks) {
+        this(unitId, unitType, arrivalFrame, hitPoints, roleAtArrival, squadAtArrival, attacks, StandoffCohort.NONE);
+    }
+
+    EngagementUnit(int unitId, UnitType unitType, int arrivalFrame, int hitPoints, String roleAtArrival,
+                   String squadAtArrival, AttackTally attacks, StandoffCohort cohortAtArrival) {
+        this.cohortAtArrival = cohortAtArrival;
         this.unitId = unitId;
         this.unitType = unitType;
         this.arrivalFrame = arrivalFrame;

@@ -92,7 +92,7 @@ class SharedVerdictTest {
     @Test
     void leavingTheStandoffClosesAnOpenEpisodeOnlyWithStagingOn() {
         Squad staged = squad(SquadStatus.FIGHT, 10);
-        staged.getStandoff().begin(NOW, null);
+        staged.getStandoff().begin(NOW, null, 7);
 
         SquadManager.leaveStandoff(false, staged, "ENGAGED", NOW + 1);
         assertTrue(staged.getStandoff().isActive());
@@ -100,6 +100,7 @@ class SharedVerdictTest {
         SquadManager.leaveStandoff(true, staged, "ENGAGED", NOW + 1);
         assertFalse(staged.getStandoff().isActive());
         assertTrue(staged.getStandoff().isReleased(NOW + 2));
+        assertEquals(7, staged.getStandoff().getId());
     }
 
     @Test

@@ -315,5 +315,12 @@ public enum DecisionPath {
     /**
      * A squad that would have launched was sent to the rear of a larger friendly army that is fighting or gathering.
      */
-    REINFORCE_REAR
+    REINFORCE_REAR,
+
+    /**
+     * A ground squad left the rally point on its own, not routed to an army's rear. Written as its own row, so
+     * our_supply_real on it is the supply the squad launched alone with; see LAUNCH rows in telemetry_staging.csv for
+     * the minimum mass in force.
+     */
+    LONE_LAUNCH
 }

@@ -346,12 +346,12 @@ public class SquadDecisionLogger implements SquadDecisionSink {
      * <p>A stalemate commit's start, pause, resume and release change no squad's status on the frame they happen
      * either.
      *
-     * @return true for CONTAIN_COLLAPSE_COMMIT and the four stalemate commit paths
+     * @return true for CONTAIN_COLLAPSE_COMMIT, the four stalemate commit paths and LONE_LAUNCH
      */
     static boolean writesOwnRow(DecisionPath path) {
         return path == DecisionPath.CONTAIN_COLLAPSE_COMMIT || path == DecisionPath.STALEMATE_COMMIT
                 || path == DecisionPath.STALEMATE_COMMIT_RELEASE || path == DecisionPath.STALEMATE_COMMIT_PAUSE
-                || path == DecisionPath.STALEMATE_COMMIT_RESUME;
+                || path == DecisionPath.STALEMATE_COMMIT_RESUME || path == DecisionPath.LONE_LAUNCH;
     }
 
     @Override

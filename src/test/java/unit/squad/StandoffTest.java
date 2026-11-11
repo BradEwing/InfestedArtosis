@@ -58,14 +58,15 @@ class StandoffTest {
         Episode first = new Episode();
         Episode second = new Episode();
         Episode released = new Episode();
-        first.begin(300, CENTER);
-        second.begin(200, ENEMY);
+        first.begin(300, CENTER, 4);
+        second.begin(200, ENEMY, 3);
         released.release(100);
         Episode merged = new Episode();
 
         merged.foldFrom(Arrays.asList(first, second, released));
 
         assertTrue(merged.isActive());
+        assertEquals(3, merged.getId());
         assertEquals(200, merged.getStartFrame());
         assertEquals(ENEMY, merged.getPoint());
         assertTrue(merged.isReleased(100 + Standoff.RELEASE_HOLD_FRAMES - 1));
@@ -158,7 +159,7 @@ class StandoffTest {
 
     @Test
     void aFourLingReinforcementIsRoutedToTheRearOfTheEngagedSquad() {
-        Army engaged = new Army(new Position(2000, 1000), new Position(2400, 1000), 12);
+        Army engaged = new Army(new Position(2000, 1000), new Position(2400, 1000), 12, "army");
 
         Position point = Standoff.reinforcementPoint(4, CENTER, Collections.singletonList(engaged), position -> true);
 
@@ -172,9 +173,9 @@ class StandoffTest {
 
     @Test
     void aReinforcementJoinsTheNearestArmyAtLeastAsStrongAsItself() {
-        Army far = new Army(new Position(3000, 1000), new Position(3400, 1000), 20);
-        Army near = new Army(new Position(1800, 1000), new Position(1800, 1400), 8);
-        Army weak = new Army(new Position(1100, 1000), new Position(1500, 1000), 3);
+        Army far = new Army(new Position(3000, 1000), new Position(3400, 1000), 20, "army");
+        Army near = new Army(new Position(1800, 1000), new Position(1800, 1400), 8, "army");
+        Army weak = new Army(new Position(1100, 1000), new Position(1500, 1000), 3, "army");
 
         Position point = Standoff.reinforcementPoint(4, CENTER, Arrays.asList(far, weak, near), position -> true);
 
@@ -186,9 +187,9 @@ class StandoffTest {
     void aReinforcementWithNoArmyToJoinLaunchesAsBefore() {
         assertNull(Standoff.reinforcementPoint(4, CENTER, Collections.emptyList(), position -> true));
         assertNull(Standoff.reinforcementPoint(9, CENTER,
-                Collections.singletonList(new Army(CENTER, ENEMY, 8)), position -> true));
+                Collections.singletonList(new Army(CENTER, ENEMY, 8, "army")), position -> true));
         assertNull(Standoff.reinforcementPoint(4, CENTER,
-                Collections.singletonList(new Army(CENTER, null, 8)), position -> true));
+                Collections.singletonList(new Army(CENTER, null, 8, "army")), position -> true));
     }
 
     @Test
@@ -204,12 +205,66 @@ class StandoffTest {
     }
 
     @Test
+    void aClumpedSquadAwayFromItsStandoffPointHoldsInsteadOfExitingGatheredOnItsFirstReading() {
+        List<Position> clumped = Arrays.asList(new Position(990, 1000), new Position(1000, 990),
+                new Position(1010, 1000), new Position(1000, 1010));
+        int distance = Standoff.distance(0);
+        Position point = Standoff.point(ENEMY, CENTER, distance, position -> true);
+
+        double aroundCentre = Standoff.gatheredShare(clumped, ones(4), CENTER);
+        double aroundPoint = Standoff.gatheredShare(clumped, ones(4), point);
+
+        assertTrue(point.getDistance(CENTER) > Standoff.GATHER_RADIUS);
+        assertEquals(1.0, aroundCentre, 1e-9);
+        assertEquals(0.0, aroundPoint, 1e-9);
+        assertEquals(Verdict.HOLD, Standoff.read(true, 500, distance, aroundPoint, 0, Standoff.timeoutFrames(false)));
+    }
+
+    @Test
+    void aSquadClumpedAtItsStandoffPointIsGatheredOnItsFirstReading() {
+        int distance = Standoff.distance(0);
+        Position point = Standoff.point(ENEMY, CENTER, distance, position -> true);
+        List<Position> atPoint = Arrays.asList(point, new Position(point.getX() - 20, point.getY()),
+                new Position(point.getX(), point.getY() + 20));
+
+        double share = Standoff.gatheredShare(atPoint, ones(3), point);
+
+        assertEquals(Verdict.GATHERED, Standoff.read(true, distance, distance, share, 0,
+                Standoff.timeoutFrames(true)));
+    }
+
+    @Test
+    void aReinforcementNamesTheArmyItJoins() {
+        Army engaged = new Army(new Position(2000, 1000), new Position(2400, 1000), 12, "army-7");
+
+        assertEquals("army-7", Standoff.reinforcementTarget(4, CENTER, Collections.singletonList(engaged))
+                .getSquadId());
+        assertNull(Standoff.reinforcementTarget(4, CENTER, Collections.emptyList()));
+    }
+
+    @Test
+    void aMergedSquadWithNoOpenEpisodeKeepsTheLatestEpisodeIdOfItsSources() {
+        Episode first = new Episode();
+        Episode second = new Episode();
+        first.begin(100, CENTER, 2);
+        first.release(150);
+        second.begin(120, CENTER, 5);
+        second.release(160);
+        Episode merged = new Episode();
+
+        merged.foldFrom(Arrays.asList(first, second));
+
+        assertFalse(merged.isActive());
+        assertEquals(5, merged.getId());
+    }
+
+    @Test
     void theEpisodeOpensTouchesAndReleases() {
         Episode episode = new Episode();
         assertFalse(episode.isActive());
         assertEquals(0, episode.framesStaged(500));
 
-        episode.begin(100, CENTER);
+        episode.begin(100, CENTER, 9);
         episode.touch(130);
 
         assertTrue(episode.isActive());
@@ -221,6 +276,7 @@ class StandoffTest {
 
         assertFalse(episode.isActive());
         assertNull(episode.getPoint());
+        assertEquals(9, episode.getId());
         assertTrue(episode.isReleased(150 + Standoff.RELEASE_HOLD_FRAMES - 1));
         assertFalse(episode.isReleased(150 + Standoff.RELEASE_HOLD_FRAMES));
     }

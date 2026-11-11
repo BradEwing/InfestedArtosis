@@ -15,8 +15,15 @@ import java.util.function.Predicate;
  *
  * <p>A squad that finds a measured enemy farther than the standoff distance holds at a point that distance from the
  * enemy, on the line toward the squad, until {@link #GATHER_SHARE} of its supply stands within
- * {@link #GATHER_RADIUS} of the squad centre, or the timeout passes. An enemy that comes inside the standoff
- * distance ends the standoff at once and the ordinary verdict acts.
+ * {@link #GATHER_RADIUS} of the standoff point, or the timeout passes. The share is measured around the point, not
+ * the squad centre, so a squad that is clumped but still far from the point walks there and gathers before it
+ * engages, instead of stringing out on the way in. A squad already inside the standoff distance gathers around its
+ * own centre, see {@link #point}. An enemy that comes inside the standoff distance ends the standoff at once and the
+ * ordinary verdict acts.
+ *
+ * <p>A squad whose first reading is already GATHERED, clumped at its standoff point, opens and closes an episode on
+ * the same frame, so every launch out of a standoff reading has an episode to anchor it. A first reading of
+ * ENEMY_ARRIVED opens none: the squad is already in contact and never staged.
  *
  * <p>A reinforcement squad that would launch while a larger army is fighting or gathering joins the rear of that
  * army, the side away from its enemy, instead of walking to the enemy on its own.
@@ -81,11 +88,16 @@ public final class Standoff {
         Position center;
         Position enemyCenter;
         int strength;
+        String squadId;
     }
 
-    /** The open standoff of one squad. */
+    /**
+     * The open standoff of one squad. Its id stays after the episode ends, naming the last episode the squad staged
+     * in, until the squad begins another.
+     */
     @Getter
     public static class Episode {
+        private int id = -1;
         private int startFrame = -1;
         private int touchedFrame = -1;
         private int releasedUntilFrame = -1;
@@ -122,7 +134,8 @@ public final class Standoff {
             return isActive() ? frame - startFrame : 0;
         }
 
-        void begin(int frame, Position standoffPoint) {
+        void begin(int frame, Position standoffPoint, int episodeId) {
+            id = episodeId;
             startFrame = frame;
             touchedFrame = frame;
             point = standoffPoint;
@@ -141,7 +154,11 @@ public final class Standoff {
         void foldFrom(Collection<Episode> sources) {
             for (Episode source : sources) {
                 releasedUntilFrame = Math.max(releasedUntilFrame, source.releasedUntilFrame);
+                if (!isActive() && !source.isActive()) {
+                    id = Math.max(id, source.id);
+                }
                 if (source.isActive() && (!isActive() || source.startFrame < startFrame)) {
+                    id = source.id;
                     startFrame = source.startFrame;
                     point = source.point;
                 }
@@ -207,7 +224,8 @@ public final class Standoff {
      * @param applicable result of {@link #applies}
      * @param nearestEnemy pixels from the nearest squad member to the nearest measured enemy
      * @param standoffDistance result of {@link #distance}
-     * @param gatheredShare share of the squad's supply within {@link #GATHER_RADIUS} of the squad centre
+     * @param gatheredShare share of the squad's supply within {@link #GATHER_RADIUS} of the standoff point, see
+     *     {@link #gatheredShare}
      * @param framesStaged frames the open standoff has lasted, 0 when none is open
      * @param timeoutFrames result of {@link #timeoutFrames}
      * @return the reading
@@ -324,6 +342,19 @@ public final class Standoff {
      */
     static Position reinforcementPoint(int squadStrength, Position squadCenter, List<Army> armies,
                                        Predicate<Position> walkable) {
+        Army nearest = reinforcementTarget(squadStrength, squadCenter, armies);
+        return nearest == null ? null : rearPoint(nearest.getCenter(), nearest.getEnemyCenter(), walkable);
+    }
+
+    /**
+     * The army a reinforcement squad joins: the nearest one at least as strong as it is, with a measured enemy.
+     *
+     * @param squadStrength strength of the reinforcement squad
+     * @param squadCenter the reinforcement squad's centre
+     * @param armies friendly ground squads that are fighting or gathering and have a measured enemy
+     * @return the army, or null when there is none to join
+     */
+    static Army reinforcementTarget(int squadStrength, Position squadCenter, List<Army> armies) {
         Army nearest = null;
         double nearestDistance = Double.MAX_VALUE;
         for (Army army : armies) {
@@ -336,7 +367,7 @@ public final class Standoff {
                 nearest = army;
             }
         }
-        return nearest == null ? null : rearPoint(nearest.getCenter(), nearest.getEnemyCenter(), walkable);
+        return nearest;
     }
 
     /**
