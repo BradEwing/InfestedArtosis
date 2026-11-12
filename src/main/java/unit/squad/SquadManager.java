@@ -1653,7 +1653,9 @@ public class SquadManager {
 
     private static final String STANDOFF_DIED = "DIED";
 
-    private static final String REINFORCE_JOINED = "JOINED";
+    static final String REINFORCE_JOINED = "JOINED";
+
+    static final String REINFORCE_JOINED_OTHER = "JOINED_OTHER";
 
     private static final String REINFORCE_DIED = "DIED";
 
@@ -1667,7 +1669,7 @@ public class SquadManager {
 
     static final String REINFORCE_PREEMPTED = "PREEMPTED";
 
-    private static final String REINFORCE_MERGED_ELSEWHERE = "MERGED_ELSEWHERE";
+    static final String REINFORCE_MERGED_ELSEWHERE = "MERGED_ELSEWHERE";
 
     /** Frames a LAUNCH row is withheld for after the last launch of the same squad, so a flapping launch logs once. */
     private static final int LAUNCH_ROW_GAP_FRAMES = 24;
@@ -2119,9 +2121,8 @@ public class SquadManager {
     }
 
     /**
-     * Closes the routing of every routed squad in a merge, JOINED when the army it was sent to is in the same merge
-     * and MERGED_ELSEWHERE otherwise, points the squads still routed to a merged army at the squad it merged into, and
-     * carries a MERGED_ELSEWHERE routing on to the merged squad when no squad in the merge reached its army.
+     * Closes the routing of every routed squad in a merge, see {@link #mergeOutcome}, points the squads still routed
+     * to a merged army at the squad it merged into, and carries a MERGED_ELSEWHERE routing on to the merged squad.
      *
      * @param merged the squad the sources merged into
      * @param sources the squads that merged
@@ -2136,17 +2137,21 @@ public class SquadManager {
         Position carriedPoint = null;
         boolean joined = false;
         for (Squad source : sources) {
+            SquadStatus status = source.getStatus();
+            joined |= !reinforcementTargets.containsKey(source.getId())
+                    && (status == SquadStatus.FIGHT || status == SquadStatus.RETREAT);
+        }
+        for (Squad source : sources) {
             String target = reinforcementTargets.get(source.getId());
             if (target == null) {
                 continue;
             }
-            boolean reached = sourceIds.contains(target);
-            joined |= reached;
-            if (!reached && carried == null) {
+            String outcome = mergeOutcome(sourceIds.contains(target), joined);
+            if (REINFORCE_MERGED_ELSEWHERE.equals(outcome) && carried == null) {
                 carried = target;
                 carriedPoint = reinforcementPoints.get(source.getId());
             }
-            endReinforcement(source, reached ? REINFORCE_JOINED : REINFORCE_MERGED_ELSEWHERE, now);
+            endReinforcement(source, outcome, now);
         }
         for (Map.Entry<String, String> routing : reinforcementTargets.entrySet()) {
             if (sourceIds.contains(routing.getValue())) {
@@ -2159,6 +2164,21 @@ public class SquadManager {
                 reinforcementPoints.put(merged.getId(), carriedPoint);
             }
         }
+    }
+
+    /**
+     * How a merge closes the routing of a squad sent to an army's rear.
+     *
+     * @param withTarget true when the army it was sent to is in the merge
+     * @param withFightingSquad true when a squad that is fighting or retreating, and is not itself routed, is in the
+     *     merge
+     * @return JOINED, JOINED_OTHER when it merged into another fighting squad, or MERGED_ELSEWHERE
+     */
+    static String mergeOutcome(boolean withTarget, boolean withFightingSquad) {
+        if (withTarget) {
+            return REINFORCE_JOINED;
+        }
+        return withFightingSquad ? REINFORCE_JOINED_OTHER : REINFORCE_MERGED_ELSEWHERE;
     }
 
     private void abandonUnroutedReinforcements(int now) {

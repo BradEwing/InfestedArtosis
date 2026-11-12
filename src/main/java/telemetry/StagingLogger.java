@@ -23,7 +23,8 @@ import bwapi.Game;
  * <p>A REINFORCE_REAR row is written once per squad when a squad that would have launched is sent to the rear of a
  * larger friendly army, with that army's squad id in target_squad_id and its last standoff episode in episode_id.
  * With the switch on, a REINFORCE_OUTCOME row closes each routed squad, reason JOINED when it merged with the army it
- * was sent to, DIED when its last member died, MERGED_ELSEWHERE when it merged with another squad (the merged squad
+ * was sent to, JOINED_OTHER when it merged with another squad that was fighting or retreating, DIED when its last
+ * member died, MERGED_ELSEWHERE when it merged with any other squad (the merged squad
  * carries the routing on under its own squad_id when no squad in the merge reached its army), TARGET_GONE when the
  * army no longer exists, TARGET_IDLE when the army stopped fighting or retreating, ARRIVED when enemies came near the
  * squad inside the army's support radius, THREATENED when they came near it farther out or a base was threatened, and

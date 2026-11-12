@@ -44,4 +44,12 @@ class ReinforcementEndTest {
         assertEquals(SquadManager.REINFORCE_TARGET_IDLE,
                 SquadManager.reinforcementEnd(SquadStatus.RALLY, SquadStatus.CONTAIN, false, false));
     }
+
+    @Test
+    void aMergeClosesTheRoutingByWhatTheSquadMergedWith() {
+        assertEquals(SquadManager.REINFORCE_JOINED, SquadManager.mergeOutcome(true, true));
+        assertEquals(SquadManager.REINFORCE_JOINED, SquadManager.mergeOutcome(true, false));
+        assertEquals(SquadManager.REINFORCE_JOINED_OTHER, SquadManager.mergeOutcome(false, true));
+        assertEquals(SquadManager.REINFORCE_MERGED_ELSEWHERE, SquadManager.mergeOutcome(false, false));
+    }
 }
