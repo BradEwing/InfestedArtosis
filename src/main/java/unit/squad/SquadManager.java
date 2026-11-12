@@ -1663,6 +1663,8 @@ public class SquadManager {
 
     static final String REINFORCE_THREATENED = "THREATENED";
 
+    static final String REINFORCE_ARRIVED = "ARRIVED";
+
     static final String REINFORCE_PREEMPTED = "PREEMPTED";
 
     private static final String REINFORCE_MERGED_ELSEWHERE = "MERGED_ELSEWHERE";
@@ -2041,7 +2043,7 @@ public class SquadManager {
         }
         Squad target = fightSquadById(targetId);
         String end = reinforcementEnd(squad.getStatus(), target == null ? null : target.getStatus(),
-                closeThreats || baseThreatened());
+                closeThreats || baseThreatened(), target != null && withinSupportRadius(squad, target));
         if (end != null) {
             endReinforcement(squad, end, game.getFrameCount());
             return false;
@@ -2060,9 +2062,12 @@ public class SquadManager {
      * @param ownStatus the routed squad's status
      * @param targetStatus the army's status, null when the army no longer exists
      * @param threatened true when enemies are near the routed squad or a base is threatened
+     * @param nearTarget true when the routed squad is within {@link #REINFORCEMENT_RADIUS} of the army, so the army's
+     *     sim already counts it as support
      * @return the REINFORCE_OUTCOME reason, or null while the routing goes on
      */
-    static String reinforcementEnd(SquadStatus ownStatus, SquadStatus targetStatus, boolean threatened) {
+    static String reinforcementEnd(SquadStatus ownStatus, SquadStatus targetStatus, boolean threatened,
+                                   boolean nearTarget) {
         if (targetStatus == null) {
             return REINFORCE_TARGET_GONE;
         }
@@ -2070,7 +2075,7 @@ public class SquadManager {
             return REINFORCE_PREEMPTED;
         }
         if (threatened) {
-            return REINFORCE_THREATENED;
+            return nearTarget ? REINFORCE_ARRIVED : REINFORCE_THREATENED;
         }
         if (targetStatus != SquadStatus.FIGHT && targetStatus != SquadStatus.RETREAT) {
             return REINFORCE_TARGET_IDLE;
@@ -2115,7 +2120,8 @@ public class SquadManager {
 
     /**
      * Closes the routing of every routed squad in a merge, JOINED when the army it was sent to is in the same merge
-     * and MERGED_ELSEWHERE otherwise, and points the squads still routed to a merged army at the squad it merged into.
+     * and MERGED_ELSEWHERE otherwise, points the squads still routed to a merged army at the squad it merged into, and
+     * carries a MERGED_ELSEWHERE routing on to the merged squad when no squad in the merge reached its army.
      *
      * @param merged the squad the sources merged into
      * @param sources the squads that merged
@@ -2126,16 +2132,31 @@ public class SquadManager {
         for (Squad source : sources) {
             sourceIds.add(source.getId());
         }
+        String carried = null;
+        Position carriedPoint = null;
+        boolean joined = false;
         for (Squad source : sources) {
             String target = reinforcementTargets.get(source.getId());
-            if (target != null) {
-                endReinforcement(source, sourceIds.contains(target) ? REINFORCE_JOINED : REINFORCE_MERGED_ELSEWHERE,
-                        now);
+            if (target == null) {
+                continue;
             }
+            boolean reached = sourceIds.contains(target);
+            joined |= reached;
+            if (!reached && carried == null) {
+                carried = target;
+                carriedPoint = reinforcementPoints.get(source.getId());
+            }
+            endReinforcement(source, reached ? REINFORCE_JOINED : REINFORCE_MERGED_ELSEWHERE, now);
         }
         for (Map.Entry<String, String> routing : reinforcementTargets.entrySet()) {
             if (sourceIds.contains(routing.getValue())) {
                 routing.setValue(merged.getId());
+            }
+        }
+        if (carried != null && !joined) {
+            reinforcementTargets.put(merged.getId(), carried);
+            if (carriedPoint != null) {
+                reinforcementPoints.put(merged.getId(), carriedPoint);
             }
         }
     }
