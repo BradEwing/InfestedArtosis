@@ -1776,7 +1776,8 @@ public abstract class BuildOrder {
 
     /**
      * Whether this build commits its army early regardless of upgrades: an all-in or a rush. A ground squad of such a
-     * build waits at a standoff point only for the short rush timeout, see unit.squad.Standoff. False by default.
+     * build is not staged at a standoff point, routed to an army's rear or held below the lone launch minimum mass,
+     * see unit.squad.SquadManager. False by default.
      */
     public boolean isAllInOrRush() {
         return false;

@@ -23,8 +23,9 @@ import bwapi.Game;
  * <p>A REINFORCE_REAR row is written once per squad when a squad that would have launched is sent to the rear of a
  * larger friendly army, with that army's squad id in target_squad_id and its last standoff episode in episode_id.
  * With the switch on, a REINFORCE_OUTCOME row closes each routed squad, reason JOINED when it merged with the army it
- * was sent to, DIED when its last member died, or ABANDONED when it stopped being routed for another reason,
- * including a merge with another squad.
+ * was sent to, DIED when its last member died, MERGED_ELSEWHERE when it merged with another squad, TARGET_GONE when
+ * the army no longer exists, TARGET_IDLE when the army stopped fighting or retreating, THREATENED when enemies came
+ * near the squad or a base was threatened, and PREEMPTED when the squad left the rally status or took another path.
  *
  * <p>A LAUNCH row is written when a ground squad leaves the rally point on its own, not routed to an army, and a
  * LAUNCH_HELD row once per hold when a ground squad cleared to launch is kept from launching alone because its supply

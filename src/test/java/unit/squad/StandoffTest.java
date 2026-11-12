@@ -35,7 +35,7 @@ class StandoffTest {
         double share = Standoff.gatheredShare(spreadSquad(), ones(6), CENTER);
         int distance = Standoff.distance(0);
 
-        Verdict verdict = Standoff.read(true, 500, distance, share, 0, Standoff.timeoutFrames(false));
+        Verdict verdict = Standoff.read(true, 500, distance, share, 0, Standoff.TIMEOUT_FRAMES);
         Position point = Standoff.point(ENEMY, CENTER, distance, position -> true);
 
         assertTrue(share < Standoff.GATHER_SHARE);
@@ -99,16 +99,6 @@ class StandoffTest {
 
         assertEquals(Verdict.HOLD, Standoff.read(true, 500, distance, 0.2, 239, Standoff.TIMEOUT_FRAMES));
         assertEquals(Verdict.TIMEOUT, Standoff.read(true, 500, distance, 0.2, 240, Standoff.TIMEOUT_FRAMES));
-    }
-
-    @Test
-    void aRushOrAllInKeepsItsAttackTimingWithAShortTimeout() {
-        int distance = Standoff.distance(0);
-
-        assertTrue(Standoff.timeoutFrames(true) < Standoff.timeoutFrames(false));
-        assertEquals(Verdict.HOLD, Standoff.read(true, 500, distance, 0.2, 71, Standoff.timeoutFrames(true)));
-        assertEquals(Verdict.TIMEOUT, Standoff.read(true, 500, distance, 0.2, 72, Standoff.timeoutFrames(true)));
-        assertEquals(Verdict.HOLD, Standoff.read(true, 500, distance, 0.2, 72, Standoff.timeoutFrames(false)));
     }
 
     @Test
@@ -217,7 +207,7 @@ class StandoffTest {
         assertTrue(point.getDistance(CENTER) > Standoff.GATHER_RADIUS);
         assertEquals(1.0, aroundCentre, 1e-9);
         assertEquals(0.0, aroundPoint, 1e-9);
-        assertEquals(Verdict.HOLD, Standoff.read(true, 500, distance, aroundPoint, 0, Standoff.timeoutFrames(false)));
+        assertEquals(Verdict.HOLD, Standoff.read(true, 500, distance, aroundPoint, 0, Standoff.TIMEOUT_FRAMES));
     }
 
     @Test
@@ -230,7 +220,7 @@ class StandoffTest {
         double share = Standoff.gatheredShare(atPoint, ones(3), point);
 
         assertEquals(Verdict.GATHERED, Standoff.read(true, distance, distance, share, 0,
-                Standoff.timeoutFrames(true)));
+                Standoff.TIMEOUT_FRAMES));
     }
 
     @Test

@@ -38,9 +38,6 @@ public final class Standoff {
     /** Tuning value: frames a squad gathers for before it engages whatever its spread. */
     static final int TIMEOUT_FRAMES = 240;
 
-    /** Tuning value: frames a squad of a rush or an all-in gathers for, so its attack timing is kept. */
-    static final int RUSH_TIMEOUT_FRAMES = 72;
-
     /** Tuning value: pixels past the enemy's longest ground reach that the standoff point lies. */
     static final int REACH_MARGIN = 96;
 
@@ -194,16 +191,6 @@ public final class Standoff {
     }
 
     /**
-     * Frames a squad gathers for before it engages.
-     *
-     * @param allInOrRush true when the active build is an all-in or a rush
-     * @return {@link #RUSH_TIMEOUT_FRAMES} for a rush or an all-in, {@link #TIMEOUT_FRAMES} otherwise
-     */
-    static int timeoutFrames(boolean allInOrRush) {
-        return allInOrRush ? RUSH_TIMEOUT_FRAMES : TIMEOUT_FRAMES;
-    }
-
-    /**
      * Whether the standoff may stage a squad at all.
      *
      * @param ground true for a ground squad
@@ -227,7 +214,7 @@ public final class Standoff {
      * @param gatheredShare share of the squad's supply within {@link #GATHER_RADIUS} of the standoff point, see
      *     {@link #gatheredShare}
      * @param framesStaged frames the open standoff has lasted, 0 when none is open
-     * @param timeoutFrames result of {@link #timeoutFrames}
+     * @param timeoutFrames frames a squad gathers for before it engages, {@link #TIMEOUT_FRAMES}
      * @return the reading
      */
     static Verdict read(boolean applicable, double nearestEnemy, int standoffDistance, double gatheredShare,
