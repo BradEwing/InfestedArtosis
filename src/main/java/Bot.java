@@ -38,6 +38,8 @@ import telemetry.ReachTelemetry;
 import telemetry.RunbyTelemetry;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
+import telemetry.StagingLogger;
+import telemetry.StagingTelemetry;
 import telemetry.TargetChoiceLogger;
 import telemetry.TargetChoices;
 import unit.UnitManager;
@@ -81,6 +83,7 @@ public class Bot extends DefaultBWListener {
     private BunkerLogger bunkerLogger;
     private BurrowLogger burrowLogger;
     private FixedFireLogger fixedFireLogger;
+    private StagingLogger stagingLogger;
 
     @Override
     public void onStart() {
@@ -121,6 +124,7 @@ public class Bot extends DefaultBWListener {
         startBunkerLogging();
         startBurrowLogging();
         startFixedFireLogging();
+        startStagingLogging();
         startPlanEventLogging(decisions.getOpener());
     }
 
@@ -234,6 +238,15 @@ public class Bot extends DefaultBWListener {
         FixedFireTelemetry.register(fixedFireLogger);
     }
 
+    private void startStagingLogging() {
+        if (!gameState.getConfig().telemetryCombat) {
+            return;
+        }
+
+        stagingLogger = new StagingLogger(game, combatTelemetry.getGameId());
+        StagingTelemetry.register(stagingLogger);
+    }
+
     private void startPlanEventLogging(BuildOrder opener) {
         if (!gameState.getConfig().logPlanEvents) {
             return;
@@ -293,6 +306,9 @@ public class Bot extends DefaultBWListener {
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onFrame();
+        }
+        if (stagingLogger != null) {
+            stagingLogger.onFrame();
         }
         combatTelemetry.onFrame();
         debugMap.onFrame();
@@ -396,6 +412,9 @@ public class Bot extends DefaultBWListener {
         }
         if (fixedFireLogger != null) {
             fixedFireLogger.onEnd();
+        }
+        if (stagingLogger != null) {
+            stagingLogger.onEnd();
         }
         combatTelemetry.onEnd(isWinner);
     }

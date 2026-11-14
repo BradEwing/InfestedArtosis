@@ -73,6 +73,11 @@ public final class Config {
      * unless IA_SIEGE_MIN_RANGE is set to false.
      */
     public static boolean siegeMinRange = true;
+    /**
+     * Whether a ground squad gathers at a standoff point outside the enemy army's reach before it engages, and a
+     * reinforcement rallies to the rear of the friendly squad it is joining. On unless IA_STAGING is set to false.
+     */
+    public static boolean staging = true;
     public boolean enabledAutoObserver = false;
     public String strategyOverride;
     public String openerOverride;
@@ -170,6 +175,7 @@ public final class Config {
         airTurretEdgeOfFire = enabledUnlessFalse(setting(dotenv, "IA_AIR_TURRET_EDGE_OF_FIRE"));
         airReentryHold = enabledUnlessFalse(setting(dotenv, "IA_AIR_REENTRY_HOLD"));
         siegeMinRange = enabledUnlessFalse(setting(dotenv, "IA_SIEGE_MIN_RANGE"));
+        staging = enabledUnlessFalse(setting(dotenv, "IA_STAGING"));
     }
 
     /**

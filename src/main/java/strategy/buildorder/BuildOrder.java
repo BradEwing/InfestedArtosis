@@ -1773,4 +1773,13 @@ public abstract class BuildOrder {
     public int hashCode() {
         return Objects.hash(getClass().getName(), name);
     }
+
+    /**
+     * Whether this build commits its army early regardless of upgrades: an all-in or a rush. A ground squad of such a
+     * build is not staged at a standoff point, routed to an army's rear or held below the lone launch minimum mass,
+     * see unit.squad.SquadManager. False by default.
+     */
+    public boolean isAllInOrRush() {
+        return false;
+    }
 }

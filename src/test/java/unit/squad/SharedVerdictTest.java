@@ -64,6 +64,46 @@ class SharedVerdictTest {
     }
 
     @Test
+    void aSquadHeldAtItsStandoffPointIsNotCountedAndTheRetreatingNeighbourIsNotTurnedToFight() {
+        Squad held = squad(SquadStatus.FIGHT, 24);
+        Squad retreater = squad(SquadStatus.RETREAT, 8);
+        retreater.startRetreatLock(NOW);
+
+        List<Squad> considered = SharedVerdict.withoutHeld(Arrays.asList(held, retreater), squad -> squad == held);
+        SquadManager.SharedOutcome outcome = share(considered, ALWAYS_NEAR, NOW);
+
+        assertEquals(Collections.singletonList(retreater), considered);
+        assertTrue(outcome.turns.isEmpty());
+        assertEquals(SquadStatus.RETREAT, retreater.getStatus());
+        assertEquals(SquadStatus.FIGHT, held.getStatus());
+    }
+
+    @Test
+    void withoutTheHeldFilterTheLargerStagedSquadWouldTurnTheNeighbour() {
+        Squad held = squad(SquadStatus.FIGHT, 24);
+        Squad retreater = squad(SquadStatus.RETREAT, 8);
+        retreater.startRetreatLock(NOW);
+
+        share(Arrays.asList(held, retreater), ALWAYS_NEAR, NOW);
+
+        assertEquals(SquadStatus.FIGHT, retreater.getStatus());
+    }
+
+    @Test
+    void leavingTheStandoffClosesAnOpenEpisodeOnlyWithStagingOn() {
+        Squad staged = squad(SquadStatus.FIGHT, 10);
+        staged.getStandoff().begin(NOW, null, 7);
+
+        SquadManager.leaveStandoff(false, staged, "ENGAGED", NOW + 1);
+        assertTrue(staged.getStandoff().isActive());
+
+        SquadManager.leaveStandoff(true, staged, "ENGAGED", NOW + 1);
+        assertFalse(staged.getStandoff().isActive());
+        assertTrue(staged.getStandoff().isReleased(NOW + 2));
+        assertEquals(7, staged.getStandoff().getId());
+    }
+
+    @Test
     void twoNeighboursNeverHoldOppositeStatusesAfterTheDecisionStep() {
         Squad fighter = squad(SquadStatus.FIGHT, 6);
         Squad retreater = squad(SquadStatus.RETREAT, 4);

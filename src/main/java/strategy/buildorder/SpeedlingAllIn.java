@@ -457,4 +457,9 @@ public class SpeedlingAllIn extends BuildOrder {
     static boolean allInStalled(Time gameTime, int zerglingCount, boolean metabolicBoost) {
         return metabolicBoost && zerglingCount >= STALL_ZERGLINGS && gameTime.greaterThan(STALL_TIME);
     }
+
+    @Override
+    public boolean isAllInOrRush() {
+        return true;
+    }
 }

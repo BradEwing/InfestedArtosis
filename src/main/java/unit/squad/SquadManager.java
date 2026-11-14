@@ -26,6 +26,7 @@ import lombok.Getter;
 import org.bk.ass.sim.Agent;
 import org.bk.ass.sim.BWMirrorAgentFactory;
 import org.bk.ass.sim.Simulator;
+import strategy.buildorder.BuildOrder;
 import telemetry.DecisionPath;
 import telemetry.DefenseEvent;
 import telemetry.FixedFireTelemetry;
@@ -40,6 +41,8 @@ import telemetry.RunbyTick;
 import telemetry.SquadDecisionLogger;
 import telemetry.SquadDecisions;
 import telemetry.SquadLock;
+import telemetry.StagingRow;
+import telemetry.StagingTelemetry;
 import telemetry.SwarmEvent;
 import telemetry.TargetChoices;
 import unit.managed.Lurker;
@@ -53,6 +56,7 @@ import util.MapEdge;
 import util.StaticDefenseZone;
 import util.MeleeOverflowGate;
 import util.TargetLedger;
+import util.Time;
 import util.Vec2;
 
 import java.util.ArrayList;
@@ -71,6 +75,7 @@ import java.util.function.Consumer;
 import java.util.function.DoubleSupplier;
 import java.util.function.Function;
 import java.util.function.ToDoubleFunction;
+import java.util.function.ToIntFunction;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -242,6 +247,7 @@ public class SquadManager {
     public void updateFightSquads() {
         disbanded.clear();
         activeContainmentArcs.clear();
+        routedThisFrame.clear();
         gameState.getEndgameHunt().update(gameState.getObservedUnitTracker().getLivingObservedUnits(),
                 game.getFrameCount(), gameState.getSupply());
         removeEmptySquads();
@@ -269,6 +275,7 @@ public class SquadManager {
                 retreatingAtFrameStart.add(fightSquad);
             }
             if (fightSquad.shouldDisband()) {
+                endReinforcement(fightSquad, REINFORCE_DIED, now);
                 disbanded.addAll(disbandSquad(fightSquad));
                 removed.add(fightSquad);
             }
@@ -292,6 +299,7 @@ public class SquadManager {
 
         fightSquads.removeAll(removed);
         shareVerdicts(now);
+        abandonUnroutedReinforcements(now);
         evadeOutrangedHits(now);
         updateLurkerFixedFire();
         updateLurkerFire(now);
@@ -1376,6 +1384,8 @@ public class SquadManager {
         }
 
         for (Squad squad: emptySquads) {
+            closeStandoff(squad, STANDOFF_DIED, game.getFrameCount());
+            endReinforcement(squad, REINFORCE_DIED, game.getFrameCount());
             if (squad.getStatus() == SquadStatus.CONTAIN) {
                 containEndedOtherwise();
                 endContainment(squad);
@@ -1436,6 +1446,7 @@ public class SquadManager {
             }
             newSquad.inheritStateFrom(mergeSet);
             SquadDecisions.pathTaken(newSquad, DecisionPath.MERGE_INHERIT);
+            mergeReinforcements(newSquad, mergeSet, currentFrame);
             for (Squad mergingSquad: mergeSet) {
                 SwarmLock dropped = mergingSquad.getSwarmLock();
                 if (SwarmLock.droppedByMerge(dropped, newSquad.getSwarmLock())) {
@@ -1451,6 +1462,7 @@ public class SquadManager {
                 }
                 fightSquads.remove(mergingSquad);
             }
+            foldStandoff(newSquad, mergeSet, currentFrame);
             newSquad.setSplitFrame(currentFrame);
             fightSquads.add(newSquad);
         }
@@ -1467,6 +1479,7 @@ public class SquadManager {
         for (Squad squad : fightSquads) {
             if (!maySplit(squad.getStatus())) continue;
             if (squad.size() < 4) continue;
+            if (Config.staging && squad.getStandoff().isActive()) continue;
 
             int threshold = squad.isAirSquad() ? AIR_SPLIT_DISTANCE : GROUND_SPLIT_DISTANCE;
             List<ManagedUnit> outliers = squad.findOutliers(threshold);
@@ -1623,7 +1636,664 @@ public class SquadManager {
         return enemies;
     }
 
+    /**
+     * Standoff reason recorded when a squad stops being staged for a cause other than the three readings.
+     */
+    private static final String STANDOFF_ABANDONED = "ABANDONED";
+
+    private static final String STANDOFF_MERGED = "MERGED";
+
+    private static final String STANDOFF_ENTER_NEW = "NONE";
+
+    private static final String STANDOFF_RETREAT = "RETREAT";
+
+    private static final String STANDOFF_ENGAGED = "ENGAGED";
+
+    private static final String STANDOFF_CONTAIN = "CONTAIN";
+
+    private static final String STANDOFF_DIED = "DIED";
+
+    static final String REINFORCE_JOINED = "JOINED";
+
+    static final String REINFORCE_JOINED_OTHER = "JOINED_OTHER";
+
+    private static final String REINFORCE_DIED = "DIED";
+
+    static final String REINFORCE_TARGET_GONE = "TARGET_GONE";
+
+    static final String REINFORCE_TARGET_IDLE = "TARGET_IDLE";
+
+    static final String REINFORCE_THREATENED = "THREATENED";
+
+    static final String REINFORCE_ARRIVED = "ARRIVED";
+
+    static final String REINFORCE_PREEMPTED = "PREEMPTED";
+
+    static final String REINFORCE_MERGED_ELSEWHERE = "MERGED_ELSEWHERE";
+
+    /** Frames a LAUNCH row is withheld for after the last launch of the same squad, so a flapping launch logs once. */
+    private static final int LAUNCH_ROW_GAP_FRAMES = 24;
+
+    private static final String LAUNCH_HELD_HOME = "HOME";
+
+    private static final String LAUNCH_HELD_CONTAIN = "CONTAIN";
+
+    /** The move out threshold of a ground squad before rush, cannon rush and flood terms change it. */
+    static final int GROUND_MOVE_OUT_THRESHOLD = 4;
+
+    private static final Time LONE_LAUNCH_RAMP_START = new Time(6, 0);
+
+    private static final Time LONE_LAUNCH_MID_GAME = new Time(10, 0);
+
+    private static final Time LONE_LAUNCH_LATE_GAME = new Time(15, 0);
+
+    /** Tuning value: supply a ground squad needs to launch alone from 6:00, from IA-280's commit floor. */
+    static final int LONE_LAUNCH_KNEE = 6;
+
+    /** Tuning value: supply a ground squad needs to launch alone from 10:00. */
+    static final int LONE_LAUNCH_MID_GAME_SUPPLY = 8;
+
+    /** Tuning value: supply a ground squad needs to launch alone from 15:00. */
+    static final int LONE_LAUNCH_LATE_GAME_SUPPLY = 10;
+
+    private int nextStandoffEpisodeId;
+
+    private final Map<String, String> reinforcementTargets = new HashMap<>();
+
+    private final Set<String> routedThisFrame = new HashSet<>();
+
+    private final Set<String> launchHeldLogged = new HashSet<>();
+
+    private final Map<String, Integer> lastLaunchFrame = new HashMap<>();
+
+    private final Map<String, Position> reinforcementPoints = new HashMap<>();
+
+    private static final int STANDOFF_SNAPSHOT_FRESH_FRAMES = 96;
+
+    /** Pixels a Reaver's Scarab or a Carrier's Interceptors reach, which the weapon table does not give. */
+    private static final int REAVER_SCARAB_REACH = 256;
+
+    private final Set<String> reinforcementsLogged = new HashSet<>();
+
+    /**
+     * Holds a ground squad at its standoff point while a measured enemy is farther than the standoff distance and
+     * the squad is spread over more than the gather radius, see {@link Standoff}. Called where an ENGAGE or ADVANCE
+     * verdict would send the squad at the enemy. The reading and the episode are kept whatever
+     * {@link Config#staging} is, for telemetry; with it off nothing is held and the squad engages as it does
+     * without staging, so only the episodes' entries compare across arms. A squad turning back out of a retreat is not
+     * staged: the turn-back commit decides it.
+     *
+     * @param squad ground squad about to engage
+     * @param snapshot the sim read behind the verdict, or null
+     * @param enemyMeasured true when the sim measured a real enemy
+     * @param retreatLocked true when the squad's retreat lock is active
+     * @param now current frame
+     * @return true when the squad was sent to the standoff point and must not engage this frame
+     */
+    private boolean holdsAtStandoff(Squad squad, HorizonCombatSimulator.DebugSnapshot snapshot,
+                                    boolean enemyMeasured, boolean retreatLocked, int now) {
+        Standoff.Episode episode = squad.getStandoff();
+        if (episode.isStale(now)) {
+            closeStandoff(squad, STANDOFF_ABANDONED, now);
+        }
+        boolean turningBack = squad.getStatus() == SquadStatus.RETREAT || retreatLocked;
+        boolean released = episode.isReleased(now);
+        boolean mayStage = snapshot != null && squad.isGroundSquad() && enemyMeasured && !turningBack && !released
+                && squad.getCollapse() == null;
+        List<HorizonCombatSimulator.UnitDebugEntry> enemies = mayStage
+                ? snapshot.getEnemyUnits() : Collections.emptyList();
+        boolean exempt = enemies.isEmpty() || standoffExempt(squad);
+        if (!Standoff.applies(squad.isGroundSquad(), enemyMeasured, turningBack, exempt, released)) {
+            closeStandoff(squad, STANDOFF_ABANDONED, now);
+            return false;
+        }
+
+        int reach = 0;
+        int ownExtent = 0;
+        for (ManagedUnit member : squad.getMembers()) {
+            ownExtent = Math.max(ownExtent, extent(member.getUnitType()));
+        }
+        for (HorizonCombatSimulator.UnitDebugEntry enemy : enemies) {
+            reach = Math.max(reach, enemyReach(enemy.getType()) + extent(enemy.getType()));
+        }
+        reach += ownExtent;
+        int distance = Standoff.distance(reach);
+        Position center = squad.getCenter();
+        Position nearestEnemy = null;
+        UnitType nearestEnemyType = null;
+        double nearestMemberGap = Double.MAX_VALUE;
+        double nearestCenterGap = Double.MAX_VALUE;
+        for (HorizonCombatSimulator.UnitDebugEntry enemy : enemies) {
+            double centerGap = enemy.getPosition().getDistance(center);
+            if (centerGap < nearestCenterGap) {
+                nearestCenterGap = centerGap;
+                nearestEnemy = enemy.getPosition();
+                nearestEnemyType = enemy.getType();
+            }
+            for (ManagedUnit member : squad.getMembers()) {
+                nearestMemberGap = Math.min(nearestMemberGap, enemy.getPosition().getDistance(member.getPosition()));
+            }
+        }
+        List<Position> positions = new ArrayList<>();
+        List<Integer> supplies = new ArrayList<>();
+        for (ManagedUnit member : squad.getMembers()) {
+            positions.add(member.getPosition());
+            supplies.add(member.getUnitType().supplyRequired());
+        }
+        Position point = episode.isActive() && episode.getPoint() != null
+                ? episode.getPoint()
+                : Standoff.point(nearestEnemy, center, distance, this::standable);
+        double share = Standoff.gatheredShare(positions, supplies, point);
+        Standoff.Verdict verdict = Standoff.read(true, nearestMemberGap, distance, share, episode.framesStaged(now),
+                Standoff.TIMEOUT_FRAMES);
+        StagingRow.StagingRowBuilder row = stagingRow(squad).gatheredShare(share)
+                .enemyDistance((int) nearestMemberGap).standoffDistance(distance)
+                .framesStaged(episode.framesStaged(now)).enemyType(nearestEnemyType.toString()).enemyReach(reach);
+
+        if (verdict == Standoff.Verdict.HOLD) {
+            if (!episode.isActive()) {
+                beginStandoff(squad, point, row, now);
+            } else {
+                joinStandoffEpisode(squad.getMembers(), episode.getId());
+            }
+            episode.touch(now);
+            if (Standoff.holds(Config.staging, verdict)) {
+                holdAtPoint(squad, episode.getPoint());
+                return true;
+            }
+            return false;
+        }
+        if (!episode.isActive() && verdict == Standoff.Verdict.GATHERED) {
+            beginStandoff(squad, point, row, now);
+        }
+        if (episode.isActive()) {
+            StagingTelemetry.standoffExit(now, verdict.name(), row.episodeId(episode.getId()).build());
+            episode.release(now);
+        }
+        return false;
+    }
+
+    private void beginStandoff(Squad squad, Position point, StagingRow.StagingRowBuilder row, int now) {
+        int episodeId = nextStandoffEpisodeId++;
+        squad.getStandoff().begin(now, point, episodeId);
+        for (ManagedUnit member : squad.getMembers()) {
+            member.joinStandoffEpisode(episodeId, false);
+        }
+        StagingTelemetry.standoffEnter(now, STANDOFF_ENTER_NEW, row.episodeId(episodeId)
+                .memberUnitIds(memberUnitIds(squad.getMembers())).build());
+        row.memberUnitIds("NONE");
+    }
+
+    /**
+     * Marks the members that are not yet in a standoff episode as joiners of it: units that reached the squad after
+     * its STANDOFF_ENTER, by a merge, a hatch or a reinforcement.
+     *
+     * @param members squad members
+     * @param episodeId the episode the squad stands in, or last stood in
+     */
+    static void joinStandoffEpisode(Collection<ManagedUnit> members, int episodeId) {
+        for (ManagedUnit member : members) {
+            if (member.getStandoffEpisodeId() != episodeId) {
+                member.joinStandoffEpisode(episodeId, true);
+            }
+        }
+    }
+
+    /**
+     * The unit ids of a squad's members joined by semicolons, NONE for none, as telemetry_staging.csv writes them.
+     *
+     * @param members squad members
+     * @return the member_unit_ids cell
+     */
+    static String memberUnitIds(Collection<ManagedUnit> members) {
+        if (members.isEmpty()) {
+            return "NONE";
+        }
+        List<String> ids = new ArrayList<>();
+        for (ManagedUnit member : members) {
+            ids.add(String.valueOf(member.getUnitID()));
+        }
+        return String.join(";", ids);
+    }
+
+    private static StagingRow.StagingRowBuilder stagingRow(Squad squad) {
+        return StagingRow.builder().squadId(squad.getId()).applied(Config.staging).supply(squad.getSupply())
+                .members(squad.size());
+    }
+
+    private void holdAtPoint(Squad squad, Position point) {
+        SquadDecisions.pathTaken(squad, DecisionPath.STANDOFF);
+        squad.setStatus(SquadStatus.FIGHT);
+        for (ManagedUnit managedUnit : squad.getMembers()) {
+            managedUnit.clearRetreatStart();
+            rallyToDefensePosition(managedUnit, point);
+        }
+    }
+
+    static void closeStandoff(Squad squad, String reason, int now) {
+        Standoff.Episode episode = squad.getStandoff();
+        if (!episode.isActive()) {
+            return;
+        }
+        StagingTelemetry.standoffExit(now, reason, stagingRow(squad).framesStaged(episode.framesStaged(now))
+                .episodeId(episode.getId()).build());
+        episode.release(now);
+    }
+
+    /**
+     * Whether a squad was held at its standoff point this frame, see {@link #holdsAtStandoff}. Always false with
+     * {@link Config#staging} off, where nothing is held.
+     *
+     * @param squad fight squad
+     * @param now current frame
+     * @return true when the squad gathers at its standoff point this frame
+     */
+    private static boolean heldAtStandoff(Squad squad, int now) {
+        Standoff.Episode episode = squad.getStandoff();
+        return Config.staging && episode.isActive() && episode.getTouchedFrame() == now;
+    }
+
+    private static void leaveStandoff(Squad squad, String reason, int now) {
+        leaveStandoff(Config.staging, squad, reason, now);
+    }
+
+    /**
+     * Closes a squad's open standoff because a path other than the standoff reading sent it at the enemy or away from
+     * it: a shared-verdict turn, a neighbour's fight lock, or a contain it joins. With the switch off the episode is
+     * left for the standoff reading to close, so the off arm's episodes are not cut short by paths it never held for.
+     *
+     * @param staging {@link Config#staging}
+     * @param squad fight squad
+     * @param reason the exit reason written to the staging row
+     * @param now current frame
+     */
+    static void leaveStandoff(boolean staging, Squad squad, String reason, int now) {
+        if (staging) {
+            closeStandoff(squad, reason, now);
+        }
+    }
+
+    private int enemyReach(UnitType type) {
+        ToIntFunction<WeaponType> range = weapon -> game.enemy().weaponMaxRange(weapon);
+        if (type == UnitType.Terran_Bunker) {
+            return EnemyReachMemory.groundRange(UnitType.Terran_Marine, range) + EnemyReachMemory.BUNKER_ALLOWANCE;
+        }
+        if (type == UnitType.Protoss_Reaver || type == UnitType.Protoss_Carrier) {
+            return REAVER_SCARAB_REACH;
+        }
+        return EnemyReachMemory.groundRange(type, range);
+    }
+
+    /**
+     * Carries the standoff episodes of merged squads onto the squad they merged into, writing a MERGED exit for each
+     * source episode and, when the merged squad carries an episode on, a STANDOFF_ENTER under its own id with the
+     * same episode_id. Called once the members have moved, so the row counts them; members that were not in the
+     * carried episode become its joiners.
+     *
+     * @param merged the squad the sources merged into, holding their members
+     * @param sources the squads that merged
+     * @param now current frame
+     */
+    static void foldStandoff(Squad merged, Set<Squad> sources, int now) {
+        List<Standoff.Episode> episodes = new ArrayList<>();
+        for (Squad source : sources) {
+            Standoff.Episode episode = source.getStandoff();
+            episodes.add(episode);
+            if (episode.isActive()) {
+                StagingTelemetry.standoffExit(now, STANDOFF_MERGED, stagingRow(source)
+                        .framesStaged(episode.framesStaged(now)).episodeId(episode.getId()).build());
+            }
+        }
+        Standoff.Episode episode = merged.getStandoff();
+        episode.foldFrom(episodes);
+        if (episode.isActive()) {
+            joinStandoffEpisode(merged.getMembers(), episode.getId());
+            StagingTelemetry.standoffEnter(now, STANDOFF_MERGED, stagingRow(merged)
+                    .framesStaged(episode.framesStaged(now)).episodeId(episode.getId())
+                    .memberUnitIds(memberUnitIds(merged.getMembers())).build());
+        }
+    }
+
+    private boolean standoffExempt(Squad squad) {
+        if (baseThreatened() || isAllInOrRush()) {
+            return true;
+        }
+        Position center = squad.getCenter();
+        if (center == null) {
+            return true;
+        }
+        for (Position basePosition : gameState.getBaseData().getMyBasePositions()) {
+            if (center.getDistance(basePosition) <= AIR_HOME_DEFENSE_RADIUS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean standable(Position position) {
+        return position.getX() >= 0 && position.getY() >= 0 && position.getX() < game.mapWidth() * 32
+                && position.getY() < game.mapHeight() * 32 && game.isWalkable(position.toWalkPosition());
+    }
+
+    /**
+     * Sends a ground squad that would launch to the rear of a larger friendly army that is fighting or gathering
+     * against a measured enemy, see {@link Standoff#reinforcementPoint}. The squad keeps its RALLY status and the
+     * merge folds it into the army once the two are within {@link #SQUAD_MERGE_DISTANCE}. The reading is logged once
+     * per squad whatever {@link Config#staging} is, and the members are marked joiners of the army's last standoff
+     * episode in both arms, so a launch cohort excludes them alike; with the switch off the squad launches. With it
+     * on, the routing is tracked until a REINFORCE_OUTCOME row closes it, see {@link #keepsReinforcing}. An all-in
+     * or a rush is never routed, so its attack timing is kept.
+     *
+     * @param squad squad the move out gate cleared to launch
+     * @param strength the squad's strength
+     * @return true when the squad was sent to the army's rear
+     */
+    private boolean routesToArmyRear(Squad squad, int strength) {
+        if (!squad.isGroundSquad() || squad.getStatus() != SquadStatus.RALLY || baseThreatened() || isAllInOrRush()) {
+            return false;
+        }
+        int now = game.getFrameCount();
+        List<Standoff.Army> armies = new ArrayList<>();
+        for (Squad other : fightSquads) {
+            if (other == squad || !other.isGroundSquad() || other.getStatus() != SquadStatus.FIGHT && other.getStatus() != SquadStatus.RETREAT) {
+                continue;
+            }
+            HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(other);
+            if (snapshot == null || !snapshot.isEnemyMeasured() || snapshot.getEnemyCenter() == null
+                    || now - snapshot.getCapturedFrame() > STANDOFF_SNAPSHOT_FRESH_FRAMES) {
+                continue;
+            }
+            armies.add(new Standoff.Army(other.getCenter(), snapshot.getEnemyCenter(), squadStrength(other),
+                    other.getId()));
+        }
+        Standoff.Army target = Standoff.reinforcementTarget(strength, squad.getCenter(), armies);
+        Position point = Standoff.reinforcementPoint(strength, squad.getCenter(), armies, this::standable);
+        if (target == null || point == null) {
+            return false;
+        }
+        int targetEpisode = targetEpisode(target.getSquadId());
+        if (reinforcementsLogged.add(squad.getId())) {
+            StagingTelemetry.reinforcement(now, stagingRow(squad).targetSquadId(target.getSquadId())
+                    .episodeId(targetEpisode).memberUnitIds(memberUnitIds(squad.getMembers())).build());
+        }
+        for (ManagedUnit managedUnit : squad.getMembers()) {
+            managedUnit.joinStandoffEpisode(targetEpisode, true);
+        }
+        if (!Standoff.routes(Config.staging, point)) {
+            return false;
+        }
+        SquadDecisions.pathTaken(squad, DecisionPath.REINFORCE_REAR);
+        reinforcementTargets.put(squad.getId(), target.getSquadId());
+        launchHeldLogged.remove(squad.getId());
+        rallyToRear(squad, point);
+        return true;
+    }
+
+    /**
+     * Keeps a squad already sent to an army's rear on its way there, whatever its own move out reading, its strength
+     * against the army's or the age of the army's sim snapshot, until the merge folds it into the army. The rear
+     * point follows the army's latest measured enemy and stays where it was when the army has none.
+     *
+     * @param squad squad being evaluated
+     * @param closeThreats true when enemies are near the squad
+     * @return true while the squad keeps reinforcing
+     */
+    private boolean keepsReinforcing(Squad squad, boolean closeThreats) {
+        String targetId = reinforcementTargets.get(squad.getId());
+        if (targetId == null) {
+            return false;
+        }
+        Squad target = fightSquadById(targetId);
+        String end = reinforcementEnd(squad.getStatus(), target == null ? null : target.getStatus(),
+                closeThreats || baseThreatened(), target != null && withinSupportRadius(squad, target));
+        if (end != null) {
+            endReinforcement(squad, end, game.getFrameCount());
+            return false;
+        }
+        HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(target);
+        Position point = snapshot != null && snapshot.getEnemyCenter() != null
+                ? Standoff.rearPoint(target.getCenter(), snapshot.getEnemyCenter(), this::standable)
+                : reinforcementPoints.getOrDefault(squad.getId(), target.getCenter());
+        rallyToRear(squad, point);
+        return true;
+    }
+
+    /**
+     * Why a squad sent to an army's rear stops being routed there.
+     *
+     * @param ownStatus the routed squad's status
+     * @param targetStatus the army's status, null when the army no longer exists
+     * @param threatened true when enemies are near the routed squad or a base is threatened
+     * @param nearTarget true when the routed squad is within {@link #REINFORCEMENT_RADIUS} of the army, so the army's
+     *     sim already counts it as support
+     * @return the REINFORCE_OUTCOME reason, or null while the routing goes on
+     */
+    static String reinforcementEnd(SquadStatus ownStatus, SquadStatus targetStatus, boolean threatened,
+                                   boolean nearTarget) {
+        if (targetStatus == null) {
+            return REINFORCE_TARGET_GONE;
+        }
+        if (ownStatus != SquadStatus.RALLY) {
+            return REINFORCE_PREEMPTED;
+        }
+        if (threatened) {
+            return nearTarget ? REINFORCE_ARRIVED : REINFORCE_THREATENED;
+        }
+        if (targetStatus != SquadStatus.FIGHT && targetStatus != SquadStatus.RETREAT) {
+            return REINFORCE_TARGET_IDLE;
+        }
+        return null;
+    }
+
+    private void rallyToRear(Squad squad, Position point) {
+        routedThisFrame.add(squad.getId());
+        reinforcementPoints.put(squad.getId(), point);
+        for (ManagedUnit managedUnit : squad.getMembers()) {
+            rallyToDefensePosition(managedUnit, point);
+        }
+    }
+
+    private Squad fightSquadById(String squadId) {
+        for (Squad other : fightSquads) {
+            if (other.getId().equals(squadId)) {
+                return other;
+            }
+        }
+        return null;
+    }
+
+    private int targetEpisode(String squadId) {
+        for (Squad other : fightSquads) {
+            if (other.getId().equals(squadId)) {
+                return other.getStandoff().getId();
+            }
+        }
+        return -1;
+    }
+
+    private void endReinforcement(Squad squad, String outcome, int now) {
+        String target = reinforcementTargets.remove(squad.getId());
+        reinforcementPoints.remove(squad.getId());
+        if (target == null) {
+            return;
+        }
+        StagingTelemetry.reinforcementOutcome(now, outcome, stagingRow(squad).targetSquadId(target).build());
+    }
+
+    /**
+     * Closes the routing of every routed squad in a merge, see {@link #mergeOutcome}, points the squads still routed
+     * to a merged army at the squad it merged into, and carries a MERGED_ELSEWHERE routing on to the merged squad.
+     *
+     * @param merged the squad the sources merged into
+     * @param sources the squads that merged
+     * @param now current frame
+     */
+    private void mergeReinforcements(Squad merged, Set<Squad> sources, int now) {
+        Set<String> sourceIds = new HashSet<>();
+        for (Squad source : sources) {
+            sourceIds.add(source.getId());
+        }
+        String carried = null;
+        Position carriedPoint = null;
+        boolean joined = false;
+        for (Squad source : sources) {
+            SquadStatus status = source.getStatus();
+            joined |= !reinforcementTargets.containsKey(source.getId())
+                    && (status == SquadStatus.FIGHT || status == SquadStatus.RETREAT);
+        }
+        for (Squad source : sources) {
+            String target = reinforcementTargets.get(source.getId());
+            if (target == null) {
+                continue;
+            }
+            String outcome = mergeOutcome(sourceIds.contains(target), joined);
+            if (REINFORCE_MERGED_ELSEWHERE.equals(outcome) && carried == null) {
+                carried = target;
+                carriedPoint = reinforcementPoints.get(source.getId());
+            }
+            endReinforcement(source, outcome, now);
+        }
+        for (Map.Entry<String, String> routing : reinforcementTargets.entrySet()) {
+            if (sourceIds.contains(routing.getValue())) {
+                routing.setValue(merged.getId());
+            }
+        }
+        if (carried != null && !joined) {
+            reinforcementTargets.put(merged.getId(), carried);
+            if (carriedPoint != null) {
+                reinforcementPoints.put(merged.getId(), carriedPoint);
+            }
+        }
+    }
+
+    /**
+     * How a merge closes the routing of a squad sent to an army's rear.
+     *
+     * @param withTarget true when the army it was sent to is in the merge
+     * @param withFightingSquad true when a squad that is fighting or retreating, and is not itself routed, is in the
+     *     merge
+     * @return JOINED, JOINED_OTHER when it merged into another fighting squad, or MERGED_ELSEWHERE
+     */
+    static String mergeOutcome(boolean withTarget, boolean withFightingSquad) {
+        if (withTarget) {
+            return REINFORCE_JOINED;
+        }
+        return withFightingSquad ? REINFORCE_JOINED_OTHER : REINFORCE_MERGED_ELSEWHERE;
+    }
+
+    private void abandonUnroutedReinforcements(int now) {
+        if (reinforcementTargets.isEmpty()) {
+            return;
+        }
+        for (Squad squad : new ArrayList<>(fightSquads)) {
+            if (!routedThisFrame.contains(squad.getId())) {
+                endReinforcement(squad, REINFORCE_PREEMPTED, now);
+            }
+        }
+        reinforcementTargets.keySet().retainAll(routedThisFrame);
+        reinforcementPoints.keySet().retainAll(routedThisFrame);
+    }
+
+    /**
+     * The supply a ground squad needs to launch out of the rally point on its own, IA-280's commit floor: the base
+     * ground move out threshold until 6:00, then rising as the game gives the army room to mass.
+     *
+     * @param frame current frame
+     * @return the minimum supply, in BWAPI supply units
+     */
+    static int loneLaunchMinMass(int frame) {
+        if (frame < LONE_LAUNCH_RAMP_START.getFrames()) {
+            return GROUND_MOVE_OUT_THRESHOLD;
+        }
+        if (frame < LONE_LAUNCH_MID_GAME.getFrames()) {
+            return LONE_LAUNCH_KNEE;
+        }
+        if (frame < LONE_LAUNCH_LATE_GAME.getFrames()) {
+            return LONE_LAUNCH_MID_GAME_SUPPLY;
+        }
+        return LONE_LAUNCH_LATE_GAME_SUPPLY;
+    }
+
+    /**
+     * What a ground squad cleared to launch out of the rally point, with no army's rear to join, does.
+     */
+    enum LoneLaunch {
+        /** At or above the minimum mass: it launches. */
+        NONE,
+        /** Below the minimum mass but exempt, see {@link #loneLaunch}: it launches. */
+        EXEMPT,
+        /** Below the minimum mass with the staging switch off: it launches, as it does without staging. */
+        BELOW_MIN_MASS,
+        /** Below the minimum mass: it stays home or joins a contain, and does not launch alone. */
+        HELD
+    }
+
+    /**
+     * Whether a ground squad launches alone. A squad below the minimum mass never does with {@link Config#staging}
+     * on, unless it is exempt: an all-in or rush build keeps its attack timing, a threatened base is defended, and a
+     * move out threshold lowered for a cannon rush keeps its small launches. Runbys and worker defence never reach
+     * the launch.
+     *
+     * @param staging {@link Config#staging}
+     * @param supply the squad's supply
+     * @param minMass result of {@link #loneLaunchMinMass}
+     * @param exempt true when the squad is exempt
+     * @return what the squad does
+     */
+    static LoneLaunch loneLaunch(boolean staging, int supply, int minMass, boolean exempt) {
+        if (supply >= minMass) {
+            return LoneLaunch.NONE;
+        }
+        if (exempt) {
+            return LoneLaunch.EXEMPT;
+        }
+        return staging ? LoneLaunch.HELD : LoneLaunch.BELOW_MIN_MASS;
+    }
+
+    private boolean launchesFromRally(Squad squad) {
+        return squad.isGroundSquad() && squad.getStatus() == SquadStatus.RALLY && !squad.isCommitted();
+    }
+
+    /**
+     * Applies {@link #loneLaunch} to a ground squad leaving the rally point, writing a LAUNCH row when it launches,
+     * at most once per run of launches no more than {@link #LAUNCH_ROW_GAP_FRAMES} apart, and a LAUNCH_HELD row once
+     * per hold when it does not. A held squad joins a contain if one is held, and
+     * otherwise stays at the rally point.
+     *
+     * @param squad ground squad cleared to launch and not routed to an army's rear
+     * @param moveOutThreshold the squad's move out threshold
+     * @return true when the squad launches
+     */
+    private boolean launchesAlone(Squad squad, int moveOutThreshold) {
+        int now = game.getFrameCount();
+        int minMass = loneLaunchMinMass(now);
+        boolean exempt = squad.getSupply() < minMass
+                && (moveOutThreshold < GROUND_MOVE_OUT_THRESHOLD || isAllInOrRush() || baseThreatened());
+        LoneLaunch launch = loneLaunch(Config.staging, squad.getSupply(), minMass, exempt);
+        if (launch == LoneLaunch.HELD) {
+            boolean joinsContain = joinActiveContain(squad);
+            if (launchHeldLogged.add(squad.getId())) {
+                StagingTelemetry.launchHeld(now, joinsContain ? LAUNCH_HELD_CONTAIN : LAUNCH_HELD_HOME,
+                        stagingRow(squad).memberUnitIds(memberUnitIds(squad.getMembers())).minMass(minMass).build());
+            }
+            if (!joinsContain) {
+                clearCombatSimSnapshot(squad);
+                rallySquad(squad, RallyReason.BELOW_MIN_MASS);
+            }
+            return false;
+        }
+        launchHeldLogged.remove(squad.getId());
+        Integer lastLaunch = lastLaunchFrame.put(squad.getId(), now);
+        if (lastLaunch == null || now - lastLaunch > LAUNCH_ROW_GAP_FRAMES) {
+            StagingTelemetry.launch(now, launch.name(), stagingRow(squad)
+                    .memberUnitIds(memberUnitIds(squad.getMembers())).minMass(minMass).build());
+            SquadDecisions.pathTaken(squad, DecisionPath.LONE_LAUNCH);
+        }
+        return true;
+    }
+
     private void rallySquad(Squad squad, RallyReason reason) {
+        closeStandoff(squad, STANDOFF_ABANDONED, game.getFrameCount());
         boolean defilersOnly = squad.isGroundSquad() && squad.hasOnly(UnitType.Zerg_Defiler);
         SquadDecisions.rallied(squad, rallyReasonFor(defilersOnly, reason));
         SquadDecisions.pathTaken(squad, DecisionPath.RALLY);
@@ -1703,6 +2373,9 @@ public class SquadManager {
             return;
         }
         airReinforcer.drop(squad, game.getFrameCount());
+        if (keepsReinforcing(squad, closeThreats)) {
+            return;
+        }
 
         int strength = squadStrength(squad);
         int moveOutThreshold = AirReinforcement.launchThreshold(calculateMoveOutThreshold(squad), squadStatus,
@@ -1711,6 +2384,13 @@ public class SquadManager {
         boolean holdAway = holdsAwayFromHome(squad, closeThreats, strength, moveOutThreshold);
         SquadAction action = chooseSquadAction(holdAway, closeThreats, strength, moveOutThreshold,
                 squadStatus, squad.isCommitted(), distanceFromRallyPoint(squad));
+
+        if (action == SquadAction.LAUNCH && routesToArmyRear(squad, strength)) {
+            return;
+        }
+        if (action == SquadAction.LAUNCH && launchesFromRally(squad) && !launchesAlone(squad, moveOutThreshold)) {
+            return;
+        }
 
         if (squadStatus == SquadStatus.RALLY) {
             SquadDecisions.rallyReleased(squad, releaseFor(action, closeThreats));
@@ -1853,7 +2533,9 @@ public class SquadManager {
     private void shareVerdicts(int now) {
         SharedVerdict.Exclusion skipped = verdictSkipped(Config.squadSharedVerdict,
                 !gameState.getActiveStormPositions().isEmpty());
-        SharedOutcome outcome = shareVerdicts(skipped, new ArrayList<>(fightSquads), simulatedThisFrame,
+        List<Squad> considered = SharedVerdict.withoutHeld(new ArrayList<>(fightSquads),
+                squad -> heldAtStandoff(squad, now));
+        SharedOutcome outcome = shareVerdicts(skipped, considered, simulatedThisFrame,
                 leavingThisFrame, SquadManager::withinSupportRadius, now, this::turnToFight, this::turnToRetreat);
         for (SharedVerdict.Turn turn : outcome.turns) {
             SquadDecisions.sharedVerdict(turn.squad, turn.from, turn.to, turn.basis.name(), turn.decider,
@@ -1869,11 +2551,13 @@ public class SquadManager {
     }
 
     private void turnToFight(Squad squad) {
+        leaveStandoff(squad, STANDOFF_ENGAGED, game.getFrameCount());
         assignFightTargets(squad, squad.getMembers(), true);
         SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_FIGHT);
     }
 
     private void turnToRetreat(Squad squad) {
+        leaveStandoff(squad, STANDOFF_RETREAT, game.getFrameCount());
         assignRetreatTargets(squad, squad.getMembers(), !retreatingAtFrameStart.contains(squad));
         SquadDecisions.pathTaken(squad, DecisionPath.SHARED_VERDICT_RETREAT);
     }
@@ -2605,7 +3289,7 @@ public class SquadManager {
             }
         }
 
-        int threshold = 4;
+        int threshold = GROUND_MOVE_OUT_THRESHOLD;
 
         int rushThresholdIncrease = 0;
         if (gameState.isEarlyRushed()) {
@@ -2771,6 +3455,9 @@ public class SquadManager {
         boolean commitHolds = turnBackCommitHolds(band && squad.isTurnBackCommitted(now), result, enemyMeasured,
                 ratio, retreatThreshold);
         if (fightHeld(squad, now, lockHolds || commitHolds)) {
+            if (neighbourFightLocked) {
+                leaveStandoff(squad, STANDOFF_ENGAGED, now);
+            }
             SquadDecisions.lockSuppressed(squad, neighbourHoldLock(neighbourFightLocked,
                     fightHeld(squad, now, commitHolds), fightHeld(squad, now, lockHoldsAtEngage), lockHolds));
             SquadDecisions.pathTaken(squad, DecisionPath.FIGHT_LOCK);
@@ -2817,11 +3504,15 @@ public class SquadManager {
                     SquadDecisions.pathTaken(squad, DecisionPath.BLIND_TURN_BACK_HOLD);
                     break;
                 }
+                if (holdsAtStandoff(squad, snapshot, enemyMeasured, retreatLocked, now)) {
+                    break;
+                }
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
                 break;
 
             case RETREAT:
+                closeStandoff(squad, STANDOFF_RETREAT, now);
                 boolean safeToHold = containmentEvaluator.safeToHold(squad);
                 if (!safeToHold) {
                     SquadDecisions.pathTaken(squad, DecisionPath.CONTAIN_GATED);
@@ -2844,6 +3535,9 @@ public class SquadManager {
                 break;
 
             case ENGAGE:
+                if (holdsAtStandoff(squad, snapshot, enemyMeasured, retreatLocked, now)) {
+                    break;
+                }
                 beginTurnBack(squad, band, now);
                 squad.setStatus(SquadStatus.FIGHT);
                 assignFightTargets(squad, managedFighters, true);
@@ -3334,6 +4028,11 @@ public class SquadManager {
             return null;
         }
         return ((HorizonCombatSimulator) sim).getLastSnapshots().get(squad.getId());
+    }
+
+    private boolean isAllInOrRush() {
+        BuildOrder selected = gameState.getSelectedStrategy();
+        return gameState.getActiveBuildOrder().isAllInOrRush() || selected != null && selected.isAllInOrRush();
     }
 
     private boolean baseThreatened() {
@@ -5417,6 +6116,7 @@ public class SquadManager {
         }
         SquadDecisions.rallied(squad, RallyReason.JOIN_CONTAIN);
         SquadDecisions.pathTaken(squad, DecisionPath.RALLY);
+        leaveStandoff(squad, STANDOFF_CONTAIN, game.getFrameCount());
         squad.setStatus(SquadStatus.RALLY);
         for (ManagedUnit managedUnit : squad.getMembers()) {
             managedUnit.setRallyPoint(arc.closestPosition(managedUnit.getPosition()));

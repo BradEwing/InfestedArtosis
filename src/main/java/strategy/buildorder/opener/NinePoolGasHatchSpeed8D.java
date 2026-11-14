@@ -393,4 +393,9 @@ public class NinePoolGasHatchSpeed8D extends BuildOrder {
         }
         return drones;
     }
+
+    @Override
+    public boolean isAllInOrRush() {
+        return true;
+    }
 }

@@ -67,11 +67,35 @@ class EngagementTest {
         List<String> expected = Arrays.asList("attack_cycles", "cycle_frames_sum", "cooldown_frames_in_threat",
                 "cooldown_damage_taken", "ready_frames_out_of_range", "in_reach_cycles", "in_reach_cycle_frames_sum",
                 "cooldown_frames", "hp_lost_total", "kite_plans", "kite_backoffs", "kite_no_clear", "kite_no_threat",
-                "kite_replans");
+                "kite_replans", "episode_id", "joiner");
         List<String> columns = Arrays.asList(TelemetryLog.ENGAGEMENT_UNIT_HEADER.split(",", -1));
         int first = unitColumn("damage_dealt") + 1;
 
         assertEquals(expected, columns.subList(first, columns.size()));
+    }
+
+    @Test
+    void aUnitKeepsTheStandoffCohortItArrivedWith() {
+        Engagement engagement = engagementAt(100);
+        engagement.noteUnit(100, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", AttackTally.of(0, -1, 0),
+                new StandoffCohort(4, true));
+        engagement.noteUnit(108, 1, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-b", AttackTally.of(0, -1, 0),
+                new StandoffCohort(9, false));
+        engagement.noteUnit(100, 2, UnitType.Zerg_Zergling, 35, "FIGHT", "squad-a", AttackTally.of(0, -1, 0));
+
+        List<String> rows = engagement.toUnitRows(GAME_ID);
+        String[] joiner = rows.get(0).split(",", -1);
+        String[] untagged = rows.get(1).split(",", -1);
+        if (!"1".equals(joiner[unitColumn("unit_id")])) {
+            String[] swap = joiner;
+            joiner = untagged;
+            untagged = swap;
+        }
+
+        assertEquals("4", joiner[unitColumn("episode_id")]);
+        assertEquals("1", joiner[unitColumn("joiner")]);
+        assertEquals("-1", untagged[unitColumn("episode_id")]);
+        assertEquals("0", untagged[unitColumn("joiner")]);
     }
 
     private static AttackTally tally(int attacks, int lastAttack, int damage, int... cycleCounts) {

@@ -87,6 +87,12 @@ public class ManagedUnit {
     static final int RALLY_ENEMY_AIR_RADIUS = 512;
     @Getter
     private int edgeReleases;
+    /** The standoff episode this unit stood in at its STANDOFF_ENTER, or that it joined afterwards; -1 for none. */
+    @Getter
+    private int standoffEpisodeId = -1;
+    /** True when the unit reached its standoff episode after STANDOFF_ENTER, by a merge, a hatch or REINFORCE_REAR. */
+    @Getter
+    private boolean standoffJoiner;
 
     @Setter @Getter
     protected Unit defendTarget;
@@ -1347,6 +1353,17 @@ public class ManagedUnit {
 
     public void clearRetreatStart() {
         retreatStartFrame = 0;
+    }
+
+    /**
+     * Records the standoff episode this unit belongs to, for the engagement telemetry's launch cohorts.
+     *
+     * @param episodeId the episode's id, -1 for none
+     * @param joiner true when the unit reached the episode after STANDOFF_ENTER
+     */
+    public void joinStandoffEpisode(int episodeId, boolean joiner) {
+        standoffEpisodeId = episodeId;
+        standoffJoiner = joiner;
     }
 
     protected void defend() {}
