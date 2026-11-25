@@ -24,12 +24,20 @@ public class Mutalisk extends ManagedUnit {
     }
 
     /**
-     * Fights its target. With {@link Config#mutaCooldownKite} on it kites each weapon cooldown, see
-     * {@link #fightWithCooldownKite}; with it off, every attack frame starts a flee of
+     * Fights its target. A target given as an attack-move is not attacked: the Mutalisk attack-moves, see
+     * {@link #attackMoveToward}. Otherwise, with {@link Config#mutaCooldownKite} on it kites each weapon cooldown,
+     * see {@link #fightWithCooldownKite}; with it off, every attack frame starts a flee of
      * {@link #RETREAT_DURATION_FRAMES} away from every enemy near it, see {@link #mainStep}.
      */
     @Override
     protected void fight() {
+        if (isAttackMoving() && fightTarget != null && fightTarget.exists()) {
+            if (!unit.isAttackFrame()) {
+                setUnready(4);
+                attackMoveToward(fightTarget);
+            }
+            return;
+        }
         if (Config.mutaCooldownKite) {
             fightWithCooldownKite();
             return;

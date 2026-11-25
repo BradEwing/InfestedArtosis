@@ -48,6 +48,10 @@ public class Hydralisk extends ManagedUnit {
         unit.move(kitePosition);
     }
 
+    /**
+     * Fights its target: attack-moves when the target was given as an attack-move, see {@link #attackMoveToward},
+     * otherwise attacks it, stepping away between shots from an enemy it outranges.
+     */
     @Override
     protected void fight() {
         if (unit.isAttackFrame()) {
@@ -57,6 +61,11 @@ public class Hydralisk extends ManagedUnit {
 
         if (hasNoValidFightTarget()) {
             handleNoTarget();
+            return;
+        }
+
+        if (isAttackMoving()) {
+            attackMoveToward(fightTarget);
             return;
         }
 

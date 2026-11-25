@@ -101,6 +101,13 @@ public final class TestUnits {
     }
 
     /**
+     * Sets whether the unit reports that it is idle, as the BWAPI server writes it.
+     */
+    public void setIdle(Unit unit, boolean idle) {
+        data.get(unit).setIsIdle(idle);
+    }
+
+    /**
      * Sets whether the unit reports that it is playing an attack frame, as the BWAPI server writes it.
      */
     public void setAttackFrame(Unit unit, boolean attackFrame) {

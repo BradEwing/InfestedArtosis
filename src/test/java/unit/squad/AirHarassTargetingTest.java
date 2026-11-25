@@ -62,6 +62,7 @@ class AirHarassTargetingTest {
                 AirHarassTargeting.tier(contact(6, UnitType.Terran_Siege_Tank_Siege_Mode, east(64)), flock));
         assertEquals(Tier.OTHER, AirHarassTargeting.tier(contact(7, UnitType.Terran_Academy, east(64)), flock));
         assertTrue(Tier.WORKER.ordinal() > Tier.ISOLATED_AA.ordinal());
+        assertNull(AirHarassTargeting.tier(contact(8, UnitType.Protoss_Interceptor, east(64)), flock));
         assertTrue(Tier.ISOLATED_AA.ordinal() > Tier.SUPPLY.ordinal());
         assertTrue(Tier.SUPPLY.ordinal() > Tier.PRODUCTION.ordinal());
         assertTrue(Tier.PRODUCTION.ordinal() > Tier.OTHER.ordinal());
