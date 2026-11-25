@@ -11,11 +11,16 @@ import info.tracking.StrategyTracker;
 import info.tracking.protoss.ProxyGate;
 import macro.Reactions;
 import macro.plan.Plan;
+import macro.plan.PlanType;
+import strategy.buildorder.ArmyUpgradeTrigger;
+import strategy.buildorder.BuildOrder;
+import strategy.buildorder.GasBoundHiveTech;
 import strategy.buildorder.LarvaBoundMacroHatchery;
 import util.Time;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 
@@ -32,7 +37,29 @@ import java.util.Set;
  */
 public class ThreeHatchMuta extends ProtossBase {
 
-    private static final int UPGRADE_EVOLUTION_CHAMBERS = 1;
+    static final int UPGRADE_EVOLUTION_CHAMBERS = 2;
+
+    /** Living Hydralisks before Muscular Augments, Grooved Spines or the second Evolution Chamber is planned. */
+    static final int HYDRALISKS_BEFORE_DEN_UPGRADES = ThreeHatchHydra.HYDRALISKS_BEFORE_DEN_UPGRADE_PRIORITY;
+
+    /** Living Hydralisks before Missile Attacks or the Hive branch is planned. */
+    static final int HYDRALISKS_BEFORE_MISSILE_ATTACKS = ThreeHatchHydra.HYDRALISKS_BEFORE_EVOLUTION_UPGRADE_PRIORITY;
+
+    /** Living Zerglings before Melee Attacks is planned. Tuning constant. */
+    static final int ZERGLINGS_BEFORE_MELEE_ATTACKS = 12;
+
+    /** Living Mutalisks before a flyer upgrade level is planned. */
+    static final int MUTALISKS_BEFORE_FLYER_UPGRADE = 7;
+
+    /** The Hydralisk target while the bank is not floating. */
+    static final int BASE_HYDRALISKS = 25;
+
+    /**
+     * Unreserved gas the Hydralisk target needs before it floats while no Hive stands: the Hive
+     * branch bar plus one Hydralisk, so a floated Hydralisk never takes the bank below the bar the
+     * Queen's Nest waits on.
+     */
+    static final int HYDRALISK_FLOAT_GAS = GasBoundHiveTech.BRANCH_GAS + UnitType.Zerg_Hydralisk.gasPrice();
 
     // TODO: Move to TechProgression or GameState
     private boolean plannedFirstMacroHatch = false;
@@ -80,7 +107,7 @@ public class ThreeHatchMuta extends ProtossBase {
         int supply = gameState.getSupply();
         int plannedHatcheries = gameState.getPlannedHatcheries();
         final int plannedAndCurrentHatcheries = plannedHatcheries + baseCount;
-        int lairCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair);
+        int lairCount         = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Lair, UnitType.Zerg_Hive);
         int spireCount        = gameState.structureCount(Readiness.USABLE, UnitType.Zerg_Spire);
         int committedSpires   = gameState.structureCount(Readiness.COMMITTED, UnitType.Zerg_Spire);
         int hydraCount        = gameState.ourUnitCount(UnitType.Zerg_Hydralisk);
@@ -89,6 +116,9 @@ public class ThreeHatchMuta extends ProtossBase {
         int droneCount        = gameState.ourUnitCount(UnitType.Zerg_Drone);
         int livingDroneCount = gameState.ourLivingUnitCount(UnitType.Zerg_Drone);
         int zerglingCount     = gameState.ourUnitCount(UnitType.Zerg_Zergling);
+        int livingHydralisks  = gameState.ourLivingUnitCount(UnitType.Zerg_Hydralisk);
+        int livingZerglings   = gameState.ourLivingUnitCount(UnitType.Zerg_Zergling);
+        int livingMutalisks   = gameState.ourLivingUnitCount(UnitType.Zerg_Mutalisk);
         int enemyCorsairCount = gameState.enemyUnitCount(UnitType.Protoss_Corsair);
         int enemyObserverCount = gameState.enemyUnitCount(UnitType.Protoss_Observer);
 
@@ -122,13 +152,24 @@ public class ThreeHatchMuta extends ProtossBase {
 
         // Tech building timing
         boolean wantHydraliskDen = wantHydraliskDen(gameState);
+        boolean wantQueensNest = wantGasBoundHiveTech(gameState, UnitType.Zerg_Queens_Nest,
+                gameState.canPlanQueensNest() && hiveBranchReady(techProgression, livingHydralisks));
+        boolean wantHive = shouldPlanHive(gameState.canPlanHive(), techProgression.isPlannedOverlordSpeed());
+        boolean gasHeldForResearch = isGasHeldForResearch(gameState.getProductionQueue(),
+                gameState.getResourceCount().availableGas());
 
         // Upgrade timing
         boolean wantMetabolicBoost = techProgression.canPlanMetabolicBoost() && !techProgression.isMetabolicBoost() && lairCount > 0;
-        boolean wantCarapaceUpgrade = techProgression.canPlanCarapaceUpgrades();
-        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed(),
+        boolean wantMuscularAugments = shouldPlanMuscularAugments(techProgression, livingHydralisks);
+        boolean wantGroovedSpines = shouldPlanGroovedSpines(techProgression, livingHydralisks);
+        List<UpgradeType> chamberUpgrades = chamberUpgradesToPlan(techProgression, livingHydralisks, livingZerglings);
+        UpgradeType flyerUpgrade = flyerUpgradeToPlan(techProgression, livingMutalisks);
+        boolean wantAdrenalGlands = techProgression.canPlanAdrenalGlands();
+        boolean wantOverlordSpeed = shouldPlanOverlordSpeed(needOverlordSpeed(gameState) && techProgression.canPlanOverlordSpeed()
+                        && !wantHive && !techProgression.isPlannedHive(),
                 Reactions.isAirOrCloakThreatSeen(gameState),
-                wantCarapaceUpgrade);
+                wantMuscularAugments, wantGroovedSpines, !chamberUpgrades.isEmpty(), flyerUpgrade != null,
+                wantAdrenalGlands);
 
         // Plan buildings
 
@@ -224,12 +265,24 @@ public class ThreeHatchMuta extends ProtossBase {
             }
         }
 
-        if (wantEvolutionChamber(techProgression)) {
+        if (wantEvolutionChamber(techProgression, livingHydralisks)) {
             Plan evolutionChamberPlan = planEvolutionChamber(gameState);
             if (evolutionChamberPlan != null) {
                 plans.add(evolutionChamberPlan);
                 return plans;
             }
+        }
+
+        if (wantQueensNest) {
+            Plan queensNestPlan = this.planQueensNest(gameState);
+            plans.add(queensNestPlan);
+            return plans;
+        }
+
+        if (wantHive) {
+            Plan hivePlan = this.planHive(gameState);
+            plans.add(hivePlan);
+            return plans;
         }
 
         // Plan Upgrades
@@ -238,9 +291,24 @@ public class ThreeHatchMuta extends ProtossBase {
             plans.add(metabolicBoostPlan);
         }
 
-        if (wantCarapaceUpgrade) {
-            Plan carapacePlan = this.planUpgrade(gameState, UpgradeType.Zerg_Carapace);
-            plans.add(carapacePlan);
+        if (wantMuscularAugments) {
+            plans.add(this.planUpgrade(gameState, UpgradeType.Muscular_Augments));
+        }
+
+        if (wantGroovedSpines) {
+            plans.add(this.planUpgrade(gameState, UpgradeType.Grooved_Spines));
+        }
+
+        for (UpgradeType chamberUpgrade : chamberUpgrades) {
+            plans.add(this.planUpgrade(gameState, chamberUpgrade));
+        }
+
+        if (flyerUpgrade != null) {
+            plans.add(this.planUpgrade(gameState, flyerUpgrade));
+        }
+
+        if (wantAdrenalGlands) {
+            plans.add(this.planUpgrade(gameState, UpgradeType.Adrenal_Glands));
         }
 
         if (wantOverlordSpeed) {
@@ -259,7 +327,8 @@ public class ThreeHatchMuta extends ProtossBase {
         }
 
         final int desiredMutalisks = desiredMutalisks(gameState);
-        if (techProgression.isSpire() && mutaCount < desiredMutalisks && canPlanAdvancedUnit(gameState, UnitType.Zerg_Mutalisk)) {
+        if (!gasHeldForResearch && techProgression.isSpire() && mutaCount < desiredMutalisks
+                && canPlanAdvancedUnit(gameState, UnitType.Zerg_Mutalisk)) {
             List<Plan> mutaliskPlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Mutalisk);
             if (!mutaliskPlans.isEmpty()) {
                 plans.addAll(mutaliskPlans);
@@ -267,8 +336,11 @@ public class ThreeHatchMuta extends ProtossBase {
             }
         }
 
-        final int desiredHydralisks = desiredHydralisks(gameState);
-        if (techProgression.isHydraliskDen() && hydraCount < desiredHydralisks && canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk)) {
+        final int desiredHydralisks = desiredHydralisks(techProgression.isHydraliskDen(), hydraCount,
+                gameState.getResourceCount().availableMinerals(), gameState.getResourceCount().availableGas(),
+                techProgression.isHive(), livingDroneCount >= droneTarget(gameState));
+        if (!gasHeldForResearch && techProgression.isHydraliskDen() && hydraCount < desiredHydralisks
+                && canPlanAdvancedUnit(gameState, UnitType.Zerg_Hydralisk)) {
             List<Plan> hydraliskPlans = this.planAdvancedUnit(gameState, UnitType.Zerg_Hydralisk);
             if (!hydraliskPlans.isEmpty()) {
                 plans.addAll(hydraliskPlans);
@@ -379,21 +451,208 @@ public class ThreeHatchMuta extends ProtossBase {
     }
 
     /**
-     * Whether the upgrade path should plan the build's Evolution Chamber.
+     * Whether the upgrade path should plan an Evolution Chamber.
      *
-     * <p>The build researches Carapace alone, one level at a time, so it uses a single chamber,
-     * taken once a Hydralisk Den is planned or standing. A chamber the Spore branch queued, in
-     * this pass or earlier, is that chamber.
+     * <p>The first chamber is taken once a Hydralisk Den is planned or standing and researches
+     * Carapace. The second follows once the first stands and
+     * {@value #HYDRALISKS_BEFORE_DEN_UPGRADES} Hydralisks are alive, so a second upgrade line can
+     * run beside the first. A chamber the Spore branch queued, in this pass or earlier, counts
+     * towards the two.
      *
      * @param techProgression the bot's tech state
-     * @return true when the chamber should be queued now
+     * @param livingHydralisks Hydralisks alive on the map
+     * @return true when a chamber should be queued now
      */
-    static boolean wantEvolutionChamber(TechProgression techProgression) {
+    static boolean wantEvolutionChamber(TechProgression techProgression, int livingHydralisks) {
         if (!shouldPlanUpgradeEvolutionChamber(techProgression, UPGRADE_EVOLUTION_CHAMBERS)) {
             return false;
         }
 
-        return techProgression.isPlannedDen() || techProgression.isHydraliskDen();
+        if (techProgression.evolutionChambers() == 0) {
+            return techProgression.isPlannedDen() || techProgression.isHydraliskDen();
+        }
+
+        return techProgression.isHydraliskDen() && livingHydralisks >= HYDRALISKS_BEFORE_DEN_UPGRADES;
+    }
+
+    /**
+     * Whether Muscular Augments should be queued. Until {@value #HYDRALISKS_BEFORE_DEN_UPGRADES}
+     * Hydralisks are alive the gas goes to Hydralisks.
+     *
+     * @param techProgression the bot's tech state
+     * @param livingHydralisks Hydralisks alive on the map
+     * @return true when the upgrade should be queued now
+     */
+    static boolean shouldPlanMuscularAugments(TechProgression techProgression, int livingHydralisks) {
+        return livingHydralisks >= HYDRALISKS_BEFORE_DEN_UPGRADES && techProgression.canPlanMuscularAugments();
+    }
+
+    /**
+     * Whether Grooved Spines should be queued. The Hydralisk Den researches one upgrade at a time,
+     * so it follows Muscular Augments rather than waiting in the queue behind it.
+     *
+     * @param techProgression the bot's tech state
+     * @param livingHydralisks Hydralisks alive on the map
+     * @return true when the upgrade should be queued now
+     */
+    static boolean shouldPlanGroovedSpines(TechProgression techProgression, int livingHydralisks) {
+        return livingHydralisks >= HYDRALISKS_BEFORE_DEN_UPGRADES
+                && techProgression.isMuscularAugments()
+                && techProgression.canPlanGroovedSpines();
+    }
+
+    /**
+     * Whether the next Missile Attacks level should be queued.
+     *
+     * @param techProgression the bot's tech state
+     * @param livingHydralisks Hydralisks alive on the map
+     * @return true when the level should be queued now
+     */
+    static boolean shouldPlanMissileAttacks(TechProgression techProgression, int livingHydralisks) {
+        return livingHydralisks >= HYDRALISKS_BEFORE_MISSILE_ATTACKS && techProgression.canPlanRangedUpgrades();
+    }
+
+    /**
+     * Whether the next Melee Attacks level should be queued: Carapace 1 is complete and
+     * {@value #ZERGLINGS_BEFORE_MELEE_ATTACKS} Zerglings are alive.
+     *
+     * @param techProgression the bot's tech state
+     * @param livingZerglings Zerglings alive on the map
+     * @return true when the level should be queued now
+     */
+    static boolean shouldPlanMeleeAttacks(TechProgression techProgression, int livingZerglings) {
+        return techProgression.getCarapaceUpgrades() >= 1
+                && livingZerglings >= ZERGLINGS_BEFORE_MELEE_ATTACKS
+                && techProgression.canPlanMeleeUpgrades();
+    }
+
+    /**
+     * The Evolution Chamber upgrades to queue this pass.
+     *
+     * <p>Missile Attacks, Carapace and Melee Attacks share the chambers. A level is queued only
+     * for a chamber that no queued or researching level has claimed, so each standing chamber
+     * researches one line and no level waits in the queue on a busy chamber. When more lines are
+     * ready than chambers are free, the line at the lowest level goes first, and on equal levels
+     * Missile Attacks, then Carapace, then Melee Attacks.
+     *
+     * @param techProgression the bot's tech state
+     * @param livingHydralisks Hydralisks alive on the map
+     * @param livingZerglings Zerglings alive on the map
+     * @return the upgrades to queue, at most one for each free chamber
+     */
+    static List<UpgradeType> chamberUpgradesToPlan(TechProgression techProgression, int livingHydralisks,
+            int livingZerglings) {
+        List<UpgradeType> ready = new ArrayList<>();
+        if (shouldPlanMissileAttacks(techProgression, livingHydralisks)) {
+            ready.add(UpgradeType.Zerg_Missile_Attacks);
+        }
+        if (techProgression.canPlanCarapaceUpgrades()) {
+            ready.add(UpgradeType.Zerg_Carapace);
+        }
+        if (shouldPlanMeleeAttacks(techProgression, livingZerglings)) {
+            ready.add(UpgradeType.Zerg_Melee_Attacks);
+        }
+        ready.sort(Comparator.comparingInt(upgrade -> chamberUpgradeLevel(techProgression, upgrade)));
+
+        int freeChambers = Math.max(0, techProgression.getEvolutionChambers() - chamberUpgradesInFlight(techProgression));
+        return new ArrayList<>(ready.subList(0, Math.min(freeChambers, ready.size())));
+    }
+
+    private static int chamberUpgradeLevel(TechProgression techProgression, UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Zerg_Missile_Attacks:
+                return techProgression.getRangedUpgrades();
+            case Zerg_Melee_Attacks:
+                return techProgression.getMeleeUpgrades();
+            default:
+                return techProgression.getCarapaceUpgrades();
+        }
+    }
+
+    private static int chamberUpgradesInFlight(TechProgression techProgression) {
+        int inFlight = 0;
+        if (techProgression.isPlannedRangedUpgrades()) {
+            inFlight++;
+        }
+        if (techProgression.isPlannedCarapaceUpgrades()) {
+            inFlight++;
+        }
+        if (techProgression.isPlannedMeleeUpgrades()) {
+            inFlight++;
+        }
+        return inFlight;
+    }
+
+    /**
+     * The flyer upgrade level to queue this pass, if any.
+     *
+     * <p>Reads living Mutalisks, so each level waits for the Mutalisks it upgrades. The Spire
+     * researches one level at a time, so nothing is queued while either line is queued or
+     * researching. The line at the lower level goes next, Flyer Attacks first on equal levels.
+     *
+     * @param techProgression the bot's tech state
+     * @param livingMutalisks Mutalisks alive on the map
+     * @return the upgrade to queue, or null
+     */
+    static UpgradeType flyerUpgradeToPlan(TechProgression techProgression, int livingMutalisks) {
+        if (livingMutalisks < MUTALISKS_BEFORE_FLYER_UPGRADE) {
+            return null;
+        }
+        if (techProgression.isPlannedFlyerAttack() || techProgression.isPlannedFlyerDefense()) {
+            return null;
+        }
+
+        boolean attack = techProgression.canPlanFlyerAttack();
+        boolean carapace = techProgression.canPlanFlyerDefense();
+        if (attack && (!carapace || techProgression.getFlyerAttack() <= techProgression.getFlyerDefense())) {
+            return UpgradeType.Zerg_Flyer_Attacks;
+        }
+        return carapace ? UpgradeType.Zerg_Flyer_Carapace : null;
+    }
+
+    /**
+     * Whether the build has fielded the army the Hive branch follows: the Spire and the Hydralisk
+     * Den stand and {@value #HYDRALISKS_BEFORE_MISSILE_ATTACKS} Hydralisks are alive. Before that
+     * the gas bank is the one the first Mutalisks and Hydralisks are waiting to spend.
+     *
+     * @param techProgression the bot's tech state
+     * @param livingHydralisks Hydralisks alive on the map
+     * @return true once the Queen's Nest may be requested
+     */
+    static boolean hiveBranchReady(TechProgression techProgression, int livingHydralisks) {
+        return techProgression.isSpire()
+                && techProgression.isHydraliskDen()
+                && livingHydralisks >= HYDRALISKS_BEFORE_MISSILE_ATTACKS;
+    }
+
+    /**
+     * Each army upgrade moves ahead of the advanced unit stream once the units that plan it are
+     * alive: the Hydralisk Den upgrades on {@value #HYDRALISKS_BEFORE_DEN_UPGRADES} Hydralisks,
+     * Missile Attacks on {@value #HYDRALISKS_BEFORE_MISSILE_ATTACKS}, Carapace on that many
+     * Hydralisks and Zerglings together, Melee Attacks and Adrenal Glands on
+     * {@value #ZERGLINGS_BEFORE_MELEE_ATTACKS} Zerglings, and the flyer upgrades on
+     * {@value #MUTALISKS_BEFORE_FLYER_UPGRADE} Mutalisks.
+     */
+    @Override
+    protected ArmyUpgradeTrigger armyUpgradeTrigger(UpgradeType upgradeType) {
+        switch (upgradeType) {
+            case Muscular_Augments:
+            case Grooved_Spines:
+                return new ArmyUpgradeTrigger(HYDRALISKS_BEFORE_DEN_UPGRADES, UnitType.Zerg_Hydralisk);
+            case Zerg_Missile_Attacks:
+                return new ArmyUpgradeTrigger(HYDRALISKS_BEFORE_MISSILE_ATTACKS, UnitType.Zerg_Hydralisk);
+            case Zerg_Carapace:
+                return new ArmyUpgradeTrigger(HYDRALISKS_BEFORE_MISSILE_ATTACKS, UnitType.Zerg_Hydralisk,
+                        UnitType.Zerg_Zergling);
+            case Zerg_Melee_Attacks:
+            case Adrenal_Glands:
+                return new ArmyUpgradeTrigger(ZERGLINGS_BEFORE_MELEE_ATTACKS, UnitType.Zerg_Zergling);
+            case Zerg_Flyer_Attacks:
+            case Zerg_Flyer_Carapace:
+                return new ArmyUpgradeTrigger(MUTALISKS_BEFORE_FLYER_UPGRADE, UnitType.Zerg_Mutalisk);
+            default:
+                return null;
+        }
     }
 
     // Unit production methods
@@ -401,14 +660,69 @@ public class ThreeHatchMuta extends ProtossBase {
         return 9;
     }
 
-    private int desiredHydralisks(GameState gameState) {
-        TechProgression techProgression = gameState.getTechProgression();
-
-        if (!techProgression.isHydraliskDen()) {
+    /**
+     * The Hydralisk target.
+     *
+     * <p>{@value #BASE_HYDRALISKS} while the bank is ordinary. Once the Drone target is met, the
+     * unreserved minerals reach the surplus bar and the unreserved gas reaches the float bar, the
+     * target sits one above the Hydralisks already counted, so the surplus buys Hydralisks one
+     * plan at a time for as long as all three hold. The float bar is {@link #HYDRALISK_FLOAT_GAS}
+     * until a Hive stands, which leaves the Hive branch its gas, and one Hydralisk's gas after.
+     *
+     * @param hydraliskDen whether the Hydralisk Den has finished
+     * @param hydralisks Hydralisks counted toward the target, planned ones included
+     * @param availableMinerals minerals mined and not reserved by a queued plan
+     * @param availableGas gas mined and not reserved by a queued plan
+     * @param hive whether a Hive stands
+     * @param droneTargetMet whether the build has the Drones it wants
+     * @return the Hydralisk count the build wants
+     */
+    static int desiredHydralisks(boolean hydraliskDen, int hydralisks, int availableMinerals, int availableGas,
+            boolean hive, boolean droneTargetMet) {
+        if (!hydraliskDen) {
             return 0;
         }
+        int floatGas = hive ? UnitType.Zerg_Hydralisk.gasPrice() : HYDRALISK_FLOAT_GAS;
+        if (!droneTargetMet || availableMinerals < MINERAL_SURPLUS || availableGas < floatGas) {
+            return BASE_HYDRALISKS;
+        }
+        return Math.max(BASE_HYDRALISKS, hydralisks + 1);
+    }
 
-        return 25;
+    /**
+     * Whether the Mutalisk and Hydralisk streams are withheld so a queued upgrade can be paid for.
+     *
+     * <p>An upgrade short of gas reserves nothing, and a Hydralisk or Mutalisk the bank can
+     * already pay for is scheduled behind it, so each unit takes the gas the upgrade is saving
+     * toward. While an upgrade at or ahead of {@link BuildOrder#ARMY_UPGRADE_PRIORITY} waits in the
+     * queue for more gas than is unreserved, the build plans neither unit. The hold ends as soon
+     * as the bank covers the upgrade's gas.
+     *
+     * @param queuedPlans plans waiting in the production queue
+     * @param availableGas gas mined and not reserved by a queued plan
+     * @return true while the gas units should not be planned
+     */
+    static boolean isGasHeldForResearch(Iterable<Plan> queuedPlans, int availableGas) {
+        for (Plan plan : queuedPlans) {
+            if (plan.getType() == PlanType.UPGRADE
+                    && plan.getPriority() <= BuildOrder.ARMY_UPGRADE_PRIORITY
+                    && plan.gasPrice() > availableGas) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether the Hive should be planned. The Lair cannot morph while it researches, so the Hive
+     * waits for Pneumatized Carapace to leave the Lair rather than holding its cost against it.
+     *
+     * @param canPlanHive whether the Queen's Nest stands and no Hive is planned or standing
+     * @param overlordSpeedInFlight whether Pneumatized Carapace is queued or researching
+     * @return true when the Hive should be queued now
+     */
+    static boolean shouldPlanHive(boolean canPlanHive, boolean overlordSpeedInFlight) {
+        return canPlanHive && !overlordSpeedInFlight;
     }
 
     @Override
@@ -430,5 +744,10 @@ public class ThreeHatchMuta extends ProtossBase {
     @Override
     public boolean needLair() { 
         return true; 
+    }
+
+    @Override
+    public boolean needHive() {
+        return true;
     }
 }
