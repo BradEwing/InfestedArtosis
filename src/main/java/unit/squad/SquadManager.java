@@ -1119,19 +1119,7 @@ public class SquadManager {
 
     private void assignIrradiatedTarget(ManagedUnit managedUnit) {
         Unit unit = managedUnit.getUnit();
-        List<Unit> enemyUnits = new ArrayList<>(gameState.getVisibleEnemyUnits());
-
-        List<Unit> filtered = new ArrayList<>();
-        for (Unit enemyUnit : enemyUnits) {
-            if (unit.getType() == UnitType.Zerg_Lurker && !enemyUnit.isFlying() && enemyUnit.isDetected()) {
-                filtered.add(enemyUnit);
-                continue;
-            }
-            if (unit.canAttack(enemyUnit) && enemyUnit.isDetected()
-                    && !Filter.isLowPriorityCombatTarget(enemyUnit.getType())) {
-                filtered.add(enemyUnit);
-            }
-        }
+        List<Unit> filtered = fightCandidates(unit);
 
         List<Unit> uncapped = ScoutChase.withoutCappedScouts(filtered, enemy -> isCappedScoutFor(unit, enemy));
         if (uncapped.isEmpty() && !filtered.isEmpty()) {
@@ -3377,7 +3365,6 @@ public class SquadManager {
         boolean ownFightLocked = squad.isFightLocked(now);
         boolean neighbourFightLocked = !ownFightLocked
                 && neighbourLockApplies(squad, fightSquads, SquadManager::withinSupportRadius, now);
-        boolean fightLocked = ownFightLocked || neighbourFightLocked;
 
         if (squad.isGroundSquad()) {
             squad.noteContactScan(now);
@@ -3388,6 +3375,7 @@ public class SquadManager {
         Map<Squad, Double> adjacentSquads = getAdjacentSquads(squad, REINFORCEMENT_RADIUS);
         CombatSimulator.CombatResult result = squad.getCombatSimulator()
                 .evaluate(squad, adjacentSquads, gameState);
+        boolean fightLocked = fightLockApplies(ownFightLocked || neighbourFightLocked, scourgeWithoutTarget(squad));
         HorizonCombatSimulator.DebugSnapshot snapshot = lastSnapshot(squad);
         boolean enemyMeasured = snapshot == null || snapshot.isEnemyMeasured();
         boolean threatBeyondRadius = snapshot != null && snapshot.isThreatBeyondRadius();
@@ -7031,6 +7019,58 @@ public class SquadManager {
         overlord.setRole(UnitRole.IDLE);
     }
 
+    private List<Unit> fightCandidates(Unit unit) {
+        return fightCandidates(unit.getType(), gameState.getVisibleEnemyUnits(), Unit::getType, Unit::isDetected,
+                Unit::isFlying, unit::canAttack);
+    }
+
+    /**
+     * The visible enemies a fighter may be given as a fight target, in the order they were seen. A Lurker keeps
+     * every detected ground enemy. Any other attacker keeps the detected enemies it can attack, larvae, eggs and
+     * cocoons left out, and less the Interceptors its type ignores, see {@link InterceptorTargeting}.
+     *
+     * @param attacker the fighter's type
+     * @param visible the visible enemy units
+     * @param typeOf reads an enemy's unit type
+     * @param detected whether an enemy is detected
+     * @param flying whether an enemy is flying
+     * @param attackable whether the fighter can attack an enemy
+     * @param <T> the enemy representation
+     * @return the fighter's candidates
+     */
+    static <T> List<T> fightCandidates(UnitType attacker, Collection<T> visible, Function<T, UnitType> typeOf,
+                                       Predicate<T> detected, Predicate<T> flying, Predicate<T> attackable) {
+        List<T> candidates = new ArrayList<>();
+        for (T enemy : visible) {
+            if (attacker == UnitType.Zerg_Lurker && !flying.test(enemy) && detected.test(enemy)) {
+                candidates.add(enemy);
+                continue;
+            }
+            if (attackable.test(enemy) && detected.test(enemy)
+                    && !Filter.isLowPriorityCombatTarget(typeOf.apply(enemy))) {
+                candidates.add(enemy);
+            }
+        }
+        return InterceptorTargeting.admitted(attacker, candidates, typeOf);
+    }
+
+    /**
+     * Whether a fight lock is in force this frame. A Scourge squad whose simulator sees no air target has nothing
+     * to stay in the fight for, so no lock, its own or a neighbour's, applies to it.
+     *
+     * @param fightLocked whether the squad's own fight lock or a neighbour's is active
+     * @param scourgeWithoutTarget true for a squad on the Scourge simulator that sees no air target
+     * @return true when the lock may hold the squad in FIGHT
+     */
+    static boolean fightLockApplies(boolean fightLocked, boolean scourgeWithoutTarget) {
+        return fightLocked && !scourgeWithoutTarget;
+    }
+
+    private static boolean scourgeWithoutTarget(Squad squad) {
+        CombatSimulator simulator = squad.getCombatSimulator();
+        return simulator instanceof ScourgeCombatSimulator && !((ScourgeCombatSimulator) simulator).isAirTargetSeen();
+    }
+
     /**
      * Assign target to a fighter and squad.
      *
@@ -7074,19 +7114,7 @@ public class SquadManager {
             }
             return;
         }
-        List<Unit> enemyUnits = new ArrayList<>(gameState.getVisibleEnemyUnits());
-
-        List<Unit> filtered = new ArrayList<>();
-        for (Unit enemyUnit: enemyUnits) {
-            if (unit.getType() == UnitType.Zerg_Lurker && !enemyUnit.isFlying() && enemyUnit.isDetected()) {
-                filtered.add(enemyUnit);
-                continue;
-            }
-            if (unit.canAttack(enemyUnit) && enemyUnit.isDetected() && 
-                !Filter.isLowPriorityCombatTarget(enemyUnit.getType())) {
-                filtered.add(enemyUnit);
-            }
-        }
+        List<Unit> filtered = fightCandidates(unit);
 
         Arc joinArc = containArcToJoin(squad);
         if (filtered.isEmpty()) {
