@@ -102,7 +102,7 @@ public abstract class BuildOrder {
      */
     static final UnitType MINERAL_SURPLUS_UNIT = UnitType.Zerg_Zergling;
 
-    static final int MINERAL_SURPLUS = 400;
+    protected static final int MINERAL_SURPLUS = 400;
 
     static final int MAX_QUEUED_SURPLUS_PLANS = 4;
 
@@ -490,9 +490,9 @@ public abstract class BuildOrder {
      * Returns true if Overlord Speed should be researched, based on Lair, game time, enemy tech
      * and the reaction trigger.
      *
-     * <p>The Lair term reads {@link Readiness#USABLE}, which counts only finished Lairs.
-     * That is what it wants: the upgrade is researched at the Lair, so a Lair still morphing
-     * cannot start it.
+     * <p>The Lair term reads {@link Readiness#USABLE}, which counts only finished Lairs and Hives.
+     * That is what it wants: the upgrade is researched at the Lair or the Hive it became, so a
+     * Lair still morphing cannot start it.
      *
      * <p>This only decides whether the upgrade is queued. {@link #planUpgrade} queues it at frame
      * priority, behind the army upgrades already waiting; only a threat the upgrade answers, from
@@ -502,7 +502,7 @@ public abstract class BuildOrder {
      * enemy tech buildings, the Science Vessel and an Observer queue it without lifting it.
      */
     public boolean needOverlordSpeed(GameState gameState) {
-        if (gameState.structureCount(Readiness.USABLE, bwapi.UnitType.Zerg_Lair) < 1) {
+        if (gameState.structureCount(Readiness.USABLE, bwapi.UnitType.Zerg_Lair, bwapi.UnitType.Zerg_Hive) < 1) {
             return false;
         }
         if (Reactions.isOverlordSpeedThreatened(gameState)) {
