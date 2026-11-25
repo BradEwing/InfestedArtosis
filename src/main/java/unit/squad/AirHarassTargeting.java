@@ -341,7 +341,8 @@ public final class AirHarassTargeting {
 
     /**
      * The tier a contact is taken in, or null when the harass leaves it alone: anti-air the flock cannot kill
-     * within {@link #KILL_VOLLEYS} volleys.
+     * within {@link #KILL_VOLLEYS} volleys, and an Interceptor, which a Mutalisk does not attack, see
+     * {@link InterceptorTargeting#yields}.
      *
      * @param contact the contact
      * @param flockSize Mutalisks in the squad
@@ -351,6 +352,9 @@ public final class AirHarassTargeting {
         UnitType type = contact.getType();
         if (Filter.isWorkerType(type)) {
             return Tier.WORKER;
+        }
+        if (InterceptorTargeting.yields(UnitType.Zerg_Mutalisk, type)) {
+            return null;
         }
         if (isAntiAir(type)) {
             return killsQuickly(contact, flockSize) ? Tier.ISOLATED_AA : null;

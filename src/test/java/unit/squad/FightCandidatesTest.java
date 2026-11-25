@@ -5,7 +5,9 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -85,11 +87,76 @@ class FightCandidatesTest {
     }
 
     @Test
-    void aHydraliskAndAMutaliskKeepInterceptors() {
+    void aHydraliskAndAMutaliskSeeingACarrierAndItsInterceptorsGetOnlyTheCarrier() {
         List<Enemy> visible = Arrays.asList(interceptor(), CARRIER, interceptor());
+
+        assertEquals(Collections.singletonList(CARRIER), candidatesFor(UnitType.Zerg_Hydralisk, visible));
+        assertEquals(Collections.singletonList(CARRIER), candidatesFor(UnitType.Zerg_Mutalisk, visible));
+    }
+
+    @Test
+    void aHydraliskSeeingACarrierKeepsItsGroundCandidatesAndNoInterceptor() {
+        List<Enemy> visible = Arrays.asList(interceptor(), ZEALOT, CARRIER, interceptor());
+
+        assertEquals(Arrays.asList(ZEALOT, CARRIER), candidatesFor(UnitType.Zerg_Hydralisk, visible));
+    }
+
+    @Test
+    void aHydraliskAndAMutaliskSeeingNoCarrierKeepInterceptorsAmongTheVisible() {
+        List<Enemy> visible = Arrays.asList(interceptor(), ZEALOT, interceptor());
 
         assertEquals(visible, candidatesFor(UnitType.Zerg_Hydralisk, visible));
         assertEquals(visible, candidatesFor(UnitType.Zerg_Mutalisk, visible));
+    }
+
+    @Test
+    void aHydraliskWithAnotherEnemyInReachDoesNotPickAmongInterceptors() {
+        List<Enemy> inReach = Arrays.asList(interceptor(), ZEALOT, interceptor());
+
+        assertEquals(Collections.singletonList(ZEALOT),
+                SquadManager.pickCandidates(UnitType.Zerg_Hydralisk, inReach, Enemy::type));
+        assertEquals(Collections.singletonList(ZEALOT),
+                SquadManager.pickCandidates(UnitType.Zerg_Mutalisk, inReach, Enemy::type));
+    }
+
+    @Test
+    void aHydraliskWithOnlyInterceptorsInReachPicksAmongThemAlthoughAFarEnemyIsVisible() {
+        Enemy first = interceptor();
+        Enemy second = interceptor();
+        Enemy farPylon = new Enemy(UnitType.Protoss_Pylon, true);
+        Map<Enemy, Double> distance = new HashMap<>();
+        distance.put(first, 100.0);
+        distance.put(second, 150.0);
+        distance.put(farPylon, 3000.0);
+        List<Enemy> visible = candidatesFor(UnitType.Zerg_Hydralisk, Arrays.asList(first, farPylon, second));
+
+        List<Enemy> inReach = SquadManager.filterByProximity(visible, distance::get);
+
+        assertEquals(Arrays.asList(first, second),
+                SquadManager.pickCandidates(UnitType.Zerg_Hydralisk, inReach, Enemy::type));
+    }
+
+    @Test
+    void aHydraliskWithNothingInReachPicksAFarEnemyOverAFarInterceptor() {
+        Enemy farInterceptor = interceptor();
+        Enemy farPylon = new Enemy(UnitType.Protoss_Pylon, true);
+        Map<Enemy, Double> distance = new HashMap<>();
+        distance.put(farInterceptor, 2000.0);
+        distance.put(farPylon, 3000.0);
+        List<Enemy> visible = candidatesFor(UnitType.Zerg_Hydralisk, Arrays.asList(farInterceptor, farPylon));
+
+        List<Enemy> inReach = SquadManager.filterByProximity(visible, distance::get);
+
+        assertEquals(Collections.singletonList(farPylon),
+                SquadManager.pickCandidates(UnitType.Zerg_Hydralisk, inReach, Enemy::type));
+    }
+
+    @Test
+    void aZerglingAndADevourerPickAmongEveryCandidate() {
+        List<Enemy> inReach = Arrays.asList(interceptor(), CORSAIR);
+
+        assertEquals(inReach, SquadManager.pickCandidates(UnitType.Zerg_Devourer, inReach, Enemy::type));
+        assertEquals(inReach, SquadManager.pickCandidates(UnitType.Zerg_Zergling, inReach, Enemy::type));
     }
 
     @Test

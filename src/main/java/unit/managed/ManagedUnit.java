@@ -105,6 +105,7 @@ public class ManagedUnit {
     private boolean attackMoving;
     @Getter
     private final MeleeOverflowGate overflowGate = new MeleeOverflowGate();
+    private Position attackMovePoint;
     private Position attackMoveDestination;
     private Position attackMoveAnchor;
     private boolean attackMoveIssued;
@@ -1379,14 +1380,28 @@ public class ManagedUnit {
      * @param attackMove true to attack-move toward the target instead of attacking it
      */
     public void setFightTarget(Unit newFightTarget, boolean attackMove) {
+        setFightTarget(newFightTarget, attackMove, null);
+    }
+
+    /**
+     * Sets the fight target, whether the unit attack-moves rather than attacking it, and where the attack-move is
+     * aimed. An attack-move under way is kept, see {@link #keepsAttackMove}; any other is measured and issued anew.
+     *
+     * @param newFightTarget the target, or null for none
+     * @param attackMove true to attack-move instead of attacking the target
+     * @param point where the attack-move is aimed, or null to aim it past the target
+     */
+    public void setFightTarget(Unit newFightTarget, boolean attackMove, Position point) {
         boolean sameTarget = newFightTarget != null && newFightTarget.equals(fightTarget);
         fightTarget = newFightTarget;
         attackMoving = attackMove && newFightTarget != null;
-        if (!attackMoving || !sameTarget) {
+        Position newPoint = attackMoving ? point : null;
+        if (!keepsAttackMove(attackMoving, sameTarget, attackMovePoint != null, newPoint != null)) {
             attackMoveDestination = null;
             attackMoveAnchor = null;
             attackMoveIssued = false;
         }
+        attackMovePoint = newPoint;
         if (newFightTarget == null) {
             movementTargetPosition = null;
             return;
@@ -1400,27 +1415,88 @@ public class ManagedUnit {
     }
 
     /**
-     * Attack-moves to a point past the target, unless the unit is attacking, is on an attack it acquired itself
-     * (see {@link #autoAcquired}), or is already attack-moving to within {@link #ATTACK_MOVE_REISSUE_DISTANCE} of that
-     * point. The point is kept, so it does not swing round as the unit closes on or passes the target. It is dropped
-     * for a new target, and shifted with the target once the target has moved more than
+     * Whether an attack-move under way carries over a new fight-target assignment, so it is not measured and issued
+     * again. One aimed past the target carries over while the target is the same. One aimed at a point carries over
+     * whatever the target, since the point is given with every assignment. A change between the two does not.
+     *
+     * @param attackMoving true when the new assignment is an attack-move
+     * @param sameTarget true when the new target is the target held
+     * @param pointHeld true when the attack-move under way is aimed at a point
+     * @param pointGiven true when the new assignment is aimed at a point
+     */
+    static boolean keepsAttackMove(boolean attackMoving, boolean sameTarget, boolean pointHeld, boolean pointGiven) {
+        if (!attackMoving || pointHeld != pointGiven) {
+            return false;
+        }
+        return pointGiven || sameTarget;
+    }
+
+    /**
+     * Whether an attack the unit acquired itself during an attack-move is left to run. One acquired on the way past
+     * a target always is. One acquired on the way to a point is only while the enemy is within weapon range, so the
+     * unit does not follow an enemy that flies off and takes up its attack-move again.
+     *
+     * @param autoAcquired true when the unit is on an attack it acquired itself, see {@link #autoAcquired}
+     * @param pointAimed true when the attack-move is aimed at a point
+     * @param inWeaponRange true when the acquired enemy is within the unit's weapon range
+     */
+    static boolean keepsAcquired(boolean autoAcquired, boolean pointAimed, boolean inWeaponRange) {
+        return autoAcquired && (!pointAimed || inWeaponRange);
+    }
+
+    /**
+     * Whether a unit that has reached the point its attack-move is aimed at is given no further order: it stands
+     * within {@link #ATTACK_MOVE_REISSUE_DISTANCE} of the point and is idle, so the game has it shoot what comes
+     * into range. A unit on any order, such as a move or an attack-move to another point, is not held. An
+     * attack-move past a target is never held.
+     *
+     * @param pointAimed true when the attack-move is aimed at a point
+     * @param distance pixels from the unit to the point
+     * @param idle true when the unit is idle
+     */
+    static boolean holdsAtPoint(boolean pointAimed, double distance, boolean idle) {
+        return pointAimed && idle && distance <= ATTACK_MOVE_REISSUE_DISTANCE;
+    }
+
+    /**
+     * Attack-moves to the point given with the fight target, or with none to a point past the target, unless the
+     * unit is attacking, is on an attack it acquired itself that is left to run (see {@link #autoAcquired} and
+     * {@link #keepsAcquired}), has reached the point (see {@link #holdsAtPoint}), or is already attack-moving to
+     * within {@link #ATTACK_MOVE_REISSUE_DISTANCE} of that point. The point past the target is kept, so
+     * it does not swing round as the unit closes on or passes the target. It is dropped for a new target, and
+     * shifted with the target once the target has moved more than
      * {@link #ATTACK_MOVE_REISSUE_DISTANCE} from where it was measured (see {@link #overflowOffset}).
      */
     protected void attackMoveToward(Unit target) {
-        Position anchor = target.getPosition();
-        if (attackMoveDestination == null || anchor.getDistance(attackMoveAnchor) > ATTACK_MOVE_REISSUE_DISTANCE) {
-            Vec2 offset = overflowOffset(unit.getPosition(), anchor, attackMoveAnchor, attackMoveDestination);
-            attackMoveAnchor = anchor;
-            attackMoveDestination = offset.clampToMap(game, anchor);
+        boolean pointAimed = attackMovePoint != null;
+        if (pointAimed) {
+            attackMoveDestination = attackMovePoint;
+        } else {
+            Position anchor = target.getPosition();
+            if (attackMoveDestination == null
+                    || anchor.getDistance(attackMoveAnchor) > ATTACK_MOVE_REISSUE_DISTANCE) {
+                Vec2 offset = overflowOffset(unit.getPosition(), anchor, attackMoveAnchor, attackMoveDestination);
+                attackMoveAnchor = anchor;
+                attackMoveDestination = offset.clampToMap(game, anchor);
+            }
         }
-        if (autoAcquired(unit.getOrder(), unit.getOrderTarget(), target, attackMoveIssued)) {
+        Unit acquired = unit.getOrderTarget();
+        boolean autoAcquired = autoAcquired(unit.getOrder(), acquired, target, attackMoveIssued);
+        if (keepsAcquired(autoAcquired, pointAimed, autoAcquired && unit.isInWeaponRange(acquired))) {
             return;
         }
-        if (needsAttackMove(unit.getOrder(), unit.getOrderTargetPosition(), unit.isAttacking(),
+        if (holdsAtPoint(pointAimed, unit.getPosition().getDistance(attackMoveDestination), unit.isIdle())) {
+            return;
+        }
+        if (needsAttackMove(unit.getOrder(), unit.getOrderTargetPosition(), unit.isAttacking() && !autoAcquired,
                 attackMoveDestination)) {
-            unit.attack(attackMoveDestination);
+            issueAttackMove(attackMoveDestination);
             attackMoveIssued = true;
         }
+    }
+
+    protected void issueAttackMove(Position destination) {
+        unit.attack(destination);
     }
 
     /**

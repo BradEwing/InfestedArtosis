@@ -4162,7 +4162,9 @@ public class SquadManager {
                 managedUnit.clearRetreatStart();
             }
             if (stragglers.contains(managedUnit.getUnitID())) {
-                if (!AirFlock.keepsTarget(managedUnit.isFightTargetInWeaponRange(), false)) {
+                boolean attacksTargetInRange = managedUnit.isFightTargetInWeaponRange()
+                        && !managedUnit.isAttackMoving();
+                if (!AirFlock.keepsTarget(attacksTargetInRange, false)) {
                     rallyToDefensePosition(managedUnit, anchor);
                 }
                 continue;
@@ -7027,7 +7029,8 @@ public class SquadManager {
     /**
      * The visible enemies a fighter may be given as a fight target, in the order they were seen. A Lurker keeps
      * every detected ground enemy. Any other attacker keeps the detected enemies it can attack, larvae, eggs and
-     * cocoons left out, and less the Interceptors its type ignores, see {@link InterceptorTargeting}.
+     * cocoons left out. Interceptors are left out for a type that ignores them, and for a type that takes them
+     * last while a Carrier is among the candidates, see {@link InterceptorTargeting#admitted}.
      *
      * @param attacker the fighter's type
      * @param visible the visible enemy units
@@ -7177,7 +7180,8 @@ public class SquadManager {
                 : gameState.getStaticDefenseZones();
         List<Unit> admissible = outOfCoolingFire;
         Predicate<Unit> admitted = enemy -> !coveredByStaticDefense(enemy.getPosition(), defenseZones, defensePadding);
-        filtered = filterByProximity(admissible, unit::getDistance, admitted);
+        filtered = pickCandidates(unit.getType(), filterByProximity(admissible, unit::getDistance, admitted),
+                Unit::getType);
         if (filtered.isEmpty() && joinArc != null) {
             rallyToDefensePosition(managedUnit, joinArc.closestPosition(unit.getPosition()));
             return;
@@ -7185,15 +7189,87 @@ public class SquadManager {
         Function<List<Unit>, TargetScorer.Selection> select = candidates -> TargetScorer.selectTarget(unit,
                 preferProxiedBuildings(candidates), managedUnit.fightTarget, ledger, squad.getId());
         TargetScorer.Selection selection = widenWhenSaturated(select.apply(filtered), filtered.size(),
-                () -> widenCandidates(admissible, unit::getDistance, admitted), select);
+                () -> pickCandidates(unit.getType(), widenCandidates(admissible, unit::getDistance, admitted),
+                        Unit::getType), select);
         if (selection != null) {
-            TargetScorer.Selection issued = commitPick(ledger, managedUnit.getOverflowGate(), unit, selection,
-                    managedUnit.fightTarget, game.getFrameCount());
+            Unit pick = selection.getTarget();
+            boolean pickInReach = unit.getDistance(pick) <= TARGETING_RADIUS;
+            boolean yields = InterceptorTargeting.attackMoves(unit.getType(), pick.getType(), pickInReach,
+                    !pickInReach && InterceptorTargeting.takesInterceptorsLast(unit.getType())
+                            && interceptorInReach(unit));
+            TargetScorer.Selection issued = yields
+                    ? selection.asAttackMove()
+                    : commitPick(ledger, managedUnit.getOverflowGate(), unit, selection, managedUnit.fightTarget,
+                            game.getFrameCount());
             TargetChoices.chosen(managedUnit, managedUnit.fightTarget, managedUnit.isAttackMoving(), issued,
                     scoutCapped);
-            managedUnit.setFightTarget(issued.getTarget(), issued.isAttackMove());
+            managedUnit.setFightTarget(issued.getTarget(), issued.isAttackMove(),
+                    yields ? interceptorAttackMovePoint(unit, squad) : null);
             recordScoutClaim(unit, issued.getTarget());
         }
+    }
+
+    /**
+     * The candidates a fighter picks its target from, once those within its targeting reach are known: Interceptors
+     * are left out for a type that takes them last whenever any other candidate remains, see
+     * {@link InterceptorTargeting#preferred}.
+     *
+     * @param attacker the fighter's type
+     * @param candidates the candidates within the fighter's targeting reach
+     * @param typeOf reads a candidate's unit type
+     * @param <T> the candidate representation
+     * @return the candidates to pick from
+     */
+    static <T> List<T> pickCandidates(UnitType attacker, List<T> candidates, Function<T, UnitType> typeOf) {
+        return InterceptorTargeting.preferred(attacker, candidates, typeOf);
+    }
+
+    /**
+     * @return true when a detected Interceptor is within the fighter's targeting reach
+     */
+    private boolean interceptorInReach(Unit unit) {
+        for (Unit enemy : gameState.getVisibleEnemyUnits()) {
+            if (enemy.getType() == UnitType.Protoss_Interceptor && enemy.isDetected()
+                    && unit.getDistance(enemy) <= TARGETING_RADIUS) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Where a fighter that does not attack its pick because of Interceptors attack-moves, see
+     * {@link InterceptorTargeting#attackMovePoint}: the nearest tracked Carrier, or the squad's objective, see
+     * {@link #squadObjective}. When enemy static defence covers that point, it is the squad's centre instead, so
+     * the fighter stays with its squad and shoots what comes into range.
+     */
+    private Position interceptorAttackMovePoint(Unit unit, Squad squad) {
+        Set<ObservedUnit> living = gameState.getObservedUnitTracker().getLivingObservedUnits();
+        List<Position> carriers = new ArrayList<>();
+        for (ObservedUnit observed : living) {
+            Position position = observed.getCurrentOrLastKnownPosition();
+            if (observed.getUnitType() == UnitType.Protoss_Carrier && position != null) {
+                carriers.add(position);
+            }
+        }
+        Position point = InterceptorTargeting.attackMovePoint(unit.getPosition(), carriers,
+                () -> squadObjective(squad, living, unit.getType()));
+        boolean defended = coveredByStaticDefense(point, gameState.getStaticDefenseZones(),
+                containmentDefensePadding(Collections.singleton(unit.getType())));
+        return defended ? squad.getCenter() : point;
+    }
+
+    /**
+     * Where a squad heads when it has no enemy to fight: the remembered enemy structure nearest its centre that the
+     * attacker hunts, else the enemy main, else the squad's own centre.
+     */
+    private Position squadObjective(Squad squad, Collection<ObservedUnit> living, UnitType attacker) {
+        Position hunted = gameState.getEndgameHunt().huntPosition(squad.getCenter(), living, attacker);
+        if (hunted != null) {
+            return hunted;
+        }
+        Base enemyMain = gameState.getBaseData().getMainEnemyBase();
+        return enemyMain != null ? enemyMain.getCenter() : squad.getCenter();
     }
 
     /**
